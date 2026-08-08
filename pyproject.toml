@@ -1,0 +1,26 @@
+[project]
+name = "wellvolpos"
+version = "0.1.0"
+description = "Well probability of success and volume, from a stochastic prospect model"
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.26",
+    "pandas>=2.1",
+    "scipy>=1.11",
+    "scikit-learn>=1.4",
+    "matplotlib>=3.8",
+    "plotly>=5.20",
+    "streamlit>=1.33",
+    "openpyxl>=3.1",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+filterwarnings = ["error::RuntimeWarning"]
+
+[tool.setuptools.packages.find]
+include = ["wellvolpos*"]

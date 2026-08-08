@@ -1,0 +1,145 @@
+"""The assessment minimum, expressed as a minimum column height.
+
+Hood (2024) argues the assessment minimum "can be effectively linked to seal
+capacity if based on a minimum column height and not a minimum hydrocarbon
+volume", which is why column height is the primary control here rather than the
+P99.5 volume floor the source workbook used.
+
+The two are close but **not identical**, and this module exists to show the
+difference rather than assume it away. On the reference dataset:
+
+* At a *fixed* contact depth -- hence a fixed column height -- the resource still
+  spans roughly 3x, because area is pinned but gross pay and recovery yield are
+  not.
+* Cutting at the P98 level, the two definitions disagree on about 1 % of the
+  excluded set. They diverge further when area and net pay are correlated.
+* Both were already applied upstream: no realisation in the file sits below the
+  simulator's own assessment minimum, so a looser threshold here changes nothing
+  and the UI says so instead of silently doing nothing.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+import numpy as np
+
+from ..io.adapters.base import TrialSet
+from .structure import AreaDepth
+
+
+@dataclass
+class ThresholdMapping:
+    min_column_height: float
+    apex: float
+    min_contact_depth: float
+    min_area: float | None
+    equivalent_volume: float | None       # smallest resource surviving the cut
+    equivalent_percentile: float | None   # its petroleum percentile in the success set
+    n_excluded: int
+    frac_excluded: float
+    binds: bool
+    message: str
+
+
+def apply_min_column_height(
+    ts: TrialSet, ad: AreaDepth | None, apex: float, min_column_height: float
+) -> ThresholdMapping:
+    """Map a minimum column height onto its area and volume equivalents."""
+    res = ts.col("resource")
+    contact = ts.col("contact")
+    succ = res > 0.0
+    z_min = apex + float(min_column_height)
+
+    kept = succ & (contact >= z_min)
+    n_excluded = int((succ & ~kept).sum())
+    frac = n_excluded / max(int(succ.sum()), 1)
+
+    min_area = float(ad.area_at(z_min)) if ad is not None else None
+    if kept.any():
+        v = res[kept]
+        equiv_vol = float(v.min())
+        equiv_pct = float((res[succ] >= equiv_vol).mean())
+    else:
+        equiv_vol = equiv_pct = None
+
+    binds = n_excluded > 0
+    if not binds:
+        message = (
+            f"A minimum column height of {min_column_height:g} m (contact at {z_min:.1f} m) "
+            f"excludes nothing — the simulator's own assessment minimum is already stricter. "
+            f"The shallowest sampled contact is {float(contact[succ].min()):.1f} m."
+        )
+    else:
+        message = (
+            f"A minimum column height of {min_column_height:g} m puts the shallowest admissible "
+            f"contact at {z_min:.1f} m, excluding {n_excluded:,} of {int(succ.sum()):,} success "
+            f"trials ({frac:.2%})."
+        )
+    return ThresholdMapping(
+        min_column_height=float(min_column_height), apex=float(apex),
+        min_contact_depth=z_min, min_area=min_area,
+        equivalent_volume=equiv_vol, equivalent_percentile=equiv_pct,
+        n_excluded=n_excluded, frac_excluded=frac, binds=binds, message=message,
+    )
+
+
+def volume_percentile_threshold(ts: TrialSet, percentile: float = 0.995) -> float:
+    """The source workbook's alternative: a volume floor at P99.5 of the success case."""
+    res = ts.col("resource")
+    v = res[res > 0.0]
+    if v.size == 0:
+        return float("nan")
+    return float(np.percentile(v, (1.0 - percentile) * 100.0))
+
+
+def compare_definitions(ts: TrialSet, apex: float, min_column_height: float) -> dict:
+    """Quantify how far the column-height and volume-percentile cuts disagree.
+
+    They are two different operations on the same intuition. This returns the
+    overlap so the user can see whether, for *their* prospect, treating them as
+    interchangeable is safe.
+    """
+    res = ts.col("resource")
+    contact = ts.col("contact")
+    succ = res > 0.0
+    z_min = apex + float(min_column_height)
+
+    by_depth = succ & (contact >= z_min)
+    n_keep = int(by_depth.sum())
+    if n_keep == 0 or succ.sum() == 0:
+        return {"comparable": False}
+
+    # the volume cut that keeps the same number of trials
+    thr = float(np.sort(res[succ])[max(int(succ.sum()) - n_keep, 0)])
+    by_volume = succ & (res >= thr)
+    agree = int((by_depth & by_volume).sum())
+    excluded = max(n_keep, 1)
+    return {
+        "comparable": True,
+        "n_kept_by_depth": n_keep,
+        "n_kept_by_volume": int(by_volume.sum()),
+        "n_agree": agree,
+        "disagreement_frac": 1.0 - agree / excluded,
+        "volume_threshold": thr,
+    }
+
+
+def spread_at_fixed_column(ts: TrialSet, apex: float, column_height: float, band_m: float = 20.0) -> dict:
+    """Resource spread among trials at (approximately) one column height.
+
+    If this ratio is far from 1, a column-height cut and a volume cut cannot be
+    the same operation, because area is fixed while pay and yield still vary.
+    """
+    res, contact = ts.col("resource"), ts.col("contact")
+    z = apex + column_height
+    m = (res > 0) & (contact >= z) & (contact < z + band_m)
+    if m.sum() < 5:
+        return {"n": int(m.sum()), "ratio": float("nan")}
+    v = res[m]
+    return {
+        "n": int(m.sum()),
+        "min": float(v.min()),
+        "max": float(v.max()),
+        "ratio": float(v.max() / v.min()),
+    }

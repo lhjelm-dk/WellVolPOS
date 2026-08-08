@@ -1,0 +1,24 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+.streamlit_uploads/
+.DS_Store
+*.egg-info/
+build/
+dist/
+
+# The source workbook is the specification, not an input. It is large, it is the
+# user's, and the parity numbers derived from it are hard-coded in
+# tests/test_excel_parity.py -- so the repo does not need to carry it.
+reference/*.xlsx
+
+# Reference material that lives alongside the repo in Lars's working folder but
+# is not part of it: the papers, the source workbook, and superseded plan
+# versions. Kept out so `git add -A` in that folder stays clean.
+/Papers/
+/*.xlsx
+/*.pdf
+/WellVolPOS_Design_Plan_v*.md
+/graphics_mockup.png
