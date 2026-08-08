@@ -22,13 +22,19 @@ job. It does not do economics.
 
 ## Quick start
 
+**New here? Follow [`GETTING_STARTED.md`](GETTING_STARTED.md)** — step by step,
+with the Windows specifics.
+
+The short version:
+
 ```bash
+python -m venv .venv && .venv/Scripts/Activate.ps1   # Windows
 pip install -r requirements.txt
-pytest                 # the specification — should be 68 passed
+pytest                 # the specification — 69 passed
 streamlit run app.py   # opens on the bundled demo data
 ```
 
-No setup, no data preparation: the app opens on a demo dataset.
+No data preparation: the app opens on a demo dataset.
 
 ---
 
