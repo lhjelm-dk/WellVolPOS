@@ -1,9 +1,13 @@
-numpy==2.1.3
-pandas==2.2.3
-scipy==1.14.1
-scikit-learn==1.5.2
-matplotlib==3.9.2
-plotly==5.24.1
-streamlit==1.40.1
-openpyxl==3.1.5
-pytest==8.3.4
+# Floors, not pins. The parity suite in tests/ is what guards against drift; if a
+# newer package ever changed a result, those tests would fail loudly. Pinning
+# exact versions here would instead break installation on any Python version
+# that lacks a matching prebuilt wheel.
+numpy>=2.1
+pandas>=2.2
+scipy>=1.14
+scikit-learn>=1.5
+matplotlib>=3.9
+plotly>=5.24
+streamlit>=1.40
+openpyxl>=3.1
+pytest>=8.0

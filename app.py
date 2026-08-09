@@ -14,10 +14,24 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from wellvolpos.core import ReferenceContour, group_summary, group_trials, p_well
+from wellvolpos.core import (
+    AreaDepth,
+    ReferenceContour,
+    group_summary,
+    group_trials,
+    p_well,
+    run_sweep,
+    split_trials,
+)
 from wellvolpos.core.chance import SCHEME_LABELS
 from wellvolpos.io.adapters import read_trials
 from wellvolpos.io.qc import run_qc
+from wellvolpos.viz import (
+    fig_a3_chance_decomposition,
+    fig_a4_resource_vs_depth,
+    fig_a5_exceedance,
+    fig_b3_uncertainty_reduction,
+)
 
 DATA = Path(__file__).parent / "data"
 DEMOS = {
@@ -146,6 +160,10 @@ if qc.blocked:
 pos = qc.failure.pos_trials if (qc.failure and qc.failure.pos_trials) else 1.0
 groups = group_trials(ts, entry, exit_)
 chance = p_well(ts, entry, pos, reference=ref)
+has_area = ts.has("area")
+if has_area:
+    ad = AreaDepth.from_trials(ts.col("contact"), ts.col("area"))
+    vc = split_trials(ts, ad, groups, entry, exit_)
 
 with tabs[2]:
     st.subheader("Prospect — the un-cut model")
@@ -155,7 +173,23 @@ with tabs[2]:
     c[1].metric("P50", f"{s['p50']:.2f}")
     c[2].metric("Mean", f"{s['mean']:.2f}")
     c[3].metric("P10", f"{s['p10']:.2f}")
-    st.caption("MMboe. Figures A1, A4 land here in phase 1.")
+    st.caption("MMboe. Figure A1 (area–depth curve) lands here in phase 2.")
+
+    if not has_area:
+        st.warning("No productive-area column in this export — A4 and A5 need it and are skipped.")
+    else:
+        st.divider()
+        c1, c2 = st.columns(2)
+        with c1:
+            fig_a4, _ = fig_a4_resource_vs_depth(ts, current_entry=entry, mefs=mefs)
+            st.pyplot(fig_a4)
+        with c2:
+            fig_a5, _ = fig_a5_exceedance(ts, groups, vc, mefs=mefs)
+            st.pyplot(fig_a5)
+        st.caption(
+            "A4 uses success trials only — the chance-failure zeros belong to POS, not to the "
+            "shape of the resource distribution. A5 is evaluated at the current entry/exit."
+        )
 
 with tabs[3]:
     st.subheader("Well location")
@@ -171,10 +205,28 @@ with tabs[3]:
         f"discovery with contact logged {sh['contact_seen']:.1%} · "
         f"discovery with HC to exit {sh['hc_to_exit']:.1%}"
     )
-    st.caption("Proven mean becomes the headline KPI in phase 2. Figures A5, A6 and the live section land there.")
+    st.caption("Proven mean becomes the headline KPI in phase 2. Figure A6 and the live section land there.")
+
+@st.fragment
+def _location_sweep_tab():
+    st.subheader("Location sweep")
+    with st.spinner("Sweeping well location…"):
+        sweep = run_sweep(ts, pos, reference=ref)
+    c1, c2 = st.columns(2)
+    with c1:
+        fig_a3, _ = fig_a3_chance_decomposition(sweep, pos_trials=pos, current_z=entry)
+        st.pyplot(fig_a3)
+    with c2:
+        fig_b3, _ = fig_b3_uncertainty_reduction(sweep, current_z=entry)
+        st.pyplot(fig_b3)
+    st.caption(
+        f"Haskett (2003) optimum: {sweep.reduction_optimum:.0f}% expected uncertainty reduction "
+        f"at entry {sweep.z_optimum:.1f} m TVDSS. B0–B2, B6 land here in phase 2."
+    )
+
 
 with tabs[4]:
-    st.info("Phase 4 — location sweep: B0–B3, B6.")
+    _location_sweep_tab()
 
 with tabs[5]:
     st.info("Phase 3 — chance table, allocation schemes, B4/B5, and export.")

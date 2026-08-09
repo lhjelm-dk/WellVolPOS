@@ -48,13 +48,98 @@ python --version
 
 **If you see `Python 3.11` or higher** → go to step 4.
 
-**If you see nothing, an error, or a version below 3.11** → install Python:
-download from <https://www.python.org/downloads/>, and **tick "Add python.exe to
-PATH"** on the first screen of the installer. Close PowerShell, reopen it (step
-2), and check again.
+**If you see `python is not recognized...`** → see *"I installed it but the
+command isn't recognised"* below. This is the single most common snag and it is
+usually a 10-second fix.
 
-**If it opens the Microsoft Store** → that is a Windows stub. Install from
-python.org as above.
+**If it opens the Microsoft Store** → a Windows stub is intercepting the
+command. Fix it in *App execution aliases*, below.
+
+---
+
+## "I installed it, but the command isn't recognised"
+
+`PATH` is the list of folders Windows searches when you type a command. If a
+program isn't in one of those folders, Windows says *"not recognized"* even
+though the program is sitting right there on your disk.
+
+Two things cause it. Try them in this order.
+
+### 1. Your terminal is holding a stale PATH — reopen it
+
+**Windows reads PATH once, when a program starts.** A PowerShell window you
+opened *before* installing still has the old list and will never see the new
+entry, no matter how many times you retry.
+
+**Close PowerShell completely** (the window, not just the command) and open a
+new one from the folder (step 2). Try again.
+
+This fixes it most of the time. It applies equally to Python, Git and Claude
+Code.
+
+### 2. The installer never added it
+
+Run this to see what Windows can actually find:
+
+```powershell
+py --version
+where.exe python
+where.exe git
+where.exe node
+```
+
+`where.exe` prints the full path if it finds the program, or *"Could not find
+files"* if not.
+
+**For Python — the shortcut.** The python.org installer always installs a
+launcher called `py`, whether or not you ticked the PATH box. So if `py
+--version` works but `python --version` doesn't, just use `py` for step 4:
+
+```powershell
+py -m venv .venv
+```
+
+**and everything after that is unaffected** — activating the virtual environment
+puts its own folder at the front of PATH for that terminal, so `python`, `pip`,
+`pytest` and `streamlit` all work normally from inside it. The PATH problem only
+ever bites on that one command.
+
+**To fix it properly:** re-run the Python installer from
+<https://www.python.org/downloads/>, choose **Modify** → Next → tick **"Add
+Python to environment variables"** → Install. Then reopen PowerShell.
+
+**For Git:** reinstall from <https://git-scm.com/download/win> and keep the
+default option *"Git from the command line and also from 3rd-party software"*.
+
+**For Claude Code:** it needs Node.js first (<https://nodejs.org>, LTS version).
+Install Node, **reopen PowerShell**, then `npm install -g
+@anthropic-ai/claude-code`, then **reopen PowerShell again**.
+
+### App execution aliases (the Microsoft Store trap)
+
+If typing `python` opens the Microsoft Store, Windows has a stub intercepting
+it. Turn the stub off:
+
+**Settings → Apps → Advanced app settings → App execution aliases** → switch
+**off** `python.exe` and `python3.exe`. Reopen PowerShell.
+
+### Last resort: add the folder to PATH by hand
+
+1. Press the Windows key, type `environment variables`, choose **"Edit the
+   system environment variables"** → **Environment Variables…**
+2. In the **upper** box (*User variables*), select **Path** → **Edit** →
+   **New**, and paste the folder that contains the program. Typical locations:
+   - Python: `C:\Users\<you>\AppData\Local\Programs\Python\Python312`
+     and `...\Python312\Scripts`
+   - Git: `C:\Program Files\Git\cmd`
+   - npm global tools: `C:\Users\<you>\AppData\Roaming\npm`
+3. OK out of all three dialogs, then **open a new PowerShell**.
+
+To see the current list:
+
+```powershell
+$env:Path -split ';'
+```
 
 ---
 
@@ -66,6 +151,8 @@ Do it once.
 ```powershell
 python -m venv .venv
 ```
+
+*(If `python` isn't recognised, use `py -m venv .venv` — see the section above.)*
 
 Then activate it:
 
@@ -195,27 +282,52 @@ git tag phase-0
 
 ## Step 10 — Open it in Claude Code
 
-```powershell
-claude
-```
+**Use the Claude desktop app you already have.** It includes Claude Code — no
+Node.js, no CLI, nothing to install. (`SETUP_CLAUDE_CODE.bat` and
+`RUN_CLAUDE.bat` in this folder are only for the terminal version; you can
+ignore them.)
 
-**If "claude is not recognized"** → install it. You need Node.js first
-(<https://nodejs.org>, take the LTS version), then:
+The desktop app has three tabs across the top:
 
-```powershell
-npm install -g @anthropic-ai/claude-code
-```
+| Tab | What it is |
+|---|---|
+| **Chat** | ordinary conversation, no file access |
+| **Cowork** | the background agent in a sandbox — where this project was designed |
+| **Code** | an interactive coding assistant with direct access to your files |
 
-Reopen PowerShell, `cd` back to the folder, and run `claude`.
+1. Click the **Code** tab at the top centre.
+2. For the environment choose **Local** — Claude then works on your real files.
+3. Click **Select folder** and choose
+   `D:\Dokumenter\Lars\Pythonscripts\WellVolPOS`.
+4. Pick a model from the dropdown next to the send button.
+5. Type your instruction.
 
-Once it starts, paste this as your first message:
+For the first message, paste this:
 
-> Read `docs/WellVolPOS_Design_Plan.md` and `README.md`. Phase 0 is complete and
-> all 69 tests pass. Start phase 1: the reference grouping engine figures — A3
-> (chance decomposition vs location), A4 (resource vs contact depth), A5
-> (exceedance curves) and B3 (uncertainty reduction), plus the depth sweep.
-> Follow the depth-axis rule in `wellvolpos/viz/theme.py` and keep the parity
-> suite green.
+> Read CLAUDE.md, then start phase 1: figures A3, A4, A5 and B3 plus the depth
+> sweep, wired into tabs 3 and 5. Keep the parity suite green.
+
+**What to expect.** It starts in **Manual mode**: Claude proposes each change and
+waits, showing a **diff view** of exactly what will change, with Accept and
+Reject buttons. Your files are not touched until you accept. If you reject
+something it asks how you would rather do it.
+
+`CLAUDE.md` in this folder is read automatically at the start of every session —
+it carries the project's decisions, the depth-axis rule, the parity constraint
+and the domain traps, so Claude starts informed rather than cold. The same file
+works for both the desktop app and the terminal version.
+
+**Handy while you work:**
+
+- **Ctrl+`** opens a terminal pane inside the app, so you can run the tests
+  without leaving it.
+- Type `@filename` to pull a specific file into the conversation.
+- Click the `+12 -1` indicator after an edit to review the diff line by line and
+  comment on it; Claude reads the comments and revises.
+- Sessions run in parallel from the sidebar if you want two things at once.
+
+Requirements: a Pro, Max, Team or Enterprise plan (clicking **Code** will say if
+not), and Git for Windows, which is already installed on this machine.
 
 ---
 
@@ -258,7 +370,8 @@ Send me the exact text of the error. The most common ones:
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `python is not recognized` | Python not on PATH | Reinstall from python.org, tick "Add to PATH" |
+| `python is not recognized` | Terminal opened before install, or PATH not set | Close and reopen PowerShell first; then see *"I installed it, but the command isn't recognised"* |
+| `python` opens the Microsoft Store | App execution alias | Settings → Apps → Advanced app settings → App execution aliases → turn off python.exe |
 | `running scripts is disabled` | Windows script policy | `Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned` |
 | `No module named wellvolpos` | Wrong folder, or venv not active | `cd` to the folder; check for `(.venv)` in the prompt |
 | `git is not recognized` | Git not installed | <https://git-scm.com/download/win> |

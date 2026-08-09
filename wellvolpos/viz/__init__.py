@@ -1,3 +1,13 @@
+from .figures import (
+    fig_a3_chance_decomposition,
+    fig_a4_resource_vs_depth,
+    fig_a5_exceedance,
+    fig_b3_uncertainty_reduction,
+)
 from .theme import apply, colour, depth_axis, palette
 
-__all__ = ["apply", "palette", "colour", "depth_axis"]
+__all__ = [
+    "apply", "palette", "colour", "depth_axis",
+    "fig_a3_chance_decomposition", "fig_a4_resource_vs_depth",
+    "fig_a5_exceedance", "fig_b3_uncertainty_reduction",
+]
