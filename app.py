@@ -1,8 +1,9 @@
 """WellVolPOS — Streamlit entry point.
 
-Phase 0/1 scope: the Data and QC & Risking tabs are live and gate everything
-else. The analysis tabs are present but stubbed, so the navigation and the
-settings that must never be implicit are visible from the first run.
+Phase 0–2 scope: Data and QC & Risking gate everything else, and the Prospect,
+Well location and Location sweep tabs are live (A1–A6, B0–B3 plus the live
+section). Risk & report is still a stub, so the settings that must never be
+implicit are visible from the first run even where their figures are pending.
 
 Run with:  streamlit run app.py
 """
@@ -17,19 +18,27 @@ import streamlit as st
 from wellvolpos.core import (
     AreaDepth,
     ReferenceContour,
+    class_summary,
     group_summary,
     group_trials,
     p_well,
     run_sweep,
+    run_volume_sweep,
     split_trials,
 )
 from wellvolpos.core.chance import SCHEME_LABELS
 from wellvolpos.io.adapters import read_trials
 from wellvolpos.io.qc import run_qc
 from wellvolpos.viz import (
+    fig_a1_area_depth,
+    fig_a2_outcome_tree,
     fig_a3_chance_decomposition,
     fig_a4_resource_vs_depth,
     fig_a5_exceedance,
+    fig_a6_overlap,
+    fig_b0_section,
+    fig_b1_volume_split,
+    fig_b2_chance_vs_regret,
     fig_b3_uncertainty_reduction,
 )
 
@@ -173,26 +182,33 @@ with tabs[2]:
     c[1].metric("P50", f"{s['p50']:.2f}")
     c[2].metric("Mean", f"{s['mean']:.2f}")
     c[3].metric("P10", f"{s['p10']:.2f}")
-    st.caption("MMboe. Figure A1 (area–depth curve) lands here in phase 2.")
+    st.caption("MMboe.")
 
     if not has_area:
-        st.warning("No productive-area column in this export — A4 and A5 need it and are skipped.")
+        st.warning("No productive-area column in this export — A1, A4 and A5 need it and are skipped.")
     else:
         st.divider()
-        c1, c2 = st.columns(2)
+        c1, c2, c3 = st.columns(3)
         with c1:
+            fig_a1, _ = fig_a1_area_depth(ad, current_entry=entry, current_exit=exit_)
+            st.pyplot(fig_a1)
+        with c2:
             fig_a4, _ = fig_a4_resource_vs_depth(ts, current_entry=entry, mefs=mefs)
             st.pyplot(fig_a4)
-        with c2:
+        with c3:
             fig_a5, _ = fig_a5_exceedance(ts, groups, vc, mefs=mefs)
             st.pyplot(fig_a5)
         st.caption(
-            "A4 uses success trials only — the chance-failure zeros belong to POS, not to the "
-            "shape of the resource distribution. A5 is evaluated at the current entry/exit."
+            "A1 — the area–depth curve recovered from the trials. A4 uses success trials only — the "
+            "chance-failure zeros belong to POS, not to the shape of the resource distribution. "
+            "A5 is evaluated at the current entry/exit."
         )
 
 with tabs[3]:
     st.subheader("Well location")
+    if has_area:
+        cs = class_summary(vc, groups)
+        st.metric("Proven mean — headline KPI", f"{cs['proven']['mean']:.2f} MMboe")
     c = st.columns(4)
     c[0].metric("POS prospect", f"{chance.pos_prospect:.4f}")
     c[1].metric("r location", f"{chance.r_location:.4f}")
@@ -205,23 +221,87 @@ with tabs[3]:
         f"discovery with contact logged {sh['contact_seen']:.1%} · "
         f"discovery with HC to exit {sh['hc_to_exit']:.1%}"
     )
-    st.caption("Proven mean becomes the headline KPI in phase 2. Figure A6 and the live section land there.")
+
+    if not has_area:
+        st.warning(
+            "No productive-area column in this export — the proven/possible split, A6 and the "
+            "live section need it and are skipped."
+        )
+    else:
+        st.divider()
+        st.markdown("**Volume classes** (MMboe) — at the current entry/exit")
+        st.dataframe(
+            pd.DataFrame(
+                [
+                    {"class": "Discovery", **cs["discovery"]},
+                    {"class": "Proven at well", **cs["proven"]},
+                    {"class": "Possible — below reservoir exit", **cs["possible"]},
+                    {"class": "Attic | dry hole", **cs["attic_dry_hole"]},
+                ]
+            )[["class", "n", "p90", "p50", "mean", "p10"]],
+            hide_index=True,
+            use_container_width=True,
+        )
+        st.divider()
+        c1, c2 = st.columns(2)
+        with c1:
+            fig_a6, _ = fig_a6_overlap(vc, groups, mefs=mefs)
+            st.pyplot(fig_a6)
+        with c2:
+            fig_live, _ = fig_b0_section(ad, z_entry=entry, z_exit=exit_, title="Live section")
+            st.pyplot(fig_live)
+        st.caption(
+            "A6 — Schneider et al.'s 'surprising overlap' between what a dry hole leaves in the "
+            "attic and what a discovery proves. Live section — the closure shape from A(z), "
+            "colour-keyed to what the well now standing at entry/exit would prove."
+        )
 
 @st.fragment
 def _location_sweep_tab():
     st.subheader("Location sweep")
+    # The sweeps carry the well's *own* entry-to-exit spacing, so a swept
+    # location is the same well moved up or down the structure. Left at a
+    # default gap, B1's proven curve would disagree with the headline KPI in
+    # tab ④ for the very well the user has the sliders set to.
+    gap = exit_ - entry
     with st.spinner("Sweeping well location…"):
-        sweep = run_sweep(ts, pos, reference=ref)
-    c1, c2 = st.columns(2)
+        sweep = run_sweep(ts, pos, reference=ref, z_gap=gap)
+    c1, c2, c3 = st.columns(3)
     with c1:
+        fig_a2, _ = fig_a2_outcome_tree(sweep, current_z=entry)
+        st.pyplot(fig_a2)
+    with c2:
         fig_a3, _ = fig_a3_chance_decomposition(sweep, pos_trials=pos, current_z=entry)
         st.pyplot(fig_a3)
-    with c2:
+    with c3:
         fig_b3, _ = fig_b3_uncertainty_reduction(sweep, current_z=entry)
         st.pyplot(fig_b3)
     st.caption(
         f"Haskett (2003) optimum: {sweep.reduction_optimum:.0f}% expected uncertainty reduction "
-        f"at entry {sweep.z_optimum:.1f} m TVDSS. B0–B2, B6 land here in phase 2."
+        f"at entry {sweep.z_optimum:.1f} m TVDSS. A2's exit is a hypothetical entry + "
+        f"{sweep.z_gap:.0f} m, swept alongside entry — it does not affect r_location or P_well."
+    )
+
+    if not has_area:
+        st.warning("No productive-area column in this export — B0, B1 and B2 need it and are skipped.")
+        return
+
+    st.divider()
+    with st.spinner("Sweeping the volume split…"):
+        vsweep = run_volume_sweep(ts, ad, pos, z_gap=gap, mefs=mefs, reference=ref)
+    d1, d2, d3 = st.columns(3)
+    with d1:
+        fig_b0, _ = fig_b0_section(ad, z_entry=entry, z_exit=exit_)
+        st.pyplot(fig_b0)
+    with d2:
+        fig_b1, _ = fig_b1_volume_split(vsweep, current_z=entry)
+        st.pyplot(fig_b1)
+    with d3:
+        fig_b2, _ = fig_b2_chance_vs_regret(vsweep, current_z=entry)
+        st.pyplot(fig_b2)
+    st.caption(
+        f"B1/B2 sweep entry with a fixed {vsweep.z_gap:.0f} m entry-to-exit spacing. "
+        f"B6 (inverse: volume-to-prove → required entry) lands in phase 4."
     )
 
 
