@@ -21,6 +21,7 @@ Run with:  streamlit run app.py
 
 from __future__ import annotations
 
+from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -52,6 +53,8 @@ from wellvolpos.core import (
     volume_target_curve,
 )
 from wellvolpos.io.adapters import read_trials
+from wellvolpos.report import export as export_mod
+from wellvolpos.report.case import Case, fingerprint
 from wellvolpos.report.guide import render as render_guide
 from wellvolpos.io.qc import run_qc
 from wellvolpos.viz import (
@@ -100,6 +103,37 @@ CONVENTION_PROVENANCE = {
 }
 
 st.set_page_config(page_title="WellVolPOS", layout="wide", page_icon="🛢")
+
+
+# -------------------------------------------------------------- dark mode
+def _dark() -> bool:
+    """True when Streamlit is rendering the page dark.
+
+    Read from the running context rather than offered as a toggle. A toggle can
+    disagree with the page it sits on, and a dark figure on a light page is worse
+    than no dark mode at all. Change it the usual way — the ☰ menu, *Settings*,
+    *Theme* — and the figures follow.
+
+    Dark is a *selected palette* in ``viz/theme.py``, not an inversion of the
+    light one (design plan §7.2): the hues are the same volume-concept hues, with
+    the lightnesses re-tuned until every pair that can share a figure still
+    survives simulated colour-vision deficiency.
+    """
+    try:
+        return str(getattr(st.context.theme, "type", "light")).lower() == "dark"
+    except Exception:                                  # no context, e.g. under pytest
+        return False
+
+
+DARK = _dark()
+if DARK:
+    # Bound once, here, instead of adding ``dark=DARK`` to eighteen call sites
+    # where the nineteenth would eventually be forgotten — and a figure drawn in
+    # the wrong palette is a figure whose colours no longer mean what the key
+    # says they mean (non-negotiable 3).
+    _ns = globals()
+    for _name in [n for n in list(_ns) if n.startswith("pfig_")]:
+        _ns[_name] = partial(_ns[_name], dark=True)
 
 
 # ------------------------------------------------------------------ loading
@@ -189,11 +223,52 @@ if path is None:
 ts, qc = _load(str(path))
 
 # ------------------------------------------------------------------ sidebar
-st.sidebar.subheader("Well")
 zmin, zmax = float(ts.col("contact").min()), float(ts.col("contact").max())
-entry = st.sidebar.slider("Reservoir entry depth (m TVDSS)", zmin, zmax, min(max(3500.0, zmin), zmax), 5.0)
-exit_ = st.sidebar.slider("Reservoir exit depth (m TVDSS)", entry, zmax, min(entry + 50.0, zmax), 5.0)
-mefs = st.sidebar.number_input("MEFS (MMboe)", min_value=0.0, value=14.0, step=0.5)
+
+# Case load runs *before* the widgets it restores, because a Streamlit widget
+# reads session_state only when it is first created. Writing the values then
+# rerunning is the only order in which a loaded case actually reaches the
+# controls; setting them afterwards silently does nothing.
+with st.sidebar.expander("Case", expanded=False):
+    st.caption(
+        "A case is the settings, never the results — every number is recomputed on load, "
+        "so a reopened case cannot show you figures this build would not produce."
+    )
+    up = st.file_uploader("Load a case (.json)", type=["json"], key="_case_upload")
+    if up is not None and st.button("Apply this case", key="_case_apply"):
+        try:
+            loaded = Case.from_json(up.getvalue())
+        except ValueError as e:
+            st.error(str(e))
+        else:
+            st.session_state.update({
+                "w_entry": float(np.clip(loaded.entry, zmin, zmax)),
+                "w_exit": float(np.clip(loaded.exit, zmin, zmax)),
+                "w_mefs": loaded.mefs,
+                "w_ref": ReferenceContour(loaded.reference),
+                "w_scheme": loaded.scheme,
+                "w_area_scale": loaded.area_scale,
+                "w_min_col": loaded.min_column_height,
+                "w_map_interval": loaded.map_interval,
+                "w_map_azimuth": int(round(loaded.map_azimuth_deg)),
+                "risking_convention": loaded.risking_convention,
+                "_case_warnings": loaded.check_against(ts),
+                "_case_loaded": loaded.dataset or "a case file",
+            })
+            for el, v in loaded.chance_table.items():
+                st.session_state[f"w_chance_{el}"] = v
+            st.rerun()
+    if st.session_state.get("_case_loaded"):
+        st.success(f"Settings restored from **{st.session_state['_case_loaded']}**.")
+        for w in st.session_state.get("_case_warnings", []):
+            st.warning(w)
+
+st.sidebar.subheader("Well")
+entry = st.sidebar.slider("Reservoir entry depth (m TVDSS)", zmin, zmax,
+                          min(max(3500.0, zmin), zmax), 5.0, key="w_entry")
+exit_ = st.sidebar.slider("Reservoir exit depth (m TVDSS)", entry, zmax,
+                          min(entry + 50.0, zmax), 5.0, key="w_exit")
+mefs = st.sidebar.number_input("MEFS (MMboe)", min_value=0.0, value=14.0, step=0.5, key="w_mefs")
 
 st.sidebar.divider()
 st.sidebar.subheader("Conventions")
@@ -202,9 +277,11 @@ ref = st.sidebar.radio(
     "Reference contour for the location factor",
     [ReferenceContour.CREST, ReferenceContour.P90_AREA],
     format_func=lambda r: {"crest": "Crest / apex (Milkov 2021)", "p90_area": "P90 area (Rose)"}[r.value],
+    key="w_ref",
 )
 scheme = st.sidebar.selectbox(
-    "Risk-element allocation", SHIPPED_SCHEMES, format_func=lambda k: SCHEME_LABELS[k]
+    "Risk-element allocation", SHIPPED_SCHEMES, format_func=lambda k: SCHEME_LABELS[k],
+    key="w_scheme",
 )
 # GeoX plots its area-depth curve against area squared, so that convention is
 # offered alongside ours. The transform is on the axis only — every number the
@@ -212,6 +289,7 @@ scheme = st.sidebar.selectbox(
 area_scale = st.sidebar.selectbox(
     "Area–depth x-axis", list(AREA_SCALES), index=0,
     help="area is this tool's default; area² is GeoX's convention; √area straightens a cone.",
+    key="w_area_scale",
 )
 
 with tabs[0]:
@@ -309,7 +387,10 @@ with tabs[4]:
         "in which case this table is for the attribution figures below only."
     )
     ec = st.columns(4)
-    elements = {el: ec[i].number_input(el.capitalize(), 0.01, 1.0, 1.0, 0.01) for i, el in enumerate(ELEMENTS)}
+    elements = {
+        el: ec[i].number_input(el.capitalize(), 0.01, 1.0, 1.0, 0.01, key=f"w_chance_{el}")
+        for i, el in enumerate(ELEMENTS)
+    }
 
 pos_from_table = float(np.prod(list(elements.values())))
 risking_convention = st.session_state.get("risking_convention", "success_case_only")
@@ -408,6 +489,7 @@ with tabs[1]:
             map_interval = st.number_input(
                 "Contour interval (m)", min_value=5.0, max_value=500.0, value=50.0, step=5.0,
                 help="Contours land on multiples of this, so they read like a depth map.",
+                key="w_map_interval",
             )
             map_azimuth = st.slider(
                 "Well azimuth on the map (°)", 0, 359, 35,
@@ -416,6 +498,7 @@ with tabs[1]:
                     "contour of its own entry depth. A(z) records enclosed area per depth and "
                     "nothing about the closure's shape."
                 ),
+                key="w_map_azimuth",
             )
             st.metric("Apex (derived)", f"{map_apex:.0f} m")
             st.caption("From A(z)'s shallow tail, extrapolated to zero area.")
@@ -613,6 +696,118 @@ def _location_sweep_tab():
     _inverse_section(vsweep, ts)
 
 
+def _current_case() -> Case:
+    """The settings on screen, as a :class:`Case`.
+
+    Reads the widget values out of ``session_state`` by key rather than closing
+    over the local variables, because three of them (minimum column height, the
+    two map controls) only exist when the export carries a productive-area
+    column. A missing widget must give the field's default, not a NameError at
+    the moment someone clicks *Export*.
+    """
+    ss = st.session_state
+    return Case(
+        entry=entry, exit=exit_, mefs=mefs,
+        risking_convention=risking_convention,
+        reference=ref.value, scheme=scheme,
+        min_column_height=float(ss.get("w_min_col", 0.0)),
+        chance_table=dict(elements),
+        area_scale=area_scale, dark=DARK,
+        map_interval=float(ss.get("w_map_interval", 50.0)),
+        map_azimuth_deg=float(ss.get("w_map_azimuth", 35.0)),
+        dataset=str(choice), n_trials=ts.n_trials, fingerprint=fingerprint(ts),
+    )
+
+
+@st.fragment
+def _export_section():
+    """Export, in its own fragment.
+
+    The four formats are built **on request**, not on every rerun. A PDF of
+    sixteen figures takes seconds to draw, and ``st.download_button`` wants its
+    bytes up front -- so building eagerly would mean every slider drag redrawing
+    a document nobody asked for. One button assembles the bundle once and the
+    downloads then come out of it.
+
+    Everything is derived from one :class:`~wellvolpos.report.export.Bundle`, so
+    the workbook, the PDF and the figures cannot disagree with each other or with
+    the screen.
+    """
+    st.subheader("Export")
+    case = _current_case()
+    st.caption(
+        "Every artefact is stamped with the POS in force and where it came from, the reference "
+        "contour and the allocation scheme. A caption can be cropped out of a screenshot; a "
+        "cover page and a **Case** sheet cannot be cropped out of a file."
+    )
+
+    # The case JSON needs no computation, so it is always available -- and it is
+    # the artefact that makes a session reproducible, which makes it the one
+    # worth never putting behind a button.
+    st.download_button(
+        "⬇ Case settings (.json)", case.to_json(),
+        file_name="wellvolpos_case.json", mime="application/json", key="dl_case",
+    )
+    st.caption(
+        "Settings only, never results: reopening a case recomputes every number, so it cannot "
+        "show you figures this build would not produce. It records which trial file it was saved "
+        "against and says so if reopened on different trials."
+    )
+
+    st.divider()
+    if st.button("Build the report", key="build_export", type="primary"):
+        with st.spinner("Drawing every figure and assembling the workbook…"):
+            bundle = export_mod.assemble(
+                ts, case, pos=pos, pos_source=pos_source, qc=qc,
+            )
+            st.session_state["_export"] = {
+                "stamp": bundle.stamp,
+                "xlsx": export_mod.workbook_bytes(bundle),
+                "pdf": export_mod.pdf_bytes(bundle),
+                "png": export_mod.figures_zip(bundle, "png"),
+                "svg": export_mod.figures_zip(bundle, "svg"),
+                "tables": {k: v for k, v in export_mod.tables(bundle).items()},
+                "warnings": bundle.warnings,
+            }
+
+    payload = st.session_state.get("_export")
+    if payload is None:
+        st.info("Press **Build the report** to assemble the workbook, the PDF and the figures.")
+        return
+
+    st.code(payload["stamp"], language=None)
+    for w in payload["warnings"]:
+        st.warning(w)
+    d1, d2, d3, d4 = st.columns(4)
+    d1.download_button(
+        "⬇ Workbook (.xlsx)", payload["xlsx"], file_name="wellvolpos_report.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", key="dl_xlsx",
+    )
+    d2.download_button(
+        "⬇ Report (.pdf)", payload["pdf"], file_name="wellvolpos_report.pdf",
+        mime="application/pdf", key="dl_pdf",
+    )
+    d3.download_button(
+        "⬇ Figures (PNG .zip)", payload["png"], file_name="wellvolpos_figures_png.zip",
+        mime="application/zip", key="dl_png",
+    )
+    d4.download_button(
+        "⬇ Figures (SVG .zip)", payload["svg"], file_name="wellvolpos_figures_svg.zip",
+        mime="application/zip", key="dl_svg",
+    )
+    st.caption(
+        "The figures in every artefact are the matplotlib set, not screenshots of the "
+        "interactive ones — both are driven from `viz/theme.py`, so they carry the same colours "
+        "and the same depth rule. Each figure archive also contains the stamp and the case, "
+        "because a figure dropped into a slide gets separated from its provenance immediately."
+    )
+
+    with st.expander("What is in the workbook"):
+        for name, frame in payload["tables"].items():
+            st.markdown(f"**{name}** — {len(frame):,} rows")
+            st.dataframe(frame, width="stretch", hide_index=True)
+
+
 @st.fragment
 def _inverse_section(vsweep, ts):
     """B6, in its own fragment.
@@ -721,7 +916,8 @@ with tabs[4]:
         tc1, tc2 = st.columns(2)
         apex = float(ad.apex_estimate())
         tc1.metric("Apex (derived from A(z))", f"{apex:.1f} m TVDSS")
-        min_col = tc2.number_input("Minimum column height (m)", min_value=0.0, value=0.0, step=5.0)
+        min_col = tc2.number_input("Minimum column height (m)", min_value=0.0, value=0.0, step=5.0,
+                                   key="w_min_col")
         st.caption(
             f"Apex **derived from the trials**, not entered: A(z)'s shallow tail extrapolated to "
             f"zero area gives {apex:.1f} m TVDSS, against a shallowest sampled contact of "
@@ -775,7 +971,7 @@ with tabs[4]:
             )
 
     st.divider()
-    st.info("Export (XLSX / PNG / SVG / PDF / JSON) lands in phase 5.")
+    _export_section()
 
 with tabs[5]:
     render_guide(

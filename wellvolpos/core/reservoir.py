@@ -76,8 +76,17 @@ class ThicknessFromPay:
         contacts, and not a defect.
     ``n_inconsistent``
         The trial's HC-bearing GRV exceeds the entire closure volume above its
-        own contact, which no thickness can produce. That is a genuine QC flag
-        on the export rather than a numerical edge case.
+        own contact, which no thickness can produce.
+
+        Read this as an **upper bound** on export problems, not a count of them.
+        The closure volume is measured from the apex, and the apex is an
+        extrapolation of A(z) to zero area -- so an apex estimated too deep makes
+        the modelled closure too small and flags trials that are in fact
+        consistent. On a synthetic cone whose apex is known, the true apex flags
+        nothing while the derived apex (34 m too deep there) flags about 3 % of
+        trials; ``tests/test_synthetic.py`` pins that. It is zero on the reference
+        file, so nothing here is affected, but a closure with a thinner shallow
+        tail would show it.
     """
 
     thickness: np.ndarray

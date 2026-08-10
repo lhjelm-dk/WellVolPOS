@@ -30,7 +30,7 @@ The short version:
 ```bash
 python -m venv .venv && .venv/Scripts/Activate.ps1   # Windows
 pip install -r requirements.txt
-pytest                 # the specification — 69 passed
+pytest                 # the specification — 338 passed
 streamlit run app.py   # opens on the bundled demo data
 ```
 
@@ -70,32 +70,43 @@ roughly 40 % too low.
 | Phase | Content | State |
 |---|---|---|
 | 0 | Repo, theme, GeoX adapter, failure detector, QC + risking panel, demo selector, parity suite | **done** |
-| 1 | Reference grouping engine, figures A3/A4/A5, B3, depth sweep | next |
-| 2 | `A(z)`, proven/possible classes, figures A1/A2/A6, B0/B1/B2, live section | |
-| 3 | Chance table, reference contours, allocation schemes, B4/B5, threshold mapping | |
-| 4 | Inverse tool, optimum finders, bootstrap bands | |
-| 5 | Export, dark mode, case save/load, synthetic generators | |
+| 1 | Reference grouping engine, figures A3/A4/A5, B3, depth sweep | **done** |
+| 2 | `A(z)`, proven/possible classes, figures A1/A2/A6, B0/B1/B2, live section | **done** |
+| 3 | Chance table, reference contours, allocation schemes, B4/B5, threshold mapping | **done** |
+| 4 | Inverse tool, optimum finders, bootstrap bands | **done** |
+| — | The teaching layer: map view, concepts figure, reservoir-thickness inversion, Rose's three quantities, theory & guide tab | **done** |
+| 5 | Export, dark mode, case save/load, synthetic generators, docs | **done** |
 
-The core calculation modules for phases 2 and 3 are already written and tested —
-what is missing from those phases is the figures, not the arithmetic.
+Six tabs, all live. Every interactive figure has a matplotlib twin for the export
+path, and a test compares the two modules so a new figure cannot skip it.
 
 ---
 
 ## Layout
 
 ```
-app.py                       Streamlit entry point
+app.py                       Streamlit entry point — six tabs
 wellvolpos/
   io/adapters/               trial-file readers; add a simulator by adding a file
   io/failure.py              chance-failure detector -> POS from the trials
   io/qc.py                   the report that gates the analysis tabs
+  io/synthetic.py            two generators for cases the real data cannot reach
   core/structure.py          A(z), recovered from the trials themselves
   core/groups.py             reference engine: whole-trial grouping (Schneider et al. 2023)
   core/classes.py            extension: proven / possible / attic per trial
   core/chance.py             r_location, reference contours, risk allocation
+  core/reservoir.py          reservoir thickness, back-calculated from pay
+  core/rose.py               No Regrets, Pmcfs(well), Pc(well) — the poster's definitions
+  core/sweep.py              both sweeps, and the inverse
+  core/stats.py              bootstrap intervals and sample-size diagnostics
   core/threshold.py          minimum column height <-> area <-> volume percentile
   core/xlcompat.py           Excel-exact PERCENTILE / PERCENTRANK
   viz/theme.py               one palette, one styling entry point, the depth-axis rule
+  viz/interactive.py         the plotly figures — what the app draws
+  viz/figures.py             the matplotlib twins — what the export draws
+  report/case.py             save and reload a session: settings only, never results
+  report/export.py           one bundle, four formats
+  report/guide.py            the theory & guide tab
 data/                        two demo trial files (fictional)
 docs/                        the design plan and the figure sheets
 tests/                       the specification
@@ -122,6 +133,30 @@ default buried in the code:
 - **Engine** — reference grouping, or the proven/possible decomposition. Both
   are shown; neither is labelled "correct".
 
+## What comes out
+
+Tab ⑤ builds four artefacts from **one** assembled bundle, so the workbook, the
+PDF and the figures cannot disagree with each other or with the screen:
+
+| Format | For |
+|---|---|
+| **XLSX** | The reviewer who wants to check the arithmetic. Every KPI, both engines, the chance decomposition, both sweeps as columns, the QC verdict, and a `Case` sheet. Values only — a formula in an exported workbook is a second implementation of the same calculation. |
+| **PDF** | The well proposal. A stamped cover page, then every figure, one per page. |
+| **PNG / SVG zip** | Slides. The stamp and the case travel inside the archive, because a figure dropped into a deck is separated from its provenance immediately. |
+| **JSON case** | Reopening the session. Settings only, never results — so a reloaded case cannot show numbers this build would not produce. It fingerprints the trial file it was saved against and says so if reopened on different trials. |
+
+Every artefact carries the same stamp: the POS in force **and where it came
+from**, `r_location`, `P_well`, the well, the reference contour, the allocation
+scheme and the threshold volume. A caption can be cropped out of a screenshot; a
+cover page cannot be cropped out of a file.
+
+Dark mode follows Streamlit's own theme setting rather than a separate toggle —
+a toggle can disagree with the page it sits on. Dark is a *selected* palette, not
+an inversion: the same volume-concept hues, with lightnesses re-tuned so every
+pair that can share a figure still survives simulated colour-vision deficiency.
+
+---
+
 ## Two rules the tests enforce
 
 **Depth is always on the y-axis, increasing downward.** Not a style preference: a
@@ -146,6 +181,15 @@ pair for exercising the importer.
 One trap worth knowing: their `TrialNumber` columns hold the same identifiers
 attached to *different rows*. Joining two GeoX exports on `TrialNumber` will
 silently scramble them. Nothing here does; `tests/test_adapters.py` asserts it.
+
+`io/synthetic.py` generates two more, for the branches one real prospect cannot
+exercise: a **correlated area / net-pay** file, which makes the per-trial split's
+uniform-pay guard speak, and a **success-case-only** file with no chance failures,
+which forces the risking branch onto the chance table. Both emit GeoX-shaped CSV
+and are read back through the real adapter, so they exercise the importer too.
+Their closure is a cone, which means `A(z)` is known exactly — the one thing the
+real data cannot offer, and what let a sensitivity in the reservoir-thickness
+inversion be found and documented.
 
 ---
 
