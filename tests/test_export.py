@@ -339,3 +339,20 @@ def test_the_warnings_from_the_session_reach_the_exported_file(reduced):
     with zipfile.ZipFile(io.BytesIO(E.figures_zip(b, "png"))) as z:
         assert "not the ones this case was saved against" in z.read("README.txt").decode("utf-8")
     plt.close("all")
+
+
+def test_the_guide_tab_can_be_told_which_palette_to_draw_in():
+    """``report/guide.py`` draws the colour key, and it is reached by a direct
+    import rather than through app.py's namespace -- so the ``partial`` that binds
+    the dark palette into every ``pfig_*`` cannot reach it. It has to be handed
+    the theme explicitly, and it was not: the key rendered light on a dark page,
+    which for a colour key is the one thing it must not do.
+
+    A signature check rather than a render, because rendering needs a Streamlit
+    script context. It catches the defect that actually occurred.
+    """
+    import inspect
+
+    from wellvolpos.report.guide import render
+
+    assert "dark" in inspect.signature(render).parameters

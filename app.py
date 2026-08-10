@@ -1,13 +1,13 @@
 """WellVolPOS — Streamlit entry point.
 
-Phases 0–4. Five tabs; everything is live except export. Tab ① carries the
-trial-data selector, the import summary, a preview of the trials themselves, the
-QC report and the risking question, and it gates the rest; the risking
-convention chosen there and the chance table entered in tab ⑤ together
-determine POS_prospect (see the "Entered
-here" comment below for why the chance-table widgets sit before the
-computation that uses them). Reference contour and allocation scheme are
-sidebar-level conventions, per CLAUDE.md's "never implicit" rule.
+Phases 0–5. Six tabs, all live. Tab ① carries the trial-data selector, the import
+summary, a preview of the trials themselves, the QC report and the risking
+question, and it gates the rest; the risking convention chosen there and the
+chance table entered in tab ⑤ together determine POS_prospect (see the "Entered
+here" comment below for why the chance-table widgets sit before the computation
+that uses them). Reference contour and allocation scheme are sidebar-level
+conventions, per CLAUDE.md's "never implicit" rule. Tab ⑤ ends in the export,
+which builds every artefact from one assembled bundle.
 
 Figures are the interactive (plotly) ones from ``wellvolpos.viz.interactive``;
 the matplotlib set in ``wellvolpos.viz.figures`` is the export path and both
@@ -977,7 +977,7 @@ with tabs[5]:
     render_guide(
         ts=ts, ad=ad if has_area else None, groups=groups,
         vc=vc if has_area else None, chance=chance, mefs=mefs,
-        entry=entry, exit_=exit_, pos_source=pos_source,
+        entry=entry, exit_=exit_, pos_source=pos_source, dark=DARK,
     )
 
 st.divider()
