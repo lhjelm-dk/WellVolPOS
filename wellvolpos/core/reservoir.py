@@ -39,6 +39,11 @@ of average gross pay to reservoir thickness equal the mean of A over the top
 at 0.825, which is a direct statement about how fast area grows over the last
 ~45 m of the structure rather than a coincidence.
 
+**Always vertical.** Lars confirmed (2026-08-10) that the thickness GeoX reports
+is true *vertical* thickness, not true stratigraphic thickness. So a base
+reservoir is ``top + T`` with no ``1/cos(dip)`` correction, at any dip, and the
+inversion above needs no dip term either.
+
 **Gross, not net.** The inversion consumes a *gross* rock volume, so it returns a
 *gross* reservoir thickness. In the reference export ``HC bearing gross rock
 volume = Productive area x Average gross pay`` holds to stored precision in every

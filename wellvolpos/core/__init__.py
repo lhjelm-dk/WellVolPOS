@@ -16,6 +16,7 @@ from .classes import check_area_pay_correlation, class_summary, split_trials
 from .groups import group_summary, group_trials
 from .structure import AreaDepth
 from .reservoir import ThicknessFromPay, thickness_from_pay
+from .rose import CommercialChance, NoRegrets, commercial_chance, no_regrets
 from .stats import (
     MIN_SUPPORT,
     Support,
@@ -52,6 +53,7 @@ __all__ = [
     "Sweep", "run_sweep", "VolumeSweep", "run_volume_sweep",
     "InverseResult", "invert_volume_target", "volume_target_curve", "find_crossing",
     "ThicknessFromPay", "thickness_from_pay",
+    "NoRegrets", "no_regrets", "CommercialChance", "commercial_chance",
     "MIN_SUPPORT", "Support", "bootstrap_mean_ci", "bootstrap_proportion_ci",
     "describe_support", "support_mask", "thin",
     "ThresholdMapping", "apply_min_column_height", "compare_definitions",

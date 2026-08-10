@@ -55,6 +55,8 @@ from .theme import (
 )
 
 __all__ = [
+    "pfig_colour_key",
+    "CONCEPT_KEY",
     "pfig_concepts",
     "pfig_map_view",
     "pfig_a1_area_depth",
@@ -118,7 +120,8 @@ def pfig_a1_area_depth(
     ad: AreaDepth, *, ts: TrialSet | None = None,
     current_entry: float | None = None, current_exit: float | None = None,
     n_bins: int = 40, zlim: tuple[float, float] | None = None,
-    show_depth_labels: bool = True, dark: bool = False, height: int | None = PANEL_HEIGHT,
+    show_depth_labels: bool = True, area_scale: str = "area",
+    dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
     """A1 -- the area-depth curve recovered from the trials, entry/exit marked.
 
@@ -134,6 +137,7 @@ def pfig_a1_area_depth(
 
     # bool(), because TrialSet.has returns numpy's bool and plotly's validators
     # reject np.True_ for showlegend.
+    axis_label, transform = AREA_SCALES.get(area_scale, AREA_SCALES["area"])
     with_area = bool(ts is not None and ts.has("area"))
     subtitle = ""
     if with_area:
@@ -145,12 +149,12 @@ def pfig_a1_area_depth(
         # that gets quoted, so it keeps the colour and the weight.
         for values, name in ((a90, "P90"), (a50, "P50"), (a10, "P10")):
             fig.add_scatter(
-                x=values, y=zb, mode="lines", name=name,
+                x=transform(values), y=zb, mode="lines", name=name,
                 line=dict(color=p["muted"], width=1),
-                hovertemplate=name + " %{x:.3f} km² in this depth bin<extra></extra>",
+                hovertemplate=name + " in this depth bin<extra></extra>",
             )
         fig.add_scatter(
-            x=amean, y=zb, mode="lines", name="Mean area",
+            x=transform(amean), y=zb, mode="lines", name="Mean area",
             line=dict(color=colour("prospect", dark), width=2.5),
             hovertemplate="mean %{x:.3f} km² at " + DEPTH_HOVER + "<extra></extra>",
         )
@@ -166,7 +170,7 @@ def pfig_a1_area_depth(
         )
     else:
         fig.add_scatter(
-            x=ad.a, y=ad.z, mode="lines", name="A(z)",
+            x=transform(ad.a), y=ad.z, mode="lines", name="A(z)",
             line=dict(color=colour("prospect", dark), width=2.5),
             hovertemplate="%{x:.3f} km² at " + DEPTH_HOVER + "<extra></extra>",
         )
@@ -178,7 +182,7 @@ def pfig_a1_area_depth(
 
     fig.update_layout(
         title=f"A1 · Area–depth curve (isotonic R² = {ad.r2:.6f}){subtitle}",
-        xaxis_title="Productive area (km²)",
+        xaxis_title=axis_label,
         showlegend=with_area,
     )
     fig.update_xaxes(rangemode="tozero")
@@ -985,7 +989,22 @@ def pfig_b6_inverse(
     return fig
 
 
-def _reservoir_section(fig, ad, ts, *, z_entry, z_exit, dark, row=1, col=1):
+AREA_SCALES = {
+    "area": ("Productive area (km²)", lambda a: a),
+    "area²": ("Productive area² (km⁴)", lambda a: a ** 2),
+    "√area": ("√ productive area (km)", lambda a: np.sqrt(np.maximum(a, 0.0))),
+}
+"""x-axis transforms for the area-depth panels.
+
+GeoX plots its area-depth curve against area **squared**, so that convention is
+offered rather than only ours. `sqrt(area)` is included too because it is the one
+that straightens a conical closure, which makes departures from a simple cone easy
+to see. The transform touches the axis only -- every number the tool computes is
+in km2 regardless (non-negotiable 4).
+"""
+
+
+def _reservoir_section(fig, ad, ts, *, z_entry, z_exit, dark, area_scale="area", row=1, col=1):
     """The left panel: an area-depth section with top and base reservoir.
 
     x is **area**, not a lateral distance, and that is the point. A(z) records
@@ -1009,7 +1028,8 @@ def _reservoir_section(fig, ad, ts, *, z_entry, z_exit, dark, row=1, col=1):
     Returns the thickness used, or None when there was none to use.
     """
     p = palette(dark)
-    a, top = ad.a, ad.z
+    _, transform = AREA_SCALES.get(area_scale, AREA_SCALES["area"])
+    a, top = transform(ad.a), ad.z
 
     # Reservoir thickness is *back-calculated from pay*, per trial, by inverting
     # the wedge -- see core.reservoir. It is not read from any thickness column,
@@ -1079,7 +1099,7 @@ def _reservoir_section(fig, ad, ts, *, z_entry, z_exit, dark, row=1, col=1):
 
     # The well, at the area its entry depth encloses. Only that area carries
     # meaning here; the line is drawn full height so the crossings read clearly.
-    a_entry = float(ad.area_at(z_entry))
+    a_entry = float(transform(np.asarray(ad.area_at(z_entry))))
     fig.add_scatter(
         x=[a_entry, a_entry], y=[float(top.min()), float((top + (thickness or 0.0)).max())],
         mode="lines", name="Well", showlegend=False,
@@ -1104,7 +1124,7 @@ def pfig_concepts(
     ad: AreaDepth, ts: TrialSet, groups: Groups, vc: VolumeClasses, *,
     z_entry: float, z_exit: float,
     pos_prospect: float, p_well: float, mefs: float | None = None,
-    dark: bool = False, height: int = 640,
+    area_scale: str = "area", dark: bool = False, height: int = 640,
 ):
     """The teaching figure: the same volumes in section and in distribution.
 
@@ -1137,7 +1157,8 @@ def pfig_concepts(
     )
 
     thickness = _reservoir_section(
-        fig, ad, ts, z_entry=z_entry, z_exit=z_exit, dark=dark, row=1, col=1
+        fig, ad, ts, z_entry=z_entry, z_exit=z_exit, dark=dark,
+        area_scale=area_scale, row=1, col=1,
     )
 
     # ------------------------------------------------- risked exceedance curves
@@ -1209,10 +1230,70 @@ def pfig_concepts(
     )
     fig.update_layout(title="Concepts — the same volumes in section and in distribution" + sub,
                       showlegend=False)
-    fig.update_xaxes(title_text="Productive area (km²)", rangemode="tozero", row=1, col=1)
+    fig.update_xaxes(title_text=AREA_SCALES.get(area_scale, AREA_SCALES["area"])[0],
+                     rangemode="tozero", row=1, col=1)
     fig.update_xaxes(title_text="Recoverable resource (MMboe)", rangemode="tozero", row=1, col=2)
     fig.update_yaxes(title_text="Probability of exceedance (%)",
                      range=[base - len(order) * step - 3.0, 107.0], row=1, col=2)
     apply_plotly(fig, dark, height)
     depth_axis_plotly(fig, (ad.shallowest, ad.deepest), row=1, col=1)
+    return fig
+
+
+# --------------------------------------------------------------- colour key
+# (role, label, what it means) in nesting order, narrowest first, so the key
+# itself teaches the containment.
+CONCEPT_KEY = (
+    ("minimum", "Minimum volume",
+     "a threshold — MCFS/MEFS, or the assessment minimum (they differ)"),
+    ("up_dip", "Up-dip / attic volume",
+     "what a dry hole leaves behind — Rose's “Updip”"),
+    ("tested", "Resource tested by the well",
+     "between reservoir entry and exit — what a discovery proves"),
+    ("possible", "Possible, below the exit",
+     "well associated but never tested"),
+    ("well_associated", "Well associated volume",
+     "the accumulation given a discovery — Rose's “Downdip”. What a well proposal uses"),
+    ("prospect", "Prospect resource potential",
+     "the whole un-cut model, crest to spill"),
+    ("well", "The well", "entry, exit and position"),
+)
+
+
+def pfig_colour_key(dark: bool = False, height: int = 300):
+    """The volume-concept colour key, as a figure rather than styled HTML.
+
+    Drawn rather than written because Streamlit strips inline ``style``
+    attributes out of markdown, so an HTML swatch renders as a label with no
+    colour beside it -- which is the one thing a colour key must not do. As a
+    figure it also picks up the palette from :mod:`wellvolpos.viz.theme` like
+    every other panel, so it cannot drift from the figures it explains.
+
+    Ordered by nesting, narrowest at the top, so the key carries the containment
+    as well as the mapping.
+    """
+    p = palette(dark)
+    fig = go.Figure()
+    n = len(CONCEPT_KEY)
+    for i, (role, label, meaning) in enumerate(CONCEPT_KEY):
+        y = n - i
+        fig.add_shape(
+            type="rect", x0=0.0, x1=0.045, y0=y - 0.3, y1=y + 0.3,
+            fillcolor=colour(role, dark), line=dict(width=0), layer="above",
+        )
+        fig.add_annotation(
+            x=0.06, y=y, text=f"<b>{label}</b> — {meaning}", showarrow=False,
+            xanchor="left", font=dict(size=11, color=p["text"]),
+        )
+    # An invisible trace so the axes exist and the shapes have somewhere to sit.
+    fig.add_scatter(x=[0, 1], y=[0.2, n + 0.8], mode="markers",
+                    marker=dict(opacity=0), showlegend=False, hoverinfo="skip")
+    fig.update_layout(title=None, showlegend=False,
+                      margin=dict(l=6, r=6, t=6, b=6), height=height)
+    fig.update_xaxes(visible=False, range=[0, 1], fixedrange=True)
+    fig.update_yaxes(visible=False, range=[0.2, n + 0.8], fixedrange=True)
+    apply_plotly(fig, dark, height)
+    fig.update_layout(margin=dict(l=6, r=6, t=6, b=6))
+    fig.update_xaxes(visible=False)
+    fig.update_yaxes(visible=False)
     return fig

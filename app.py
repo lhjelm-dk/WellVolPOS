@@ -52,8 +52,10 @@ from wellvolpos.core import (
     volume_target_curve,
 )
 from wellvolpos.io.adapters import read_trials
+from wellvolpos.report.guide import render as render_guide
 from wellvolpos.io.qc import run_qc
 from wellvolpos.viz import (
+    AREA_SCALES,
     PANEL_HEIGHT,
     pfig_a1_area_depth,
     pfig_a2_outcome_tree,
@@ -159,6 +161,7 @@ tabs = st.tabs(
         "③ Well location",
         "④ Location sweep",
         "⑤ Risk & report",
+        "⑥ Theory & guide",
     ]
 )
 
@@ -202,6 +205,13 @@ ref = st.sidebar.radio(
 )
 scheme = st.sidebar.selectbox(
     "Risk-element allocation", SHIPPED_SCHEMES, format_func=lambda k: SCHEME_LABELS[k]
+)
+# GeoX plots its area-depth curve against area squared, so that convention is
+# offered alongside ours. The transform is on the axis only — every number the
+# tool computes stays in km² (non-negotiable 4).
+area_scale = st.sidebar.selectbox(
+    "Area–depth x-axis", list(AREA_SCALES), index=0,
+    help="area is this tool's default; area² is GeoX's convention; √area straightens a cone.",
 )
 
 with tabs[0]:
@@ -503,6 +513,7 @@ with tabs[2]:
         _chart(pfig_concepts(
                 ad, ts, groups, vc, z_entry=entry, z_exit=exit_,
                 pos_prospect=chance.pos_prospect, p_well=chance.p_well, mefs=mefs,
+                area_scale=area_scale,
             ), key="concepts")
         st.caption(
             "**The concepts, in one picture.** Left: where each volume sits in the structure. "
@@ -765,6 +776,13 @@ with tabs[4]:
 
     st.divider()
     st.info("Export (XLSX / PNG / SVG / PDF / JSON) lands in phase 5.")
+
+with tabs[5]:
+    render_guide(
+        ts=ts, ad=ad if has_area else None, groups=groups,
+        vc=vc if has_area else None, chance=chance, mefs=mefs,
+        entry=entry, exit_=exit_, pos_source=pos_source,
+    )
 
 st.divider()
 # Outside every tab container, so this one line is the provenance stamp the
