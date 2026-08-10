@@ -204,29 +204,41 @@ def pfig_map_view(
     inside the entry contour -- the part a dry hole would leave up-dip -- against
     how much lies outside it.
 
-    Contours shallower than the shallowest sampled contact are dashed: the trials
+    Contours sit on **round absolute depths** -- multiples of ``interval``, so a
+    25 m interval gives 3225, 3250, 3275 and a 100 m one gives 3300, 3400, 3500 --
+    rather than being stepped off the apex. The apex is usually an estimate, and
+    contours referenced to it would shift every time it was nudged; round depths
+    stay put and can be read against a depth map on the same datum. The outermost
+    ring is the deepest sampled contact, which is not a round number and is
+    labelled as the data's base rather than as a contour.
+
+    Contours shallower than the shallowest sampled contact are dotted: the trials
     never reached the crest, so their area is a taper to the apex rather than
     anything the model states (see :meth:`AreaDepth.area_at_tapered`).
     """
     p = palette(dark)
-    depths, radii, extrap = ad.contour_radii(apex, interval=interval, z_max=ad.deepest)
+    contours = ad.contour_radii(apex, interval=interval, z_max=ad.deepest)
     theta = np.linspace(0.0, 2.0 * np.pi, 181)
     fig = go.Figure()
 
-    # Deepest contour first so the shallow ones draw on top of it.
-    for zz, rr, is_extrap in sorted(zip(depths, radii, extrap), key=lambda t: -t[0]):
-        deepest = abs(zz - depths[-1]) < 1e-9
+    # Deepest first, so the shallow rings draw on top of it.
+    rings = sorted(
+        zip(contours.depths, contours.radii, contours.extrapolated, contours.at_data_limit),
+        key=lambda t: -t[0],
+    )
+    for zz, rr, is_extrap, is_limit in rings:
         inside_well = zz <= z_entry
         fig.add_scatter(
             x=rr * np.cos(theta), y=rr * np.sin(theta), mode="lines",
             line=dict(
                 color=colour("attic", dark) if inside_well else colour("prospect", dark),
-                width=2.5 if deepest else 1.2,
+                width=2.5 if is_limit else 1.2,
                 dash="dot" if is_extrap else "solid",
             ),
             name=f"{zz:.0f} m", showlegend=False,
             hovertemplate=(
-                f"{zz:.0f} m TVDSS<br>{np.pi * rr * rr:.3f} km² enclosed"
+                f"{zz:.1f} m TVDSS<br>{np.pi * rr * rr:.3f} km² enclosed"
+                + ("<br>deepest sampled contact" if is_limit else "")
                 + ("<br>extrapolated above sampled range" if is_extrap else "")
                 + "<extra></extra>"
             ),
@@ -267,9 +279,12 @@ def pfig_map_view(
         hovertemplate=f"apex {apex:.0f} m TVDSS<extra></extra>",
     )
 
-    lim = float(radii.max()) * 1.12 if radii.size else 1.0
+    lim = float(contours.radii.max()) * 1.12 if contours.radii.size else 1.0
     fig.update_layout(
-        title=f"Conceptual map view — contours every {interval:.0f} m (deepest {depths[-1]:.0f} m)",
+        title=(
+            f"Conceptual map view — contours on {interval:.0f} m multiples "
+            f"(deepest sampled contact {contours.depths[-1]:.0f} m)"
+        ),
         xaxis_title="km (equivalent-circle radius — shape is illustrative)",
         legend=dict(font=dict(size=9)),
     )

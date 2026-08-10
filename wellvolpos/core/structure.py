@@ -21,6 +21,28 @@ from sklearn.isotonic import IsotonicRegression
 
 
 @dataclass
+class Contours:
+    """One set of map contours: where they are, how big, and how trustworthy.
+
+    ``extrapolated`` marks contours shallower than the shallowest *sampled*
+    contact, whose area comes from the taper in
+    :meth:`AreaDepth.area_at_tapered` rather than from any trial.
+    ``at_data_limit`` marks the deepest ring, which is the base of the sampled
+    data rather than a round contour -- carried as a flag so a figure can label
+    it as such instead of inferring it from position.
+    """
+
+    depths: np.ndarray
+    radii: np.ndarray
+    extrapolated: np.ndarray
+    at_data_limit: np.ndarray
+
+    def __iter__(self):
+        """Unpack as ``depths, radii, extrapolated`` for the common case."""
+        return iter((self.depths, self.radii, self.extrapolated))
+
+
+@dataclass
 class AreaDepth:
     """Monotone area-depth curve with inverse lookup.
 
@@ -114,14 +136,28 @@ class AreaDepth:
 
     def contour_radii(
         self, apex: float, *, interval: float = 50.0, z_max: float | None = None
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Depths, equivalent-circle radii and an extrapolated flag, for a map view.
+    ) -> "Contours":
+        """Contours for a map view, on round absolute depths.
 
-        Returns ``(depths, radii_km, extrapolated)`` from the first contour below
-        ``apex`` down to ``z_max`` (default: the deepest depth A(z) covers),
-        spaced by ``interval``. ``extrapolated`` is True for contours shallower
-        than the shallowest *sampled* contact, where the area comes from the
-        taper in :meth:`area_at_tapered` rather than from any trial.
+        The depths are the **multiples of** ``interval`` that fall inside the
+        closure -- 3250, 3300, 3350 ... for a 50 m interval; 3300, 3400, 3500 for
+        100 m -- from the first multiple below ``apex`` down to the last one above
+        ``z_max`` (default: the deepest depth A(z) covers). The deepest depth
+        itself is then appended as one further ring, because it is the base of the
+        sampled data and worth seeing even though it will not be a round number.
+
+        Contours are *not* stepped off the apex, and that is the point. The apex
+        is an estimate -- extrapolated from A(z)'s shallow tail unless the user
+        supplies a mapped value -- so apex-relative contours move every time it is
+        nudged, and no two runs are comparable. Round absolute depths do not move:
+        changing the apex changes only *which* contours fall inside the closure.
+        It is also how a depth map is read, against seismic and a prognosis on the
+        same datum; 3268.3 m is not a contour anyone would draw.
+
+        A consequence, and the right one: the innermost gap is usually a partial
+        interval, since the shallowest round contour sits a little below the apex
+        rather than exactly one interval down. A contour map at a crest does the
+        same.
 
         The radius is ``sqrt(A(z) / pi)`` -- the radius a circle of that enclosed
         area would have. **This is a cartoon, not a map.** A(z) records how much
@@ -136,16 +172,32 @@ class AreaDepth:
         step = float(interval)
         if step <= 0:
             raise ValueError("contour interval must be positive")
-        first = float(apex) + step
-        if first > hi:
-            depths = np.array([hi], dtype=float)
+
+        # First multiple of `step` strictly deeper than the apex. floor()+1 rather
+        # than ceil(), so an apex that lands exactly on a multiple still gets its
+        # first contour one interval down -- a contour at the apex encloses no
+        # area and would draw as a point.
+        first_k = int(np.floor(float(apex) / step)) + 1
+        last_k = int(np.floor(hi / step))
+        rounds = np.arange(first_k, last_k + 1, dtype=float) * step
+        rounds = rounds[(rounds > float(apex)) & (rounds <= hi)]
+
+        # The base of the data, kept as its own ring unless a round contour
+        # already lands on it.
+        if rounds.size == 0 or abs(rounds[-1] - hi) > 1e-9:
+            depths = np.append(rounds, hi)
+            at_limit = np.zeros(depths.size, dtype=bool)
+            at_limit[-1] = True
         else:
-            depths = np.arange(first, hi + 0.5 * step, step, dtype=float)
-            depths = depths[depths <= hi]
-            if depths.size == 0 or depths[-1] < hi - 1e-9:
-                depths = np.append(depths, hi)
+            depths = rounds
+            at_limit = np.zeros(depths.size, dtype=bool)
+            at_limit[-1] = True
+
         radii = np.sqrt(np.maximum(self.area_at_tapered(depths, apex), 0.0) / np.pi)
-        return depths, radii, depths < self.shallowest
+        return Contours(
+            depths=depths, radii=radii,
+            extrapolated=depths < self.shallowest, at_data_limit=at_limit,
+        )
 
     def radius_at(self, depth: float, apex: float) -> float:
         """Equivalent-circle radius (km) at one structural level."""
