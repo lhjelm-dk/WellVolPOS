@@ -592,3 +592,114 @@ def test_concepts_probability_axis_leaves_room_for_the_braces(concepts):
     lo, hi = fig.layout.yaxis2.range
     assert hi >= 100.0
     assert lo < 0.0, "the braces are drawn below the 0 % line"
+
+
+# ---------------------------------------------------------------- area scales
+# GeoX plots area-depth against area squared, so the app offers that axis too.
+# The transform is presentation only -- every computed number stays in km2 --
+# which is exactly the sort of claim that quietly stops being true.
+
+
+def test_the_three_area_scales_transform_the_axis_and_say_so(area_depth, reduced):
+    """Each scale must move the data *and* relabel. A transform applied without
+    the label, or a label without the transform, is a mislabelled axis."""
+    xs, labels = {}, {}
+    for key in I.AREA_SCALES:
+        fig = I.pfig_a1_area_depth(area_depth, ts=reduced, current_entry=ENTRY,
+                                   current_exit=EXIT, area_scale=key)
+        data = np.concatenate([np.asarray(t.x, float) for t in fig.data if t.x is not None])
+        xs[key] = float(np.nanmax(data))
+        labels[key] = fig.layout.xaxis.title.text
+    assert xs["area²"] == pytest.approx(xs["area"] ** 2, rel=1e-6)
+    assert xs["√area"] == pytest.approx(np.sqrt(xs["area"]), rel=1e-6)
+    assert len(set(labels.values())) == 3
+    assert "km²" in labels["area"] and "km⁴" in labels["area²"] and "km)" in labels["√area"]
+
+
+def test_every_area_scale_is_monotone_so_the_ordering_survives(area_depth):
+    """A scale that reordered the curve would make the plot say something the
+    numbers do not."""
+    a = np.linspace(0.0, 10.0, 50)
+    for _, transform in I.AREA_SCALES.values():
+        assert np.all(np.diff(transform(a)) > 0)
+
+
+def test_the_depth_rule_holds_under_every_area_scale(area_depth, reduced):
+    """Non-negotiable 2 is about the y-axis, so changing the x-axis must not
+    disturb it."""
+    for key in I.AREA_SCALES:
+        fig = I.pfig_a1_area_depth(area_depth, ts=reduced, area_scale=key)
+        assert is_depth_axis_correct_plotly(fig)
+
+
+def test_an_unknown_scale_falls_back_on_both_the_label_and_the_data(area_depth, reduced):
+    """The scale arrives as a UI string, so a fallback is right -- but it has to
+    fall back on the transform and the label together, or a typo produces a
+    squared axis labelled km²."""
+    bad = I.pfig_a1_area_depth(area_depth, ts=reduced, area_scale="not a scale")
+    plain = I.pfig_a1_area_depth(area_depth, ts=reduced, area_scale="area")
+    assert bad.layout.xaxis.title.text == plain.layout.xaxis.title.text
+    for t_bad, t_plain in zip(bad.data, plain.data):
+        if t_bad.x is not None:
+            assert np.allclose(np.asarray(t_bad.x, float), np.asarray(t_plain.x, float),
+                               equal_nan=True)
+
+
+def test_the_concepts_section_honours_the_area_scale_too(reduced, area_depth, groups, vc):
+    """A1 and the concepts figure draw the same A(z); they must not be readable
+    against different axes in the same session."""
+    kw = dict(z_entry=ENTRY, z_exit=EXIT, pos_prospect=POS, p_well=0.4576, mefs=14.0)
+    sq = I.pfig_concepts(area_depth, reduced, groups, vc, area_scale="area²", **kw)
+    assert "km⁴" in sq.layout.xaxis.title.text
+
+
+# ------------------------------------------------------------------ colour key
+# Drawn rather than written because Streamlit strips inline style out of
+# markdown, which turned the HTML version into seven labels with no colours.
+
+
+def test_the_colour_key_draws_a_swatch_per_concept_in_the_palette(reduced):
+    for dark in (False, True):
+        fig = I.pfig_colour_key(dark=dark)
+        swatches = [s.fillcolor for s in fig.layout.shapes]
+        assert swatches == [colour(role, dark) for role, _, _ in I.CONCEPT_KEY]
+        assert len(swatches) == len(I.CONCEPT_KEY)
+
+
+def test_no_two_concepts_share_a_swatch(reduced):
+    """A key with a repeated colour cannot do its job. This is the one place the
+    palette's distinctness is asserted as a requirement rather than a nicety."""
+    for dark in (False, True):
+        assert len({colour(role, dark) for role, _, _ in I.CONCEPT_KEY}) == len(I.CONCEPT_KEY)
+
+
+def test_the_key_names_every_concept_and_carries_the_nesting(reduced):
+    """Ordered narrowest first, so the key teaches containment as well as
+    mapping: minimum inside tested inside well-associated inside prospect."""
+    labels = [lab for _, lab, _ in I.CONCEPT_KEY]
+    order = [role for role, _, _ in I.CONCEPT_KEY]
+    assert order.index("minimum") < order.index("tested") < order.index("well_associated") \
+        < order.index("prospect")
+    fig = I.pfig_colour_key()
+    texts = [a.text for a in fig.layout.annotations]
+    assert len(texts) == len(labels)
+    for lab, text in zip(labels, texts):
+        assert lab in text
+
+
+def test_the_key_covers_every_role_the_figures_colour_by(reduced):
+    """The point of the key is that a colour means the same thing in every
+    figure. If a figure starts using a role the key does not explain, the
+    guarantee is gone -- so the key is checked against theme.CO_OCCURRING."""
+    from wellvolpos.viz.theme import CO_OCCURRING, ROLES
+
+    explained = {ROLES[role] for role, _, _ in I.CONCEPT_KEY}
+    used = {ROLES[r] for roles in CO_OCCURRING.values() for r in roles if r in ROLES}
+    assert used <= explained | {"muted"}       # muted is context, not a concept
+
+
+def test_the_key_has_no_axes_to_read(reduced):
+    """It is a legend, not a plot; visible axes would invite reading a scale off
+    it. Exempt from the depth rule for the same reason."""
+    fig = I.pfig_colour_key()
+    assert fig.layout.xaxis.visible is False and fig.layout.yaxis.visible is False
