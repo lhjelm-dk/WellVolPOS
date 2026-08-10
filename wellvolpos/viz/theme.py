@@ -2,11 +2,35 @@
 
 Two rules here are load-bearing rather than decorative.
 
-**Colour is assigned by meaning, never cycled.** Blue is always the discovery
-case or a chance; orange is always the attic / up-dip / regret; yellow is always
-proven; aqua is always the prospect total. A reader who learns the mapping once
-reads every figure in the tool. The palette validates colourblind-safe across
-all pairs in both light and dark mode.
+**Colour is assigned by the volume concept, never cycled.** The mapping follows
+Lars's teaching figure, so the app and the material he explains the concepts
+with agree:
+
+===================  ==============  ==================================
+concept              colour          what it is
+===================  ==============  ==================================
+prospect             dark navy       the whole un-cut prospect
+well associated      olive / khaki   the discovery case -- what the well
+                                     has access to if it finds anything
+tested by well       mauve           proven between entry and exit
+possible below exit  light khaki      well associated but not tested
+up-dip / attic       light blue      what a dry hole leaves behind
+minimum volume       red             a threshold: MEFS, assessment min
+well                 purple          the well itself
+===================  ==============  ==================================
+
+The nesting is the point, and the colours carry it: minimum ⊂ up-dip ⊂ tested by
+well ⊂ well associated ⊂ prospect. A chance takes the colour of the volume it
+belongs to -- ``P_well`` is olive like the well-associated case it is the chance
+of, and ``POS_prospect`` is navy -- so the two POS values on an exceedance plot
+read against the two distributions they risk.
+
+This mapping replaced an earlier one (blue = discovery, orange = attic, yellow =
+proven, aqua = prospect). It was changed deliberately, on Lars's instruction, to
+match the reference figure; ``tests/test_axes.py`` and the figure tests enforce
+the current one. Colourblind separation is checked by
+``tests/test_axes.py::test_palette_survives_colour_vision_deficiency`` rather
+than asserted in prose.
 
 **Any axis carrying a depth goes on y, increasing downward.** This is not taste.
 A depth axis on y makes the plot spatially congruent with the subsurface: higher
@@ -24,41 +48,85 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 # --------------------------------------------------------------- palette
+# The hues follow Lars's teaching figure; the *lightness* of each was then tuned
+# until every pair that can appear in one figure stayed separable under
+# simulated deuteranopia, protanopia and tritanopia. That tuning is why these are
+# not the figure's exact swatches: olive and mauve, and navy and purple, are hue
+# distinctions that colour-vision deficiency collapses, so only a lightness or
+# red-channel difference survives. Worst separation within any co-occurring set
+# is dE 15.4 (light) / 15.5 (dark) -- see
+# tests/test_axes.py::test_palette_survives_colour_vision_deficiency, which
+# re-derives this rather than trusting the comment.
 LIGHT = {
     "surface": "#fcfcfb",
     "text": "#0b0b0b",
     "text_secondary": "#52514e",
     "muted": "#8a8983",
     "grid": "#e6e5e1",
-    "discovery": "#2a78d6",   # blue    -- discovery case, chance
-    "attic": "#eb6834",       # orange  -- attic / up-dip / regret
-    "prospect": "#1baf7a",    # aqua    -- prospect totals
-    "proven": "#eda100",      # yellow  -- proven at the well
-    "well": "#4a3aa7",        # violet  -- the well itself
+    "prospect": "#16294a",         # dark navy    -- prospect resource potential
+    "tested": "#7d2f5f",           # deep mauve   -- proven between entry and exit
+    "minimum": "#e04b2f",          # red          -- a threshold volume
+    "well_associated": "#b3a02f",  # olive        -- the discovery case
+    "up_dip": "#4cb8e0",           # light blue   -- attic / up-dip / regret
+    "possible": "#ebe4bc",         # pale khaki   -- well associated, not tested
+    "well": "#7a4bb8",             # violet       -- the well itself
 }
 
 DARK = {
     "surface": "#1a1a19",
     "text": "#ffffff",
     "text_secondary": "#c3c2b7",
-    "muted": "#8a8983",
+    "muted": "#a8a79f",
     "grid": "#383835",
-    "discovery": "#3987e5",
-    "attic": "#d95926",
-    "prospect": "#199e70",
-    "proven": "#c98500",
-    "well": "#9085e9",
+    "prospect": "#4a6fb0",
+    "tested": "#8a3a68",
+    "minimum": "#e8593f",
+    "well_associated": "#d6c04a",
+    "up_dip": "#86dbf5",
+    "possible": "#faf4dd",
+    "well": "#b184e6",
+}
+
+# Sets of roles that can appear together in a single figure, and therefore have
+# to be mutually distinguishable. Listed explicitly because the alternative --
+# requiring all 21 pairs to separate -- is not achievable with seven categorical
+# colours and would force a worse palette on figures that never show them side
+# by side. `well` is exempt: it is always a labelled marker or a line with a text
+# annotation, never a colour read off a legend.
+CO_OCCURRING = {
+    "A1 area-depth": ("prospect", "muted"),
+    "A2 outcome tree": ("muted", "up_dip", "tested", "possible"),
+    "A3 chance decomposition": ("well_associated", "muted"),
+    "A4 resource vs depth": ("prospect", "muted", "minimum"),
+    "A5 exceedance": ("prospect", "well_associated", "tested", "up_dip", "minimum"),
+    "A6 overlap": ("tested", "up_dip", "minimum"),
+    "B0 section": ("up_dip", "tested", "possible"),
+    "B1 volume split": ("tested", "possible", "up_dip", "muted"),
+    "B2 chance vs regret": ("well_associated", "tested", "up_dip", "muted"),
+    "B4 waterfall": ("well_associated", "muted"),
+    "map view": ("up_dip", "prospect", "tested"),
 }
 
 # Meaning -> palette key. Never index the palette by position.
+#
+# The left column is what the code asks for; the right is where it lands. Two
+# aliases are deliberate: `discovery` is the well-associated case (the parity
+# suite calls the same distribution "well associated volume"), and `proven` is
+# what the well tests. `p_well` follows the volume it is the chance of.
 ROLES = {
     "prospect": "prospect",
-    "discovery": "discovery",
-    "proven": "proven",
-    "possible": "prospect",
-    "attic": "attic",
-    "regret": "attic",
-    "p_well": "discovery",
+    "pos_prospect": "prospect",
+    "discovery": "well_associated",
+    "well_associated": "well_associated",
+    "p_well": "well_associated",
+    "proven": "tested",
+    "tested": "tested",
+    "possible": "possible",
+    "attic": "up_dip",
+    "up_dip": "up_dip",
+    "regret": "up_dip",
+    "minimum": "minimum",
+    "mefs": "minimum",
     "well": "well",
 }
 

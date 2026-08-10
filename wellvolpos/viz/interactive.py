@@ -302,7 +302,7 @@ def pfig_a2_outcome_tree(
     bands = [
         (np.zeros_like(z), cum0, "Chance failure", p["muted"]),
         (cum0, cum1, "Dry, with attic", colour("attic", dark)),
-        (cum1, cum2, "Discovery, contact seen", colour("discovery", dark)),
+        (cum1, cum2, "Discovery, contact seen", colour("tested", dark)),
         (cum2, cum3, "Discovery, HC to exit", colour("possible", dark)),
     ]
     fig = go.Figure()

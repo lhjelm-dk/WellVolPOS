@@ -8,16 +8,16 @@ are about chance or the resource distribution, not where either sits
 structurally), so they are the ones that do not call it -- see
 ``tests/test_axes.py`` and ``tests/test_figures.py``.
 
-Colour is assigned by meaning throughout, per ``theme.ROLES``: the two chance
-curves in A3 and the single curve in B3 both use the discovery/chance blue
-(distinguished by line style, not colour, since both are chances); A4's
-percentile trend and A1's area-depth curve both use the prospect aqua because
-they characterise the whole un-cut model, not any one outcome; A5's and B1's
-series map onto the canonical roles directly; A2's stacked outcome tree and
-B0's schematic section colour-key the same four outcomes; B2 layers the
-chance/regret curves onto the same roles as A5/B1; B4's waterfall and B5's
-"at the well" markers both use the chance/discovery blue, since every bar and
-every revised point in those two figures is a chance, not an outcome.
+Colour is assigned by the **volume concept**, per ``theme.ROLES`` -- prospect
+navy, well-associated olive, tested-by-well mauve, possible-below-exit pale
+khaki, up-dip light blue, a threshold volume red. A1's and A4's mean curves take
+the prospect navy because they characterise the whole un-cut model; A5's and
+B1's series map onto the concepts directly; A2 and B0 colour-key the same
+outcomes; and a *chance* takes the colour of the volume it belongs to, so A3's
+and B2's ``P_well`` and B4's whole waterfall are olive -- the chance of the
+well-associated case -- while ``POS_prospect`` is navy. A3's two curves are
+separated by line style rather than colour, since both are chances of the same
+family.
 """
 
 from __future__ import annotations
@@ -187,7 +187,7 @@ def fig_a2_outcome_tree(sweep: Sweep, *, current_z: float | None = None, dark: b
 
     ax.fill_betweenx(sweep.z, 0, cum0, color=p["muted"], label="Chance failure")
     ax.fill_betweenx(sweep.z, cum0, cum1, color=colour("attic", dark), label="Dry, with attic")
-    ax.fill_betweenx(sweep.z, cum1, cum2, color=colour("discovery", dark), label="Discovery, contact seen")
+    ax.fill_betweenx(sweep.z, cum1, cum2, color=colour("tested", dark), label="Discovery, contact seen")
     ax.fill_betweenx(sweep.z, cum2, cum3, color=colour("possible", dark), label="Discovery, HC to exit")
 
     if current_z is not None and sweep.z.min() <= current_z <= sweep.z.max():

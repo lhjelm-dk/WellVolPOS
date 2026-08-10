@@ -137,7 +137,10 @@ def test_a2_depth_axis_and_outcome_colours(sweep):
     # everywhere the well could go -- so it takes the neutral muted grey.
     assert bands["Chance failure"] == pytest.approx(_rgb(palette()["muted"]))
     assert bands["Dry, with attic"] == pytest.approx(_rgb(colour("attic")))
-    assert bands["Discovery, contact seen"] == pytest.approx(_rgb(colour("discovery")))
+    # Contact seen is what the well *tested*; HC continuing past the exit is the
+    # untested remainder. Under the volume-concept palette those are `tested` and
+    # `possible` -- not `discovery`, which is the whole well-associated case.
+    assert bands["Discovery, contact seen"] == pytest.approx(_rgb(colour("tested")))
     assert bands["Discovery, HC to exit"] == pytest.approx(_rgb(colour("possible")))
 
 

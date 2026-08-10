@@ -193,7 +193,7 @@ def test_a2_bands_use_the_outcome_colours_and_reach_100_percent(sweep):
     fig = I.pfig_a2_outcome_tree(sweep)
     fills = {t.name: t.fillcolor for t in fig.data if t.fillcolor}
     assert fills["Dry, with attic"] == colour("attic")
-    assert fills["Discovery, contact seen"] == colour("discovery")
+    assert fills["Discovery, contact seen"] == colour("tested")
     assert fills["Discovery, HC to exit"] == colour("possible")
     assert fills["Chance failure"] == palette()["muted"]
     top = max(float(np.nanmax(t.x)) for t in fig.data if t.x is not None and len(t.x))
