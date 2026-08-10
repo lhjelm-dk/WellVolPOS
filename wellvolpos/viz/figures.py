@@ -22,12 +22,14 @@ family.
 
 from __future__ import annotations
 
+import matplotlib.pyplot as plt
 import numpy as np
 
 from ..core.chance import ELEMENTS, SCHEME_LABELS, SHIPPED_SCHEMES, allocate
 from ..core.chance import waterfall_steps as chance_waterfall_steps
 from ..core.classes import VolumeClasses
 from ..core.groups import Groups
+from ..core.reservoir import thickness_from_pay
 from ..core.stats import MIN_SUPPORT, thin
 from ..core.structure import AreaDepth
 from ..core.sweep import (
@@ -55,6 +57,9 @@ __all__ = [
     "fig_b4_chance_waterfall",
     "fig_b5_allocation_dumbbell",
     "fig_b6_inverse",
+    "fig_colour_key",
+    "fig_concepts",
+    "fig_map_view",
 ]
 
 
@@ -770,3 +775,280 @@ def fig_b5_allocation_dumbbell(
     fig.suptitle("B5 · Allocation dumbbell", fontsize=9.5, fontweight="bold", color=p["text"])
     fig.tight_layout()
     return fig, axes
+
+
+# ------------------------------------------------- the export-path twins
+# Three figures were built on the interactive path first, because they were
+# designed by looking at them. They are drawn again here so the export cannot
+# ship a document missing the figures that carry the argument. Kept in this
+# order: the colour key that explains the palette, the map that shows the split
+# in plan, the concepts figure that shows it in section and in distribution.
+
+
+def fig_colour_key(dark: bool = False):
+    """The volume-concept colour key. The export path's twin of
+    :func:`wellvolpos.viz.interactive.pfig_colour_key`.
+
+    Reads ``interactive.CONCEPT_KEY`` rather than restating it, so the two keys
+    cannot list different concepts -- which for a colour key would be worse than
+    having only one.
+    """
+    from .interactive import CONCEPT_KEY
+
+    p = palette(dark)
+    n = len(CONCEPT_KEY)
+    fig, ax = new_figure(figsize=(9, 0.42 * n + 0.4), dark=dark)
+    for i, (role, label, meaning) in enumerate(CONCEPT_KEY):
+        y = n - i
+        ax.add_patch(
+            plt.Rectangle((0.0, y - 0.3), 0.035, 0.6, facecolor=colour(role, dark), lw=0)
+        )
+        ax.text(0.05, y, f"{label} — {meaning}", va="center", ha="left", fontsize=8.5,
+                color=p["text"])
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0.4, n + 0.6)
+    ax.axis("off")
+    fig.tight_layout()
+    return fig, ax
+
+
+def fig_map_view(
+    ad: AreaDepth, *, apex: float, z_entry: float, z_exit: float | None = None,
+    interval: float = 50.0, well_azimuth_deg: float = 35.0, dark: bool = False,
+):
+    """Conceptual plan view of the closure. Twin of ``pfig_map_view``.
+
+    A cartoon, not a map: each ring is the circle enclosing the area A(z) holds
+    at that depth, so the areas and their spacing are faithful while the outline
+    is not, and the well's map position is arbitrary -- only its radius means
+    anything. Contours sit on round multiples of ``interval`` so they stay put
+    when the apex estimate is nudged.
+
+    No depth on either axis (both are map kilometres), so this figure does not
+    call :func:`depth_axis` -- it is in the exempt set with A5, A6, B4 and B5.
+    Equal aspect instead, because an area that reads as twice another must be
+    twice another.
+    """
+    p = palette(dark)
+    contours = ad.contour_radii(apex, interval=interval, z_max=ad.deepest)
+    theta = np.linspace(0.0, 2.0 * np.pi, 181)
+    fig, ax = new_figure(figsize=(6.2, 6.2), dark=dark)
+
+    r_entry = ad.radius_at(z_entry, apex)
+    r_exit = ad.radius_at(z_exit, apex) if z_exit is not None else r_entry
+    r_base = float(contours.radii.max()) if contours.radii.size else r_exit
+
+    # The three areas, widest first so each draws over the one outside it. Same
+    # split B0 draws in section, so the two figures colour-key identically.
+    a_attic = np.pi * r_entry ** 2
+    a_proven = max(np.pi * (r_exit ** 2 - r_entry ** 2), 0.0)
+    a_possible = max(np.pi * (r_base ** 2 - r_exit ** 2), 0.0)
+    for r_out, r_in, role, label in (
+        (r_base, r_exit, "possible", f"Possible — below exit ({a_possible:.2f} km²)"),
+        (r_exit, r_entry, "tested", f"Potentially proven — entry to exit ({a_proven:.2f} km²)"),
+        (r_entry, 0.0, "attic", f"Potential attic — up-dip of entry ({a_attic:.2f} km²)"),
+    ):
+        if r_out <= r_in + 1e-12:
+            continue
+        ax.fill(r_out * np.cos(theta), r_out * np.sin(theta),
+                color=colour(role, dark), alpha=0.35, lw=0, label=label, zorder=1)
+        if r_in > 0.0:
+            # Punch the hole with the surface colour rather than drawing a path
+            # with a hole: simpler, and the ring beneath is redrawn on top anyway.
+            ax.fill(r_in * np.cos(theta), r_in * np.sin(theta),
+                    color=p["surface"], lw=0, zorder=1.1)
+
+    # Deepest ring first, so shallow ones draw on top.
+    rings = sorted(
+        zip(contours.depths, contours.radii, contours.extrapolated, contours.at_data_limit),
+        key=lambda t: -t[0],
+    )
+    for zz, rr, is_extrap, is_limit in rings:
+        ax.plot(
+            rr * np.cos(theta), rr * np.sin(theta), zorder=2,
+            color=colour("attic" if zz <= z_entry else "prospect", dark),
+            lw=2.2 if is_limit else 1.0,
+            ls=":" if is_extrap else "-",
+        )
+
+    ang = np.deg2rad(well_azimuth_deg)
+    xw, yw = r_entry * np.cos(ang), r_entry * np.sin(ang)
+    ax.plot([xw], [yw], marker="o", ms=9, mfc="none", mec=p["well"], mew=2.5, zorder=4)
+    ax.plot([xw], [yw], marker=".", ms=4, color=p["well"], zorder=4)
+    ax.annotate("  WELL", (xw, yw), va="center", ha="left", fontsize=9,
+                color=p["well"], zorder=4)
+    ax.plot([0.0], [0.0], marker="x", ms=8, mew=2.0, color=p["text"], zorder=4)
+    ax.annotate(f"  apex {apex:.0f} m", (0.0, 0.0), va="center", ha="left",
+                fontsize=8, color=p["text_secondary"], zorder=4)
+
+    lim = r_base * 1.12 if r_base > 0 else 1.0
+    ax.set_xlim(-lim, lim)
+    ax.set_ylim(-lim, lim)
+    ax.set_aspect("equal")
+    ax.set_xlabel("km east of apex (equivalent-circle radius — shape is illustrative)")
+    ax.set_ylabel("km north of apex")
+    ax.set_title(
+        f"Conceptual map view — contours on {interval:.0f} m multiples "
+        f"(deepest sampled contact {contours.depths[-1]:.0f} m)"
+    )
+    ax.legend(loc="lower left", fontsize=7.5, framealpha=0.8)
+    fig.tight_layout()
+    return fig, ax
+
+
+def _reservoir_section_mpl(ax, ad, ts, *, z_entry, z_exit, dark, area_scale="area"):
+    """The concepts figure's left panel, in matplotlib.
+
+    See :func:`wellvolpos.viz.interactive._reservoir_section` for why x is area
+    and not a lateral distance, and why the base reservoir comes from inverting
+    the pay rather than from reading a thickness column.
+    """
+    from .interactive import AREA_SCALES
+
+    p = palette(dark)
+    _, transform = AREA_SCALES.get(area_scale, AREA_SCALES["area"])
+    a, top = transform(ad.a), ad.z
+
+    tfp = thickness_from_pay(ts, ad)
+    stats = tfp.summary()
+    thickness = stats["p50"] if tfp.n_resolved else None
+
+    ax.plot(a, top, color=p["text"], lw=2.0, label="Top reservoir")
+    if thickness is not None:
+        # P90 and P10 first, thin and grey, so the single P50 base reads as one
+        # case out of a sampled range rather than as a fixed surface.
+        for stat in ("p90", "p10"):
+            ax.plot(a, top + stats[stat], color=p["muted"], lw=0.9, ls=":")
+        base = top + thickness
+        ax.plot(a, base, color=p["text"], lw=1.5, ls="--", label="Base reservoir")
+
+        for lo, hi, role, label in (
+            (-np.inf, z_entry, "up_dip", "up-dip"),
+            (z_entry, z_exit, "tested", "tested"),
+            (z_exit, np.inf, "possible", "possible"),
+        ):
+            upper = np.clip(top, lo, hi)
+            lower = np.clip(base, lo, hi)
+            m = lower > upper + 1e-9
+            if m.sum() < 2:
+                continue
+            ax.fill(np.concatenate([a[m], a[m][::-1]]),
+                    np.concatenate([upper[m], lower[m][::-1]]),
+                    color=colour(role, dark), alpha=0.55, lw=0)
+            mid = int(np.flatnonzero(m)[m.sum() // 2])
+            ax.text(a[mid], 0.5 * (upper[mid] + lower[mid]), label, fontsize=7.5,
+                    ha="center", va="center", color=p["text"])
+
+    a_entry = float(transform(np.asarray(ad.area_at(z_entry))))
+    ax.axvline(a_entry, color=p["well"], lw=2.2)
+    ax.annotate("Well", (a_entry, float(top.min())), xytext=(3, 6),
+                textcoords="offset points", fontsize=9, color=p["well"])
+    for depth, label in ((z_entry, "Reservoir entry"), (z_exit, "Reservoir exit")):
+        if depth is None:
+            continue
+        ax.annotate(f"{label} ", (a_entry, depth), xytext=(-4, 0),
+                    textcoords="offset points", ha="right", va="center",
+                    fontsize=7.5, color=p["text_secondary"])
+    return thickness
+
+
+def fig_concepts(
+    ad: AreaDepth, ts: TrialSet, groups: Groups, vc: VolumeClasses, *,
+    z_entry: float, z_exit: float, pos_prospect: float, p_well: float,
+    mefs: float | None = None, area_scale: str = "area", dark: bool = False,
+):
+    """The teaching figure, for the export path. Twin of ``pfig_concepts``.
+
+    The same volumes twice: an area-depth section on the left, the matching
+    **risked** exceedance curves on the right, one colour per concept across
+    both, and braces below showing how each range nests inside the next.
+
+    Risking the curves is the whole mechanism -- zeros standing in for the
+    outcomes that do not occur make each curve start at its own chance, so the
+    prospect curve begins at ``pos_prospect``, the well-associated curve at
+    ``p_well``, and the vertical gap between those two starts *is* the location
+    penalty. The two POS values are where the curves physically start, not
+    annotations bolted on.
+
+    Deliberately a composite, unlike every other figure in this module, because
+    the pairing is the content.
+    """
+    from .interactive import AREA_SCALES
+
+    p = palette(dark)
+    res = ts.col("resource")
+    fig, (ax_sec, ax_exc) = new_figure(
+        1, 2, figsize=(13, 6.2), dark=dark, gridspec_kw={"width_ratios": [0.34, 0.66]}
+    )
+
+    _reservoir_section_mpl(ax_sec, ad, ts, z_entry=z_entry, z_exit=z_exit,
+                           dark=dark, area_scale=area_scale)
+    depth_axis(ax_sec, zlim=(ad.shallowest, ad.deepest))
+    ax_sec.set_xlim(left=0)
+    ax_sec.set_xlabel(AREA_SCALES.get(area_scale, AREA_SCALES["area"])[0])
+    ax_sec.set_title("Reservoir in area–depth space", fontsize=9.5)
+
+    risked = [
+        ("Prospect resource potential", res, "prospect"),
+        ("Well associated resource potential",
+         np.where(groups.discovery, res, 0.0), "well_associated"),
+        ("Resource tested by well", np.where(groups.discovery, vc.proven, 0.0), "tested"),
+        ("Up-dip volume", np.where(groups.dry_with_attic, res, 0.0), "up_dip"),
+    ]
+    spans: dict[str, tuple[float, float, str]] = {}
+    for name, values, role in risked:
+        v, pct = _exceedance(values)
+        ax_exc.plot(v, pct, color=colour(role, dark), lw=2.2, label=name)
+        positive = v[v > 0]
+        if positive.size:
+            spans[name] = (float(positive.min()), float(positive.max()), role)
+
+    for value, label, role in (
+        (pos_prospect, "Asso. Final Prospect POS", "prospect"),
+        (p_well, "Asso. Well POS", "well_associated"),
+    ):
+        ax_exc.axhline(value * 100.0, color=colour(role, dark), lw=0.9, ls=":")
+        ax_exc.annotate(f"{label} {value:.0%}", (1.0, value * 100.0),
+                        xycoords=("axes fraction", "data"), xytext=(-3, 3),
+                        textcoords="offset points", ha="right", fontsize=7.5,
+                        color=colour(role, dark))
+    if mefs is not None:
+        ax_exc.axvline(mefs, color=colour("minimum", dark), lw=1.1, ls=":")
+        ax_exc.annotate("min. volume", (mefs, 100.0), xytext=(3, -8),
+                        textcoords="offset points", fontsize=7.5,
+                        color=colour("minimum", dark))
+
+    # The nesting braces, below the 0 % line and widest at the bottom, so the
+    # containment reads at a glance: each range sits inside the one under it.
+    order = ["Up-dip volume", "Resource tested by well",
+             "Well associated resource potential", "Prospect resource potential"]
+    step, base = 7.5, -9.0
+    for i, name in enumerate(order):
+        if name not in spans:
+            continue
+        lo, hi, role = spans[name]
+        y = base - i * step
+        c = colour(role, dark)
+        ax_exc.plot([lo, hi], [y, y], color=c, lw=2.2)
+        for xx in (lo, hi):
+            ax_exc.plot([xx, xx], [y - 1.8, y + 1.8], color=c, lw=2.2)
+        ax_exc.annotate(f"  {name}", (hi, y), fontsize=7.5, color=c, va="center")
+
+    ax_exc.set_xlim(left=0)
+    ax_exc.set_ylim(base - len(order) * step - 3.0, 107.0)
+    ax_exc.set_xlabel("Recoverable resource (MMboe)")
+    ax_exc.set_ylabel("Probability of exceedance (%)")
+    ax_exc.set_title("The same volumes, as exceedance curves", fontsize=9.5)
+
+    tfp = thickness_from_pay(ts, ad)
+    ss = tfp.summary()
+    sub = (
+        f"base reservoir = top + reservoir thickness back-calculated from pay: "
+        f"P50 {ss['p50']:.0f} m, P90–P10 {ss['p90']:.0f}–{ss['p10']:.0f} m (dotted)"
+        if tfp.n_resolved else
+        "could not recover a reservoir thickness from pay, so the base reservoir is not drawn"
+    )
+    fig.suptitle("Concepts — the same volumes in section and in distribution", y=0.995)
+    fig.text(0.5, 0.945, sub, ha="center", fontsize=7.5, color=p["text_secondary"])
+    fig.tight_layout(rect=(0, 0, 1, 0.93))
+    return fig, (ax_sec, ax_exc)

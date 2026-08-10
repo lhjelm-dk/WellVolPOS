@@ -481,3 +481,145 @@ def test_b2_names_the_curves_that_meet_rather_than_claiming_chance_equals_regret
     said = " ".join(t.get_text() for t in ax.texts)
     assert "chance = regret" not in said
     assert "dry & charged" in said
+
+
+# ------------------------------------------------- the export-path twins
+# The concepts figure, the map view and the colour key were designed on the
+# interactive path and only later drawn in matplotlib. These tests exist because
+# the export path is the half nobody looks at, so a twin that quietly stopped
+# matching would not be noticed until an exported document was already circulating.
+
+
+def test_every_plotly_figure_has_an_export_twin():
+    """The rule the twins exist to satisfy. Anything drawn in the app must be
+    drawable in an export, or the export silently ships a different document."""
+    from wellvolpos.viz import interactive as I
+
+    plotly_names = {n[len("pfig_"):] for n in dir(I) if n.startswith("pfig_")}
+    mpl_names = {n[len("fig_"):] for n in dir(figures) if n.startswith("fig_")}
+    assert plotly_names <= mpl_names, f"no export twin for {sorted(plotly_names - mpl_names)}"
+
+
+def test_the_concepts_twin_starts_its_curves_at_their_own_chance(reduced, area_depth, groups, vc):
+    """The teaching mechanism, on the export path. The curves are risked, so the
+    prospect curve starts at POS_prospect and the well-associated curve at
+    P_well -- and the gap between those two starts is the location penalty. If a
+    curve started at 100 % the figure would be making the opposite argument."""
+    fig, (ax_sec, ax_exc) = figures.fig_concepts(
+        area_depth, reduced, groups, vc, z_entry=ENTRY, z_exit=EXIT,
+        pos_prospect=POS, p_well=0.4576, mefs=14.0,
+    )
+    starts = {}
+    for line in ax_exc.get_lines():
+        label = line.get_label()
+        y = np.asarray(line.get_ydata(), dtype=float)
+        if label.startswith("_") or y.size < 10:
+            continue
+        starts[label] = float(np.nanmax(y))
+    assert starts["Prospect resource potential"] == pytest.approx(100.0, abs=0.1)
+    assert starts["Well associated resource potential"] == pytest.approx(100.0, abs=0.1)
+    # The risked curves reach their own chance at the smallest positive volume.
+    for label, expected in (("Prospect resource potential", POS),
+                            ("Well associated resource potential", 0.4576)):
+        line = next(l for l in ax_exc.get_lines() if l.get_label() == label)
+        x = np.asarray(line.get_xdata(), dtype=float)
+        y = np.asarray(line.get_ydata(), dtype=float)
+        at_first_positive = float(y[np.flatnonzero(x > 0)[0]])
+        assert at_first_positive == pytest.approx(expected * 100.0, abs=1.5)
+
+
+def test_the_concepts_twin_keeps_the_depth_rule_on_its_section(reduced, area_depth, groups, vc):
+    """Non-negotiable 2 applies to the composite too: the left panel carries a
+    depth, so it goes on y, inverted."""
+    fig, (ax_sec, _) = figures.fig_concepts(
+        area_depth, reduced, groups, vc, z_entry=ENTRY, z_exit=EXIT,
+        pos_prospect=POS, p_well=0.4576,
+    )
+    lo, hi = ax_sec.get_ylim()
+    assert lo > hi                                       # inverted
+    assert "TVDSS" in ax_sec.get_ylabel()
+
+
+def test_the_concepts_twin_colours_by_the_same_roles_as_its_plotly_original(
+    reduced, area_depth, groups, vc
+):
+    """One colour per concept, in both backends. Drift here is exactly the drift
+    theme.py exists to prevent."""
+    fig, (_, ax_exc) = figures.fig_concepts(
+        area_depth, reduced, groups, vc, z_entry=ENTRY, z_exit=EXIT,
+        pos_prospect=POS, p_well=0.4576,
+    )
+    from matplotlib.colors import to_hex
+
+    used = {to_hex(l.get_color()).lower() for l in ax_exc.get_lines()
+            if not l.get_label().startswith("_")}
+    for role in ("prospect", "well_associated", "tested", "up_dip"):
+        assert colour(role, False).lower() in used
+
+
+def test_the_concepts_twin_degrades_rather_than_inventing_a_base_reservoir(
+    reduced, area_depth, groups, vc
+):
+    """No recoverable thickness means no base reservoir -- and the figure says so
+    instead of drawing a surface it cannot support."""
+    import copy
+
+    ts = copy.deepcopy(reduced)
+    ts.frame["hc_grv"] = ts.frame["hc_grv"] * 1000.0     # nothing can be inverted
+    fig, _ = figures.fig_concepts(area_depth, ts, groups, vc, z_entry=ENTRY, z_exit=EXIT,
+                            pos_prospect=POS, p_well=0.4576)
+    said = " ".join(t.get_text() for t in fig.texts)
+    assert "not drawn" in said
+
+
+def test_the_map_twin_is_plan_view_with_equal_aspect(area_depth):
+    """Both axes are map kilometres, so this is one of the figures exempt from
+    the depth rule -- but the areas must stay comparable, which needs equal
+    aspect. Without it a resize makes one contour look bigger than another that
+    encloses more."""
+    apex = area_depth.apex_estimate()
+    fig, ax = figures.fig_map_view(area_depth, apex=apex, z_entry=ENTRY, z_exit=EXIT)
+    assert "TVDSS" not in ax.get_ylabel()
+    assert ax.get_aspect() == 1.0
+    assert ax.get_xlim() == pytest.approx(ax.get_ylim())
+
+
+def test_the_map_twin_puts_the_well_on_its_own_entry_contour(area_depth):
+    """The one thing about the well's map position that means anything."""
+    apex = area_depth.apex_estimate()
+    fig, ax = figures.fig_map_view(area_depth, apex=apex, z_entry=ENTRY, z_exit=EXIT,
+                             well_azimuth_deg=0.0)
+    r_entry = area_depth.radius_at(ENTRY, apex)
+    xs = [float(l.get_xdata()[0]) for l in ax.get_lines() if len(l.get_xdata()) == 1]
+    assert any(x == pytest.approx(r_entry, rel=1e-6) for x in xs)
+
+
+def test_the_map_twin_names_the_three_areas_the_well_divides_the_closure_into(area_depth):
+    apex = area_depth.apex_estimate()
+    fig, ax = figures.fig_map_view(area_depth, apex=apex, z_entry=ENTRY, z_exit=EXIT)
+    labels = " ".join(t.get_text() for t in ax.get_legend().get_texts())
+    assert "attic" in labels and "proven" in labels and "Possible" in labels
+
+
+def test_the_map_twin_honours_the_contour_interval(area_depth):
+    """Contours on round multiples, so a coarser interval draws fewer of them."""
+    apex = area_depth.apex_estimate()
+    coarse = figures.fig_map_view(area_depth, apex=apex, z_entry=ENTRY, interval=100.0)[1]
+    fine = figures.fig_map_view(area_depth, apex=apex, z_entry=ENTRY, interval=25.0)[1]
+    assert len(fine.get_lines()) > len(coarse.get_lines())
+
+
+def test_the_colour_key_twin_lists_the_same_concepts_as_the_interactive_one():
+    """Read from one source, so the two keys cannot disagree about what a colour
+    means -- which is the only thing a colour key promises."""
+    from wellvolpos.viz.interactive import CONCEPT_KEY
+
+    fig, ax = figures.fig_colour_key()
+    texts = [t.get_text() for t in ax.texts]
+    assert len(texts) == len(CONCEPT_KEY)
+    for (_, label, _), text in zip(CONCEPT_KEY, texts):
+        assert label in text
+    from matplotlib.colors import to_hex
+
+    swatches = [to_hex(patch.get_facecolor()).lower() for patch in ax.patches]
+    assert swatches == [colour(role, False).lower() for role, _, _ in CONCEPT_KEY]
