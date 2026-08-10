@@ -7,6 +7,13 @@ here" comment below for why the chance-table widgets sit before the
 computation that uses them). Reference contour and allocation scheme are
 sidebar-level conventions, per CLAUDE.md's "never implicit" rule.
 
+Figures are the interactive (plotly) ones from ``wellvolpos.viz.interactive``;
+the matplotlib set in ``wellvolpos.viz.figures`` is the export path and both
+are styled from ``wellvolpos.viz.theme``. Each figure is a standalone plot
+rather than a panel of a merged grid, so a row is made readable across by
+handing every figure in it the same ``row_zlim`` and letting them share the
+one panel height — that is what puts the depths level.
+
 Run with:  streamlit run app.py
 """
 
@@ -40,18 +47,20 @@ from wellvolpos.core import (
 from wellvolpos.io.adapters import read_trials
 from wellvolpos.io.qc import run_qc
 from wellvolpos.viz import (
-    fig_a1_area_depth,
-    fig_a2_outcome_tree,
-    fig_a3_chance_decomposition,
-    fig_a4_resource_vs_depth,
-    fig_a5_exceedance,
-    fig_a6_overlap,
-    fig_b0_section,
-    fig_b1_volume_split,
-    fig_b2_chance_vs_regret,
-    fig_b3_uncertainty_reduction,
-    fig_b4_chance_waterfall,
-    fig_b5_allocation_dumbbell,
+    PANEL_HEIGHT,
+    pfig_a1_area_depth,
+    pfig_a2_outcome_tree,
+    pfig_a3_chance_decomposition,
+    pfig_a4_resource_vs_depth,
+    pfig_a5_exceedance,
+    pfig_a6_overlap,
+    pfig_b0_section,
+    pfig_b1_volume_split,
+    pfig_b2_chance_vs_regret,
+    pfig_b3_uncertainty_reduction,
+    pfig_b4_chance_waterfall,
+    pfig_b5_allocation_dumbbell,
+    row_zlim,
 )
 
 DATA = Path(__file__).parent / "data"
@@ -90,6 +99,22 @@ def _load(path: str):
 
 def _badge(level: str) -> str:
     return {"pass": "✅", "warn": "⚠️", "fail": "⛔"}[level]
+
+
+def _chart(fig, key: str):
+    """Render a project figure with the two settings a row's alignment needs.
+
+    ``height`` is pinned rather than left at Streamlit's default of ``"content"``:
+    on ``"content"`` each chart is sized from its own contents, so panels in a
+    row end up different heights and a shared depth range still does not put a
+    given depth on the same pixel row.
+
+    ``theme=None`` keeps ``wellvolpos.viz.theme`` authoritative. Streamlit's own
+    plotly theme otherwise restyles fonts, title and template on top of ours,
+    which is exactly the drift between the two backends that CLAUDE.md's
+    "both driven from viz/theme.py" rule exists to prevent.
+    """
+    return st.plotly_chart(fig, width="stretch", height=PANEL_HEIGHT, theme=None, key=key)
 
 
 # ------------------------------------------------------------------ sidebar
@@ -155,7 +180,7 @@ with tabs[0]:
             ]
         ),
         hide_index=True,
-        use_container_width=True,
+        width="stretch",
     )
     if ts.notes:
         for n in ts.notes:
@@ -254,20 +279,30 @@ with tabs[2]:
         st.warning("No productive-area column in this export — A1, A4 and A5 need it and are skipped.")
     else:
         st.divider()
+        # One depth range for the row, so A1 and A4 can be read straight across
+        # at constant depth (non-negotiable 2). A5 carries no depth axis, so it
+        # is not part of the alignment.
+        succ_contact = ts.col("contact")[ts.col("resource") > 0.0]
+        zrow_prospect = row_zlim(
+            (ad.shallowest, ad.deepest),
+            (float(succ_contact.min()), float(succ_contact.max())),
+            pad_frac=0.02,
+        )
         c1, c2, c3 = st.columns(3)
         with c1:
-            fig_a1, _ = fig_a1_area_depth(ad, current_entry=entry, current_exit=exit_)
-            st.pyplot(fig_a1, clear_figure=True)
+            _chart(pfig_a1_area_depth(ad, current_entry=entry, current_exit=exit_, zlim=zrow_prospect), key="a1")
         with c2:
-            fig_a4, _ = fig_a4_resource_vs_depth(ts, current_entry=entry, mefs=mefs)
-            st.pyplot(fig_a4, clear_figure=True)
+            _chart(pfig_a4_resource_vs_depth(
+                    ts, current_entry=entry, mefs=mefs, zlim=zrow_prospect,
+                    show_depth_labels=False,
+                ), key="a4")
         with c3:
-            fig_a5, _ = fig_a5_exceedance(ts, groups, vc, mefs=mefs)
-            st.pyplot(fig_a5, clear_figure=True)
+            _chart(pfig_a5_exceedance(ts, groups, vc, mefs=mefs), key="a5")
         st.caption(
-            "A1 — the area–depth curve recovered from the trials. A4 uses success trials only — the "
-            "chance-failure zeros belong to POS, not to the shape of the resource distribution. "
-            "A5 is evaluated at the current entry/exit."
+            f"A1 and A4 share one depth range ({zrow_prospect[0]:.0f}–{zrow_prospect[1]:.0f} m TVDSS) "
+            f"so the row reads straight across. A4 uses success trials only — the chance-failure "
+            f"zeros belong to POS, not to the shape of the resource distribution. A5 carries no "
+            f"depth axis and is evaluated at the current entry/exit."
         )
 
 with tabs[3]:
@@ -311,16 +346,17 @@ with tabs[3]:
                 ]
             )[["class", "n", "p90", "p50", "mean", "p10"]],
             hide_index=True,
-            use_container_width=True,
+            width="stretch",
         )
         st.divider()
         c1, c2 = st.columns(2)
         with c1:
-            fig_a6, _ = fig_a6_overlap(vc, groups, mefs=mefs)
-            st.pyplot(fig_a6, clear_figure=True)
+            _chart(pfig_a6_overlap(vc, groups, mefs=mefs), key="a6")
         with c2:
-            fig_live, _ = fig_b0_section(ad, z_entry=entry, z_exit=exit_, title="Live section")
-            st.pyplot(fig_live, clear_figure=True)
+            # A6 has no depth axis, so this row has only one depth-carrying
+            # panel and nothing to align it against; the section keeps its own
+            # full A(z) range.
+            _chart(pfig_b0_section(ad, z_entry=entry, z_exit=exit_, title="Live section"), key="live")
         st.caption(
             "A6 — Schneider et al.'s 'surprising overlap' between what a dry hole leaves in the "
             "attic and what a discovery proves. Live section — the closure shape from A(z), "
@@ -337,22 +373,32 @@ def _location_sweep_tab():
     gap = exit_ - entry
     with st.spinner("Sweeping well location…"):
         sweep = run_sweep(ts, pos, reference=ref, z_gap=gap)
+    # Every panel in both rows below carries depth on y, so all of them get one
+    # range: the sweep's own grid unioned with A(z)'s extent. This is the row
+    # that non-negotiable 2 was written for — six panels, read straight across
+    # at constant depth beside a log or a section.
+    zrow_sweep = row_zlim(
+        (float(sweep.z.min()), float(sweep.z.max())),
+        (ad.shallowest, ad.deepest) if has_area else None,
+        pad_frac=0.02,
+    )
     c1, c2, c3 = st.columns(3)
     with c1:
-        fig_a2, _ = fig_a2_outcome_tree(sweep, current_z=entry)
-        st.pyplot(fig_a2, clear_figure=True)
+        _chart(pfig_a2_outcome_tree(sweep, current_z=entry, zlim=zrow_sweep), key="a2")
     with c2:
-        fig_a3, _ = fig_a3_chance_decomposition(
-            sweep, pos_prospect=pos, pos_trials=pos_trials, current_z=entry
-        )
-        st.pyplot(fig_a3, clear_figure=True)
+        _chart(pfig_a3_chance_decomposition(
+                sweep, pos_prospect=pos, pos_trials=pos_trials, current_z=entry,
+                zlim=zrow_sweep, show_depth_labels=False,
+            ), key="a3")
     with c3:
-        fig_b3, _ = fig_b3_uncertainty_reduction(sweep, current_z=entry)
-        st.pyplot(fig_b3, clear_figure=True)
+        _chart(pfig_b3_uncertainty_reduction(
+                sweep, current_z=entry, zlim=zrow_sweep, show_depth_labels=False
+            ), key="b3")
     st.caption(
         f"Haskett (2003) optimum: {sweep.reduction_optimum:.0f}% expected uncertainty reduction "
         f"at entry {sweep.z_optimum:.1f} m TVDSS. A2's exit is a hypothetical entry + "
-        f"{sweep.z_gap:.0f} m, swept alongside entry — it does not affect r_location or P_well."
+        f"{sweep.z_gap:.0f} m, swept alongside entry — it does not affect r_location or P_well. "
+        f"All panels share {zrow_sweep[0]:.0f}–{zrow_sweep[1]:.0f} m TVDSS."
     )
 
     if not has_area:
@@ -364,17 +410,19 @@ def _location_sweep_tab():
         vsweep = run_volume_sweep(ts, ad, pos, z_gap=gap, mefs=mefs, reference=ref)
     d1, d2, d3 = st.columns(3)
     with d1:
-        fig_b0, _ = fig_b0_section(ad, z_entry=entry, z_exit=exit_)
-        st.pyplot(fig_b0, clear_figure=True)
+        _chart(pfig_b0_section(ad, z_entry=entry, z_exit=exit_, zlim=zrow_sweep), key="b0")
     with d2:
-        fig_b1, _ = fig_b1_volume_split(vsweep, current_z=entry)
-        st.pyplot(fig_b1, clear_figure=True)
+        _chart(pfig_b1_volume_split(
+                vsweep, current_z=entry, zlim=zrow_sweep, show_depth_labels=False
+            ), key="b1")
     with d3:
-        fig_b2, _ = fig_b2_chance_vs_regret(vsweep, current_z=entry)
-        st.pyplot(fig_b2, clear_figure=True)
+        _chart(pfig_b2_chance_vs_regret(
+                vsweep, current_z=entry, zlim=zrow_sweep, show_depth_labels=False
+            ), key="b2")
     st.caption(
-        f"B1/B2 sweep entry with a fixed {vsweep.z_gap:.0f} m entry-to-exit spacing. "
-        f"B6 (inverse: volume-to-prove → required entry) lands in phase 4."
+        f"B1/B2 sweep entry with a fixed {vsweep.z_gap:.0f} m entry-to-exit spacing, on the same "
+        f"depth range as the row above. B6 (inverse: volume-to-prove → required entry) lands in "
+        f"phase 4."
     )
 
 
@@ -399,11 +447,9 @@ with tabs[5]:
 
     c1, c2 = st.columns(2)
     with c1:
-        fig_b4, _ = fig_b4_chance_waterfall(elements, chance.r_location, pos, scheme=scheme)
-        st.pyplot(fig_b4, clear_figure=True)
+        _chart(pfig_b4_chance_waterfall(elements, chance.r_location, pos, scheme=scheme), key="b4")
     with c2:
-        fig_b5, _ = fig_b5_allocation_dumbbell(elements, chance.r_location, pos_prospect=pos)
-        st.pyplot(fig_b5, clear_figure=True)
+        _chart(pfig_b5_allocation_dumbbell(elements, chance.r_location, pos_prospect=pos), key="b5")
     st.caption(
         "B4 decomposes the POS in use through the location factor at the current entry, under "
         "the sidebar's allocation scheme; hatched steps are location, solid are geological "

@@ -1,0 +1,659 @@
+"""Interactive (plotly) versions of A1-A6 and B0-B5.
+
+CLAUDE.md: *"Use plotly for the interactive figures and matplotlib for the
+export path, both driven from ``viz/theme.py`` so they cannot drift apart."*
+This module is the interactive half; :mod:`wellvolpos.viz.figures` is the
+export half. Neither makes styling choices of its own -- palette, panel height
+and the depth rule all come from :mod:`wellvolpos.viz.theme`.
+
+**Figures stay individual.** Each function returns one standalone
+``plotly.graph_objects.Figure`` rather than a panel of a merged subplot grid,
+so any figure can be dropped anywhere in the app, exported alone, or read on
+its own. A row is made readable across instead by giving every figure in it the
+same ``zlim`` and the same height: pass the row's shared depth range to each
+call and the depths line up, which is what non-negotiable 2 asks for. The only
+figure with internal panels is B5, whose three schemes side by side *are* the
+figure.
+
+Hover is where the interactive path earns its keep: the whole point of A5 and
+B2 is reading a probability off a curve at a volume you care about, which on a
+static image means holding a ruler to the screen. Every trace therefore carries
+an explicit ``hovertemplate`` in domain units.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+from ..core.chance import ELEMENTS, SCHEME_LABELS, SHIPPED_SCHEMES, allocate
+from ..core.chance import waterfall_steps as chance_waterfall_steps
+from ..core.classes import VolumeClasses
+from ..core.groups import Groups
+from ..core.structure import AreaDepth
+from ..core.sweep import Sweep, VolumeSweep
+from ..io.adapters.base import TrialSet
+from .figures import _depth_percentile_trend, _exceedance
+from .theme import (
+    PANEL_HEIGHT,
+    apply_plotly,
+    colour,
+    depth_axis_plotly,
+    palette,
+)
+
+__all__ = [
+    "pfig_a1_area_depth",
+    "pfig_a2_outcome_tree",
+    "pfig_a3_chance_decomposition",
+    "pfig_a4_resource_vs_depth",
+    "pfig_a5_exceedance",
+    "pfig_a6_overlap",
+    "pfig_b0_section",
+    "pfig_b1_volume_split",
+    "pfig_b2_chance_vs_regret",
+    "pfig_b3_uncertainty_reduction",
+    "pfig_b4_chance_waterfall",
+    "pfig_b5_allocation_dumbbell",
+    "row_zlim",
+]
+
+DEPTH_HOVER = "%{y:.0f} m TVDSS"
+
+
+def row_zlim(*ranges: tuple[float, float] | None, pad_frac: float = 0.0) -> tuple[float, float]:
+    """The shallowest-to-deepest envelope of everything in a row.
+
+    Call once per row and hand the result to every figure in that row. Doing it
+    here rather than in each figure is deliberate: a figure cannot know what it
+    is sitting next to, so a row can only be made level by the caller that
+    lays it out.
+    """
+    los = [float(min(r)) for r in ranges if r is not None]
+    his = [float(max(r)) for r in ranges if r is not None]
+    if not los:
+        raise ValueError("row_zlim needs at least one range")
+    lo, hi = min(los), max(his)
+    pad = pad_frac * (hi - lo)
+    return lo - pad, hi + pad
+
+
+def _hline(fig, y: float, colour_: str, dash: str = "dash", label: str | None = None):
+    fig.add_hline(y=y, line=dict(color=colour_, width=1.2, dash=dash),
+                  annotation_text=label, annotation_position="top left",
+                  annotation_font_size=10)
+    return fig
+
+
+def _vline(fig, x: float, colour_: str, dash: str = "dot", label: str | None = None):
+    fig.add_vline(x=x, line=dict(color=colour_, width=1.0, dash=dash),
+                  annotation_text=label, annotation_position="top",
+                  annotation_font_size=10)
+    return fig
+
+
+# ------------------------------------------------------------------- A1
+def pfig_a1_area_depth(
+    ad: AreaDepth, *, current_entry: float | None = None, current_exit: float | None = None,
+    zlim: tuple[float, float] | None = None, show_depth_labels: bool = True,
+    dark: bool = False, height: int | None = PANEL_HEIGHT,
+):
+    """A1 -- the area-depth curve recovered from the trials, entry/exit marked."""
+    p = palette(dark)
+    fig = go.Figure()
+    fig.add_scatter(
+        x=ad.a, y=ad.z, mode="lines", name="A(z)",
+        line=dict(color=colour("prospect", dark), width=2.5),
+        hovertemplate="%{x:.3f} km² at " + DEPTH_HOVER + "<extra></extra>",
+    )
+    if current_entry is not None:
+        _hline(fig, current_entry, p["well"], "dash", "entry")
+    if current_exit is not None and current_exit != current_entry:
+        _hline(fig, current_exit, p["well"], "dot", "exit")
+
+    fig.update_layout(
+        title=f"A1 · Area–depth curve (isotonic R² = {ad.r2:.6f})",
+        xaxis_title="Productive area (km²)", showlegend=False,
+    )
+    fig.update_xaxes(rangemode="tozero")
+    apply_plotly(fig, dark, height)
+    depth_axis_plotly(fig, zlim or (ad.shallowest, ad.deepest), show_ticklabels=show_depth_labels)
+    return fig
+
+
+# ------------------------------------------------------------------- A2
+def pfig_a2_outcome_tree(
+    sweep: Sweep, *, current_z: float | None = None, zlim: tuple[float, float] | None = None,
+    show_depth_labels: bool = True, dark: bool = False, height: int | None = PANEL_HEIGHT,
+):
+    """A2 -- the four outcomes vs entry depth, as stacked bands summing to 100 %.
+
+    The shares come from :class:`wellvolpos.core.sweep.Sweep`, already risked
+    onto the entered POS, so this figure cannot disagree with A3 beside it.
+    """
+    p = palette(dark)
+    z = sweep.z
+    cum0 = np.full_like(z, sweep.share_chance_failure * 100.0)
+    cum1 = cum0 + sweep.share_dry_with_attic * 100.0
+    cum2 = cum1 + sweep.share_contact_seen * 100.0
+    cum3 = cum2 + sweep.share_hc_to_exit * 100.0
+
+    bands = [
+        (np.zeros_like(z), cum0, "Chance failure", p["muted"]),
+        (cum0, cum1, "Dry, with attic", colour("attic", dark)),
+        (cum1, cum2, "Discovery, contact seen", colour("discovery", dark)),
+        (cum2, cum3, "Discovery, HC to exit", colour("possible", dark)),
+    ]
+    fig = go.Figure()
+    for lower, upper, name, col in bands:
+        # Closed polygon rather than fill='tonextx': explicit, and immune to
+        # trace ordering.
+        fig.add_scatter(
+            x=np.concatenate([lower, upper[::-1]]),
+            y=np.concatenate([z, z[::-1]]),
+            fill="toself", fillcolor=col, mode="lines",
+            line=dict(width=0), name=name, hoverinfo="skip",
+        )
+    # An invisible trace carrying the real numbers, so hovering reads out the
+    # four shares at one depth instead of a polygon vertex.
+    fig.add_scatter(
+        x=cum3, y=z, mode="lines", line=dict(width=0), showlegend=False,
+        customdata=np.column_stack([
+            np.full_like(z, sweep.share_chance_failure) * 100.0,
+            sweep.share_dry_with_attic * 100.0,
+            sweep.share_contact_seen * 100.0,
+            sweep.share_hc_to_exit * 100.0,
+        ]),
+        hovertemplate=(
+            DEPTH_HOVER
+            + "<br>chance failure %{customdata[0]:.1f}%"
+            + "<br>dry with attic %{customdata[1]:.1f}%"
+            + "<br>contact seen %{customdata[2]:.1f}%"
+            + "<br>HC to exit %{customdata[3]:.1f}%<extra></extra>"
+        ),
+    )
+    if current_z is not None:
+        _hline(fig, current_z, p["text"], "dash")
+
+    fig.update_layout(
+        title=f"A2 · Outcome tree vs location (exit = entry + {sweep.z_gap:.0f} m)",
+        xaxis_title="Share of trials (%)",
+    )
+    fig.update_xaxes(range=[0, 100])
+    apply_plotly(fig, dark, height)
+    # After apply_plotly, which owns legend *placement* -- keeping it inside the
+    # axes for every panel is what stops one figure's legend expanding its
+    # margins and knocking a row out of alignment. Only the background is
+    # overridden here: this is the one figure whose bands fill the whole plot,
+    # so the house-style transparent legend would sit unreadably on top of them.
+    fig.update_layout(legend=dict(bgcolor="rgba(252,252,251,0.78)" if not dark else "rgba(26,26,25,0.78)",
+                                  font=dict(size=9)))
+    depth_axis_plotly(fig, zlim or (float(z.min()), float(z.max())), show_ticklabels=show_depth_labels)
+    return fig
+
+
+# ------------------------------------------------------------------- A3
+def pfig_a3_chance_decomposition(
+    sweep: Sweep, *, pos_prospect: float | None = None, pos_trials: float | None = None,
+    current_z: float | None = None, zlim: tuple[float, float] | None = None,
+    show_depth_labels: bool = True, dark: bool = False, height: int | None = PANEL_HEIGHT,
+):
+    """A3 -- P_well and r_location vs entry depth, POS as a rule.
+
+    Both curves are chances, so both take the chance blue and are separated by
+    line style, not colour.
+    """
+    p = palette(dark)
+    c = colour("p_well", dark)
+    fig = go.Figure()
+    fig.add_scatter(
+        x=sweep.p_well * 100.0, y=sweep.z, mode="lines", name="P<sub>well</sub> = POS × r",
+        line=dict(color=c, width=3),
+        hovertemplate="P<sub>well</sub> %{x:.1f}% at " + DEPTH_HOVER + "<extra></extra>",
+    )
+    fig.add_scatter(
+        x=sweep.r_location * 100.0, y=sweep.z, mode="lines", name="r = P(contact deeper | HC)",
+        line=dict(color=c, width=2, dash="dash"),
+        hovertemplate="r %{x:.1f}% at " + DEPTH_HOVER + "<extra></extra>",
+    )
+    if pos_prospect is not None:
+        _vline(fig, pos_prospect * 100.0, p["muted"], "dot", f"POS {pos_prospect:.3f}")
+    if pos_trials is not None and (pos_prospect is None or abs(pos_trials - pos_prospect) > 1e-9):
+        _vline(fig, pos_trials * 100.0, p["muted"], "dashdot", f"POS trials {pos_trials:.3f}")
+    if current_z is not None:
+        _hline(fig, current_z, p["text_secondary"], "dash")
+
+    fig.update_layout(title="A3 · Chance decomposition vs location", xaxis_title="Probability (%)")
+    fig.update_xaxes(range=[0, 100])
+    apply_plotly(fig, dark, height)
+    depth_axis_plotly(fig, zlim or (float(sweep.z.min()), float(sweep.z.max())),
+                      show_ticklabels=show_depth_labels)
+    return fig
+
+
+# ------------------------------------------------------------------- A4
+def pfig_a4_resource_vs_depth(
+    ts: TrialSet, *, current_entry: float | None = None, mefs: float | None = None,
+    n_bins: int = 40, gridsize: int = 60, zlim: tuple[float, float] | None = None,
+    show_depth_labels: bool = True, dark: bool = False, height: int | None = PANEL_HEIGHT,
+):
+    """A4 -- log-density heatmap of resource vs contact depth, with P90/P50/P10.
+
+    Success trials only: the chance-failure zeros belong to POS, not to the
+    shape of the resource distribution.
+    """
+    res, contact = ts.col("resource"), ts.col("contact")
+    succ = res > 0.0
+    x, y = res[succ], contact[succ]
+    p = palette(dark)
+
+    counts, xedges, yedges = np.histogram2d(x, y, bins=gridsize)
+    with np.errstate(divide="ignore"):
+        dens = np.log10(counts.T)
+    dens[~np.isfinite(dens)] = np.nan
+
+    fig = go.Figure()
+    fig.add_heatmap(
+        x=0.5 * (xedges[:-1] + xedges[1:]), y=0.5 * (yedges[:-1] + yedges[1:]),
+        z=dens, colorscale="Blues", showscale=True,
+        colorbar=dict(title=dict(text="log₁₀ n", side="right"), thickness=12, len=0.6),
+        hovertemplate="%{x:.1f} MMboe at " + DEPTH_HOVER + "<br>log₁₀ n %{z:.2f}<extra></extra>",
+    )
+    zb, p90, p50, p10 = _depth_percentile_trend(y, x, n_bins=n_bins)
+    c = colour("prospect", dark)
+    for values, name, dash, width in (
+        (p50, "P50", "solid", 2.5), (p90, "P90", "dot", 1.6), (p10, "P10", "dot", 1.6),
+    ):
+        fig.add_scatter(
+            x=values, y=zb, mode="lines", name=name, line=dict(color=c, width=width, dash=dash),
+            hovertemplate=name + " %{x:.2f} MMboe at " + DEPTH_HOVER + "<extra></extra>",
+        )
+    if current_entry is not None:
+        _hline(fig, current_entry, p["text_secondary"], "dash")
+    if mefs is not None:
+        _vline(fig, mefs, p["muted"], "dot", "MEFS")
+
+    fig.update_layout(title="A4 · Resource vs contact depth", xaxis_title="Recoverable resource (MMboe)")
+    fig.update_xaxes(rangemode="tozero")
+    apply_plotly(fig, dark, height)
+    depth_axis_plotly(fig, zlim or (float(y.min()), float(y.max())),
+                      title="HC-water contact (m TVDSS)", show_ticklabels=show_depth_labels)
+    return fig
+
+
+# ------------------------------------------------------------------- A5
+def pfig_a5_exceedance(
+    ts: TrialSet, groups: Groups, vc: VolumeClasses, *, mefs: float | None = None,
+    dark: bool = False, height: int | None = PANEL_HEIGHT,
+):
+    """A5 -- exceedance curves at the chosen location. No depth on either axis.
+
+    The money chart, and the one that most wants a cursor: hover reads the
+    probability of exceeding any volume directly off each curve.
+    """
+    res = ts.col("resource")
+    p = palette(dark)
+    fig = go.Figure()
+    series = [
+        ("Prospect (all trials)", res, "prospect"),
+        ("Discovery case", res[groups.discovery], "discovery"),
+        ("Proven at well", vc.proven[groups.discovery], "proven"),
+        ("Attic | dry hole", res[groups.dry_with_attic], "attic"),
+    ]
+    for name, values, role in series:
+        v, pct = _exceedance(values)
+        if v.size == 0:
+            continue
+        fig.add_scatter(
+            x=v, y=pct, mode="lines", name=name, line=dict(color=colour(role, dark), width=2.5),
+            hovertemplate=name + "<br>%{y:.1f}% chance of exceeding %{x:.2f} MMboe<extra></extra>",
+        )
+    if mefs is not None:
+        _vline(fig, mefs, p["muted"], "dot", "MEFS")
+
+    fig.update_layout(
+        title="A5 · Exceedance curves at the chosen location",
+        xaxis_title="Recoverable resource (MMboe)",
+        yaxis_title="Probability of exceedance (%)",
+    )
+    fig.update_xaxes(rangemode="tozero")
+    fig.update_yaxes(range=[0, 105])
+    apply_plotly(fig, dark, height)
+    return fig
+
+
+# ------------------------------------------------------------------- A6
+def pfig_a6_overlap(
+    vc: VolumeClasses, groups: Groups, *, mefs: float | None = None, bins: int = 40,
+    dark: bool = False, height: int | None = PANEL_HEIGHT,
+):
+    """A6 -- Schneider et al.'s "surprising overlap", proven against attic.
+
+    Densities, not counts: the two groups have different n (4 576 against
+    3 029 here) and the figure is about the shape overlap.
+    """
+    proven = vc.proven[groups.discovery]
+    attic = vc.attic[groups.dry_with_attic]
+    p = palette(dark)
+    hi = max(float(proven.max()) if proven.size else 0.0,
+             float(attic.max()) if attic.size else 0.0, 1.0)
+    size = hi / bins
+
+    fig = go.Figure()
+    if attic.size:
+        fig.add_histogram(
+            x=attic, name=f"Attic | dry hole (n={attic.size:,})", histnorm="probability density",
+            marker_color=colour("attic", dark), opacity=0.6,
+            xbins=dict(start=0.0, end=hi, size=size),
+            hovertemplate="attic %{x:.1f} MMboe<br>density %{y:.4f}<extra></extra>",
+        )
+    if proven.size:
+        fig.add_histogram(
+            x=proven, name=f"Proven | discovery (n={proven.size:,})", histnorm="probability density",
+            marker_color=colour("proven", dark), opacity=0.6,
+            xbins=dict(start=0.0, end=hi, size=size),
+            hovertemplate="proven %{x:.1f} MMboe<br>density %{y:.4f}<extra></extra>",
+        )
+    if mefs is not None:
+        _vline(fig, mefs, p["muted"], "dot", "MEFS")
+
+    fig.update_layout(
+        title="A6 · Attic vs proven — the overlap", barmode="overlay",
+        xaxis_title="Recoverable resource (MMboe)", yaxis_title="Density",
+    )
+    apply_plotly(fig, dark, height)
+    return fig
+
+
+# ------------------------------------------------------------------- B0
+def pfig_b0_section(
+    ad: AreaDepth, *, z_entry: float, z_exit: float, zlim: tuple[float, float] | None = None,
+    show_depth_labels: bool = True, title: str = "B0 · Schematic section",
+    dark: bool = False, height: int | None = PANEL_HEIGHT,
+):
+    """B0 -- a schematic section from A(z), colour-keyed to the well's outcomes.
+
+    Width is proportional to sqrt(enclosed area) -- a circular-closure proxy, so
+    the shape is illustrative and the axis claims no unit. The depths on y are
+    the real quantity.
+    """
+    p = palette(dark)
+    halfwidth = np.sqrt(np.maximum(ad.a, 0.0))
+    z = ad.z
+    fig = go.Figure()
+
+    def band(lo: float, hi: float, role: str, name: str) -> None:
+        m = (z >= lo) & (z <= hi)
+        if m.sum() < 2:
+            return
+        zz, hw = z[m], halfwidth[m]
+        fig.add_scatter(
+            x=np.concatenate([-hw, hw[::-1]]), y=np.concatenate([zz, zz[::-1]]),
+            fill="toself", fillcolor=colour(role, dark), mode="lines", line=dict(width=0),
+            name=name, opacity=0.6, hoverinfo="skip",
+        )
+        fig.add_annotation(
+            x=0, y=0.5 * (max(lo, ad.shallowest) + min(hi, ad.deepest)), text=name,
+            showarrow=False, font=dict(size=10, color=p["text"]),
+        )
+
+    band(ad.shallowest, z_entry, "attic", "attic if dry")
+    band(z_entry, z_exit, "proven", "proven")
+    band(z_exit, ad.deepest, "possible", "possible below exit")
+
+    for sign in (1, -1):
+        fig.add_scatter(x=sign * halfwidth, y=z, mode="lines",
+                        line=dict(color=p["text_secondary"], width=1), showlegend=False,
+                        hoverinfo="skip")
+    fig.add_scatter(
+        x=[0, 0], y=[z_entry, z_exit], mode="lines", name="Well",
+        line=dict(color=p["well"], width=6),
+        hovertemplate="well " + DEPTH_HOVER + "<extra></extra>",
+    )
+
+    fig.update_layout(
+        title=title, xaxis_title="Schematic width (∝ √area) — not to scale", showlegend=False,
+    )
+    fig.update_xaxes(showticklabels=False)
+    apply_plotly(fig, dark, height)
+    depth_axis_plotly(fig, zlim or (ad.shallowest, ad.deepest), show_ticklabels=show_depth_labels)
+    return fig
+
+
+# ------------------------------------------------------------------- B1
+def pfig_b1_volume_split(
+    vsweep: VolumeSweep, *, current_z: float | None = None, zlim: tuple[float, float] | None = None,
+    show_depth_labels: bool = True, dark: bool = False, height: int | None = PANEL_HEIGHT,
+):
+    """B1 -- mean proven / possible / attic volume vs entry depth."""
+    p = palette(dark)
+    fig = go.Figure()
+    for values, name, role, dash, width in (
+        (vsweep.proven_mean, "Proven | discovery", "proven", "solid", 3),
+        (vsweep.possible_mean, "Possible below exit | discovery", "possible", "dash", 2),
+        (vsweep.attic_mean, "Attic | dry hole", "attic", "solid", 3),
+    ):
+        fig.add_scatter(
+            x=values, y=vsweep.z, mode="lines", name=name,
+            line=dict(color=colour(role, dark), width=width, dash=dash),
+            hovertemplate=name + "<br>%{x:.2f} MMboe at " + DEPTH_HOVER + "<extra></extra>",
+        )
+    if current_z is not None:
+        _hline(fig, current_z, p["text_secondary"], "dash")
+
+    fig.update_layout(
+        title=f"B1 · Volume split vs location (exit = entry + {vsweep.z_gap:.0f} m)",
+        xaxis_title="Mean resource (MMboe)",
+    )
+    fig.update_xaxes(rangemode="tozero")
+    apply_plotly(fig, dark, height)
+    depth_axis_plotly(fig, zlim or (float(vsweep.z.min()), float(vsweep.z.max())),
+                      show_ticklabels=show_depth_labels)
+    return fig
+
+
+# ------------------------------------------------------------------- B2
+def pfig_b2_chance_vs_regret(
+    vsweep: VolumeSweep, *, current_z: float | None = None, zlim: tuple[float, float] | None = None,
+    show_depth_labels: bool = True, dark: bool = False, height: int | None = PANEL_HEIGHT,
+):
+    """B2 -- chance against regret vs entry depth; the crossings are the argument.
+
+    The regret curve conditions on the well being dry **and** the prospect
+    charged, which is stated in its name: folding the chance failures in
+    roughly halves it, and both readings are legitimate answers to different
+    questions.
+    """
+    if vsweep.mefs is None or vsweep.p_proven_exceeds_mefs is None or vsweep.p_attic_exceeds_mefs is None:
+        raise ValueError("pfig_b2_chance_vs_regret needs a VolumeSweep run with a mefs threshold")
+    p = palette(dark)
+    fig = go.Figure()
+    for values, name, role, width in (
+        (vsweep.p_well, "P<sub>well</sub>", "p_well", 3),
+        (vsweep.p_proven_exceeds_mefs, "P(proven > MEFS | discovery)", "proven", 2.5),
+        (vsweep.p_attic_exceeds_mefs, "P(attic > MEFS | dry & charged)", "attic", 2.5),
+    ):
+        fig.add_scatter(
+            x=np.asarray(values) * 100.0, y=vsweep.z, mode="lines", name=name,
+            line=dict(color=colour(role, dark), width=width),
+            hovertemplate=name + "<br>%{x:.1f}% at " + DEPTH_HOVER + "<extra></extra>",
+        )
+    if current_z is not None:
+        _hline(fig, current_z, p["text_secondary"], "dash")
+
+    fig.update_layout(
+        title=f"B2 · Chance vs regret (MEFS {vsweep.mefs:.1f} MMboe)",
+        xaxis_title="Probability (%)",
+    )
+    fig.update_xaxes(range=[0, 100])
+    apply_plotly(fig, dark, height)
+    depth_axis_plotly(fig, zlim or (float(vsweep.z.min()), float(vsweep.z.max())),
+                      show_ticklabels=show_depth_labels)
+    return fig
+
+
+# ------------------------------------------------------------------- B3
+def pfig_b3_uncertainty_reduction(
+    sweep: Sweep, *, current_z: float | None = None, zlim: tuple[float, float] | None = None,
+    show_depth_labels: bool = True, dark: bool = False, height: int | None = PANEL_HEIGHT,
+):
+    """B3 -- Haskett (2003) uncertainty reduction vs entry depth, optimum marked.
+
+    The optimum is ``sweep.z_optimum``, found by argmax over the swept grid
+    rather than eyeballed.
+    """
+    p = palette(dark)
+    c = colour("p_well", dark)
+    fig = go.Figure()
+    fig.add_scatter(
+        x=sweep.uncertainty_reduction, y=sweep.z, mode="lines", name="Reduction",
+        line=dict(color=c, width=3), fill="tozerox",
+        fillcolor="rgba(42,120,214,0.15)",
+        hovertemplate="%{x:.1f}% reduction at " + DEPTH_HOVER + "<extra></extra>",
+    )
+    fig.add_scatter(
+        x=[sweep.reduction_optimum], y=[sweep.z_optimum], mode="markers+text",
+        marker=dict(color=p["text"], size=9),
+        text=[f" max {sweep.reduction_optimum:.0f}% @ {sweep.z_optimum:.0f} m"],
+        textposition="middle right", textfont=dict(size=10, color=p["text"]),
+        showlegend=False,
+        hovertemplate="optimum %{x:.1f}% at " + DEPTH_HOVER + "<extra></extra>",
+    )
+    if current_z is not None:
+        _hline(fig, current_z, p["text_secondary"], "dash")
+
+    top = float(np.nanmax(sweep.uncertainty_reduction)) if np.isfinite(sweep.uncertainty_reduction).any() else 5.0
+    fig.update_layout(
+        title="B3 · Uncertainty reduction vs location (Haskett 2003)",
+        xaxis_title="Expected uncertainty reduction (%)", showlegend=False,
+    )
+    fig.update_xaxes(range=[0, max(5.0, top * 1.25)])
+    apply_plotly(fig, dark, height)
+    depth_axis_plotly(fig, zlim or (float(sweep.z.min()), float(sweep.z.max())),
+                      show_ticklabels=show_depth_labels)
+    return fig
+
+
+# ------------------------------------------------------------------- B4
+def pfig_b4_chance_waterfall(
+    elements: dict[str, float], r: float, pos_prospect: float, *,
+    scheme: str | dict[str, float] = "none", dark: bool = False,
+    height: int | None = PANEL_HEIGHT,
+):
+    """B4 -- the chance elements then the location factor, on a log scale.
+
+    Steps come from :func:`wellvolpos.core.chance.waterfall_steps`, whose
+    factors multiply to ``pos_prospect * r`` exactly, so the total cannot
+    disagree with the ``P_well`` shown elsewhere. Location steps keep the
+    chance blue -- ``r`` is a chance, and A3 already draws it blue -- and are
+    separated by hatching instead, so an allocating scheme still shows how much
+    of each element's bar is the location penalty.
+    """
+    p = palette(dark)
+    c = colour("p_well", dark)
+    steps = chance_waterfall_steps(elements, r, pos_prospect, scheme)
+    labels = [s[0] for s in steps]
+    values = [s[1] for s in steps]
+    roles = [s[2] for s in steps]
+
+    cum, bottoms, tops = 1.0, [], []
+    for v in values:
+        bottoms.append(cum)
+        cum *= v
+        tops.append(cum)
+    total = cum
+
+    fig = go.Figure()
+    if total <= 0.0:
+        fig.add_annotation(x=0.5, y=0.5, xref="paper", yref="paper", showarrow=False,
+                           text="r = 0 at this depth<br>P<sub>well</sub> = 0",
+                           font=dict(size=13, color=p["text"]))
+        fig.update_layout(title="B4 · Chance waterfall")
+        fig.update_xaxes(showticklabels=False)
+        fig.update_yaxes(showticklabels=False)
+        apply_plotly(fig, dark, height)
+        return fig
+
+    for label, v, role, b, t in zip(labels, values, roles, bottoms, tops):
+        face = p["muted"] if role == "reconcile" else c
+        fig.add_bar(
+            x=[label], y=[abs(b - t)], base=[min(b, t)], name=label, showlegend=False,
+            marker=dict(
+                color=face,
+                pattern=dict(shape="/" if role == "location" else "",
+                             fgcolor=p["surface"], size=4),
+            ),
+            text=[f"×{v:.3f}"], textposition="outside", textfont=dict(size=10),
+            hovertemplate=f"{label}<br>×{v:.4f}<br>running {t:.4f}<extra></extra>",
+        )
+    fig.add_hline(
+        y=total, line=dict(color=p["muted"], width=1, dash="dot"),
+        annotation_text=f"P_well = {total:.4f}", annotation_position="top left",
+        annotation_font_size=11,
+    )
+    label = SCHEME_LABELS.get(scheme, "custom weights") if isinstance(scheme, str) else "custom weights"
+    fig.update_layout(
+        title=f"B4 · Chance waterfall ({label})",
+        yaxis_title="Cumulative chance (log scale)", xaxis_title=None, bargap=0.35,
+    )
+    fig.update_yaxes(type="log")
+    fig.update_xaxes(tickangle=-25)
+    apply_plotly(fig, dark, height)
+    return fig
+
+
+# ------------------------------------------------------------------- B5
+def pfig_b5_allocation_dumbbell(
+    elements: dict[str, float], r: float, *, pos_prospect: float | None = None,
+    dark: bool = False, height: int | None = PANEL_HEIGHT,
+):
+    """B5 -- the shipped schemes against the prospect baseline, one row per element.
+
+    The one figure here with internal panels, because three schemes side by
+    side *are* the figure. They share one x-axis so they are comparable, every
+    scheme lands on the same ``P_well`` (drawn as a rule when ``pos_prospect``
+    is given), and reservoir never moves because every shipped scheme gives it
+    zero weight.
+    """
+    p = palette(dark)
+    c = colour("p_well", dark)
+    schemes = list(SHIPPED_SCHEMES)
+    fig = make_subplots(
+        rows=1, cols=len(schemes), shared_yaxes=True, horizontal_spacing=0.04,
+        subplot_titles=[SCHEME_LABELS.get(s, s) for s in schemes],
+    )
+    names = [e.capitalize() for e in ELEMENTS]
+
+    for i, scheme in enumerate(schemes, start=1):
+        revised, _ = allocate(elements, r, scheme)
+        base = [float(elements.get(e, 1.0)) for e in ELEMENTS]
+        rev = [revised[e] for e in ELEMENTS]
+        for name, b, rv in zip(names, base, rev):
+            fig.add_scatter(x=[b, rv], y=[name, name], mode="lines",
+                            line=dict(color=c, width=2), showlegend=False,
+                            hoverinfo="skip", row=1, col=i)
+        fig.add_scatter(
+            x=base, y=names, mode="markers", name="Baseline", showlegend=i == 1,
+            marker=dict(size=9, color=p["surface"], line=dict(color=p["muted"], width=1.5)),
+            hovertemplate="baseline %{y} %{x:.3f}<extra></extra>", row=1, col=i,
+        )
+        fig.add_scatter(
+            x=rev, y=names, mode="markers", name="At the well", showlegend=i == 1,
+            marker=dict(size=9, color=c),
+            hovertemplate="at the well %{y} %{x:.3f}<extra></extra>", row=1, col=i,
+        )
+        if pos_prospect is not None:
+            fig.add_vline(x=pos_prospect * r, line=dict(color=p["muted"], width=1, dash="dot"),
+                          row=1, col=i)
+        if scheme == "none":
+            fig.add_annotation(
+                x=0.5, y=-0.5, text=f"r = {r:.3f} reported separately", showarrow=False,
+                font=dict(size=10, color=p["text_secondary"]), row=1, col=i,
+            )
+        fig.update_xaxes(range=[0, 1.03], title_text="Chance", row=1, col=i)
+
+    fig.update_layout(title="B5 · Allocation dumbbell")
+    fig.update_annotations(font_size=10)
+    apply_plotly(fig, dark, height)
+    return fig

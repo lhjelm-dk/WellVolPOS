@@ -47,6 +47,43 @@ def test_colours_are_addressed_by_meaning_not_position():
     assert colour("attic") != colour("proven")
 
 
+# The rule is backend-independent: the interactive path has to obey it too, or
+# the half the user actually looks at is the unchecked half. Per-figure
+# compliance is in test_interactive.py; these cover the helper itself.
+def test_plotly_depth_axis_inverts_with_an_explicit_range():
+    import plotly.graph_objects as go
+
+    from wellvolpos.viz.theme import depth_axis_plotly, is_depth_axis_correct_plotly
+
+    fig = go.Figure()
+    depth_axis_plotly(fig, zlim=(3350, 3700))
+    assert is_depth_axis_correct_plotly(fig)
+    assert tuple(fig.layout.yaxis.range) == (3700.0, 3350.0)
+
+
+def test_plotly_depth_axis_inverts_without_an_explicit_range():
+    import plotly.graph_objects as go
+
+    from wellvolpos.viz.theme import depth_axis_plotly, is_depth_axis_correct_plotly
+
+    fig = go.Figure()
+    fig.add_scatter(x=[1, 2], y=[3400, 3600])
+    depth_axis_plotly(fig)
+    assert is_depth_axis_correct_plotly(fig)
+
+
+def test_plotly_shared_row_hides_repeat_labels():
+    import plotly.graph_objects as go
+
+    from wellvolpos.viz.theme import depth_axis_plotly
+
+    a, b = go.Figure(), go.Figure()
+    depth_axis_plotly(a, zlim=(3350, 3700))
+    depth_axis_plotly(b, zlim=(3350, 3700), show_ticklabels=False)
+    assert tuple(a.layout.yaxis.range) == tuple(b.layout.yaxis.range)
+    assert b.layout.yaxis.showticklabels is False
+
+
 def test_dark_mode_is_a_selected_palette_not_an_inversion():
     light, dark = palette(False), palette(True)
     assert light["discovery"] != dark["discovery"]

@@ -210,7 +210,7 @@ def fig_a3_chance_decomposition(
 
 def fig_a4_resource_vs_depth(
     ts: TrialSet, *, current_entry: float | None = None, mefs: float | None = None,
-    n_bins: int = 40, dark: bool = False,
+    n_bins: int = 40, zlim: tuple[float, float] | None = None, dark: bool = False,
 ):
     """Log-density hexbin of resource vs contact depth, with smoothed P90/P50/P10.
 
@@ -236,7 +236,9 @@ def fig_a4_resource_vs_depth(
     if mefs is not None:
         ax.axvline(mefs, color=p["muted"], ls=":", lw=1.0)
 
-    depth_axis(ax, ylabel="HC-water contact (m TVDSS)")
+    # zlim so a row can be given one shared depth range; without it A4
+    # autoscales to its own hexbin extent and stops lining up with A1/A5.
+    depth_axis(ax, ylabel="HC-water contact (m TVDSS)", zlim=zlim)
     ax.set_xlim(left=0)
     ax.set_xlabel("Recoverable resource (MMboe)")
     ax.set_title("A4 · Resource vs contact depth")
