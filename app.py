@@ -645,26 +645,27 @@ with tabs[4]:
             "needs it and is skipped."
         )
     else:
+        # The apex is always derived from the trials, never entered — Lars's
+        # instruction, and it overrides design plan §5.2 / decision 6, which
+        # wanted a mapped apex here. One apex per session, from one source, so
+        # the map view and this mapping cannot disagree.
+        #
+        # The honest consequence: it is an *extrapolation* of A(z)'s shallow tail
+        # to zero area, because the trials do not contain the apex. The
+        # `crest` column in a full GeoX export looks like it should supply it and
+        # does not — on the reference file 60 % of success trials have their
+        # "crest" deeper than their own contact, which is impossible, so that
+        # column is not per-row trustworthy. Minimum column height is measured
+        # from this apex and inherits its error.
         tc1, tc2 = st.columns(2)
-        apex_default = float(ad.apex_estimate())
-        apex = tc1.number_input(
-            "Apex depth (m TVDSS)", value=apex_default, step=1.0,
-            help=(
-                "A mapped value is preferred. The default is a linear extrapolation of A(z)'s "
-                "shallow tail to zero, offered only as a starting point — see "
-                "AreaDepth.apex_estimate."
-            ),
-        )
+        apex = float(ad.apex_estimate())
+        tc1.metric("Apex (derived from A(z))", f"{apex:.1f} m TVDSS")
         min_col = tc2.number_input("Minimum column height (m)", min_value=0.0, value=0.0, step=5.0)
-        apex_is_default = abs(apex - apex_default) < 1e-9
         st.caption(
-            f"Apex: **{'extrapolated from A(z)' if apex_is_default else 'entered'}** "
-            f"({apex:.1f} m TVDSS)."
-            + (
-                "  Extrapolating the shallow tail has unbounded error where the trials do not "
-                "reach the crest — prefer the mapped apex."
-                if apex_is_default else ""
-            )
+            f"Apex **derived from the trials**, not entered: A(z)'s shallow tail extrapolated to "
+            f"zero area gives {apex:.1f} m TVDSS, against a shallowest sampled contact of "
+            f"{ad.shallowest:.1f} m. The trials do not contain the crest, so this is an "
+            f"extrapolation and the column heights below inherit its error."
         )
 
         tm = apply_min_column_height(ts, ad, apex, min_col)
