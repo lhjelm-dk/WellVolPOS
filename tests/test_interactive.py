@@ -487,22 +487,28 @@ def test_concepts_draws_the_reservoir_band_from_a_real_thickness(concepts):
     assert "Top reservoir" in said
     assert "Base reservoir" in said
     assert "Reservoir entry" in said and "Reservoir exit" in said
-    assert "mean reservoir thickness" in fig.layout.title.text
+    assert "back-calculated from pay" in fig.layout.title.text
     assert "area" in fig.layout.xaxis.title.text.lower()
 
 
-def test_concepts_declines_to_draw_a_base_it_has_no_thickness_for(reduced, groups, vc, area_depth):
-    """The 7-column paste has no thickness column. Better to say so than to
-    invent a reservoir."""
+def test_concepts_draws_the_base_on_the_seven_column_paste_too(reduced, groups, vc, area_depth):
+    """The payoff from back-calculating thickness instead of reading a column.
+
+    The everyday 7-column export has no reservoir-thickness column, so the base
+    reservoir used to be omitted entirely — the figure lost its wedges on the
+    default data set. Inverting the wedge needs only area, pay and contact, all
+    of which that export does carry.
+    """
     from wellvolpos.core import p_well as p_well_fn
 
+    assert not reduced.has("thickness")
     ch = p_well_fn(reduced, ENTRY, POS)
     fig = I.pfig_concepts(area_depth, reduced, groups, vc, z_entry=ENTRY, z_exit=EXIT,
                           pos_prospect=POS, p_well=ch.p_well)
     said = " ".join(a.text or "" for a in fig.layout.annotations)
-    assert "cannot be drawn" in fig.layout.title.text
-    assert "Base reservoir" not in said
-    assert "Top reservoir" in said      # the top curve is still real
+    assert "Base reservoir" in said
+    assert "back-calculated from pay" in fig.layout.title.text
+    assert sum(1 for d in fig.data if d.fillcolor) >= 3      # all three wedges
 
 
 def test_concepts_risked_curves_start_at_their_own_chance(concepts):

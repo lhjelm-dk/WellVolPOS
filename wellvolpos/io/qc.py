@@ -13,6 +13,7 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from ..core.classes import check_area_pay_correlation
+from ..core.reservoir import thickness_from_pay
 from ..core.structure import AreaDepth
 from .adapters.base import CANONICAL_FIELDS, TrialSet
 from .failure import FailureReport, detect_failures
@@ -140,6 +141,35 @@ def run_qc(ts: TrialSet, *, min_trials_warn: int = 10_000) -> QCReport:
     # ---- assumption behind the split
     lvl, msg, _ = check_area_pay_correlation(ts)
     rep.add("area / net-pay correlation", lvl, msg)
+
+    # ---- reservoir thickness, recovered from pay by inverting the wedge
+    if rep.area_depth is not None and (ts.has("hc_grv") or ts.has("gross_pay")):
+        try:
+            tfp = thickness_from_pay(ts, rep.area_depth)
+        except ValueError:
+            tfp = None
+        if tfp is not None and tfp.n_resolved:
+            lvl = "warn" if tfp.n_inconsistent else "pass"
+            msg = tfp.message()
+            if ts.has("thickness"):
+                # Independent check: the inversion and the simulator's own
+                # column are two routes to one number, so a disagreement means
+                # the wedge geometry assumed here is not the one GeoX used.
+                col = ts.col("thickness")[tfp.resolved]
+                rec = tfp.thickness[tfp.resolved]
+                bias = float(np.mean(rec - col))
+                r = float(np.corrcoef(rec, col)[0, 1]) if rec.size > 2 else float("nan")
+                agrees = abs(bias) < 1.0 and (not np.isfinite(r) or r > 0.99)
+                msg += (
+                    f" Against the export's own reservoir-thickness column: mean difference "
+                    f"{bias:+.2f} m, r = {r:.4f}"
+                    + (" — the wedge inversion and the simulator agree."
+                       if agrees else
+                       " — they DISAGREE, so the wedge geometry assumed here is not GeoX's.")
+                )
+                if not agrees:
+                    lvl = "warn"
+            rep.add("reservoir thickness from pay", lvl, msg)
 
     # ---- contact distribution spikes (a sentinel is expected; others are not)
     uniq, counts = np.unique(contact, return_counts=True)

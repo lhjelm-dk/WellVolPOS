@@ -203,6 +203,33 @@ class AreaDepth:
         """Equivalent-circle radius (km) at one structural level."""
         return float(np.sqrt(max(float(self.area_at_tapered(depth, apex)), 0.0) / np.pi))
 
+    # ------------------------------------------------- closure bulk volume
+    def _volume_grid(self, apex: float, n: int = 4000) -> tuple[np.ndarray, np.ndarray]:
+        """(depths, cumulative volume above each depth) from the apex down.
+
+        ``km2 x m``, which is ``1e6 m3`` -- the same unit GeoX writes HC-bearing
+        gross rock volume in, so the two are directly comparable with no factor.
+        """
+        z = np.linspace(float(apex), self.deepest, int(n))
+        a = self.area_at_tapered(z, apex)
+        dv = 0.5 * (a[1:] + a[:-1]) * np.diff(z)          # trapezoid
+        return z, np.concatenate([[0.0], np.cumsum(dv)])
+
+    def volume_above(self, depth, apex: float) -> np.ndarray:
+        """Bulk closure volume above ``depth``: the integral of A(z) from the apex.
+
+        This is the volume a reservoir of unlimited thickness would enclose above
+        that level -- the ceiling on any hydrocarbon-bearing GRV with the contact
+        there.
+        """
+        z, v = self._volume_grid(apex)
+        return np.interp(depth, z, v)
+
+    def depth_for_volume(self, volume, apex: float) -> np.ndarray:
+        """Inverse of :meth:`volume_above`: the depth enclosing a given volume."""
+        z, v = self._volume_grid(apex)
+        return np.interp(volume, v, z)
+
     def quality(self) -> tuple[str, str]:
         """(level, message) for the QC report."""
         if not np.isfinite(self.r2):

@@ -31,6 +31,7 @@ from ..core.chance import ELEMENTS, SCHEME_LABELS, SHIPPED_SCHEMES, allocate
 from ..core.chance import waterfall_steps as chance_waterfall_steps
 from ..core.classes import VolumeClasses
 from ..core.groups import Groups
+from ..core.reservoir import thickness_from_pay
 from ..core.stats import MIN_SUPPORT, thin
 from ..core.structure import AreaDepth
 from ..core.sweep import (
@@ -1009,12 +1010,16 @@ def _reservoir_section(fig, ad, ts, *, z_entry, z_exit, dark, row=1, col=1):
     """
     p = palette(dark)
     a, top = ad.a, ad.z
-    thickness = None
-    if ts.has("thickness"):
-        res = ts.col("resource")
-        t = ts.col("thickness")[res > 0.0]
-        if t.size:
-            thickness = float(np.mean(t))
+
+    # Reservoir thickness is *back-calculated from pay*, per trial, by inverting
+    # the wedge -- see core.reservoir. It is not read from any thickness column,
+    # for two reasons. It works on the 7-column paste, which has no such column
+    # but does have area and pay. And where a column does exist the inversion
+    # reproduces it to a mean difference of 0.01 m at r = 0.9998, so reading it
+    # would add a dependency and buy nothing.
+    tfp = thickness_from_pay(ts, ad)
+    stats = tfp.summary()
+    thickness = stats["p50"] if tfp.n_resolved else None
 
     fig.add_scatter(
         x=a, y=top, mode="lines", name="Top reservoir", showlegend=False,
@@ -1027,6 +1032,16 @@ def _reservoir_section(fig, ad, ts, *, z_entry, z_exit, dark, row=1, col=1):
 
     if thickness is not None:
         base = top + thickness
+        # The P90 and P10 bases first, thin and grey, so the single P50 line is
+        # visibly one case out of a sampled range rather than a fixed surface.
+        for stat, label in (("p90", "P90"), ("p10", "P10")):
+            fig.add_scatter(
+                x=a, y=top + stats[stat], mode="lines", showlegend=False,
+                line=dict(color=p["muted"], width=1, dash="dot"),
+                hovertemplate=f"base reservoir, {label} thickness "
+                              f"({stats[stat]:.0f} m)<extra></extra>",
+                row=row, col=col,
+            )
         fig.add_scatter(
             x=a, y=base, mode="lines", name="Base reservoir", showlegend=False,
             line=dict(color=p["text"], width=1.6, dash="dash"),
@@ -1183,12 +1198,14 @@ def pfig_concepts(
         fig.add_annotation(x=hi, y=y, text=f"  {name}", showarrow=False, xanchor="left",
                            font=dict(size=9, color=col_), row=1, col=2)
 
+    tfp = thickness_from_pay(ts, ad)
+    ss = tfp.summary()
     sub = (
-        f"<br><sub>base reservoir = top + {thickness:.0f} m mean reservoir thickness "
-        f"(sampled 25–65 m, so this is the mean-thickness case)</sub>"
-        if thickness is not None else
-        "<br><sub>no reservoir-thickness column in this export, so the base reservoir "
-        "cannot be drawn</sub>"
+        f"<br><sub>base reservoir = top + reservoir thickness back-calculated from pay: "
+        f"P50 {ss['p50']:.0f} m, P90–P10 {ss['p90']:.0f}–{ss['p10']:.0f} m (dotted)</sub>"
+        if tfp.n_resolved else
+        "<br><sub>could not recover a reservoir thickness from pay, so the base reservoir "
+        "is not drawn</sub>"
     )
     fig.update_layout(title="Concepts — the same volumes in section and in distribution" + sub,
                       showlegend=False)
