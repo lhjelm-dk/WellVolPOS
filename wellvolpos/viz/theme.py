@@ -307,3 +307,16 @@ def is_depth_axis_correct_plotly(fig, axis: str = "yaxis") -> bool:
         return True
     rng = ax.range
     return rng is not None and rng[0] > rng[1]
+
+#: Short names for the reference contour, for figure titles. A figure that draws
+#: ``P_well`` without saying which contour ``r_location`` was measured against is
+#: showing a number whose meaning depends on a setting the reader cannot see --
+#: against non-negotiable 5, and it matters most on the export path, where the
+#: app's caption is not there to make up for it.
+REFERENCE_SHORT = {"crest": "crest-referenced", "p90_area": "P90-area-referenced"}
+
+
+def reference_label(reference) -> str:
+    """``'crest-referenced'`` / ``'P90-area-referenced'`` from an enum or a string."""
+    value = getattr(reference, "value", reference)
+    return REFERENCE_SHORT.get(str(value), str(value))

@@ -30,7 +30,7 @@ The short version:
 ```bash
 python -m venv .venv && .venv/Scripts/Activate.ps1   # Windows
 pip install -r requirements.txt
-pytest                 # the specification — 339 passed
+pytest                 # the specification — 372 passed
 streamlit run app.py   # opens on the bundled demo data
 ```
 
@@ -88,6 +88,9 @@ path, and a test compares the two modules so a new figure cannot skip it.
 app.py                       Streamlit entry point — six tabs
 wellvolpos/
   io/adapters/               trial-file readers; add a simulator by adding a file
+  io/adapters/source.py      a name and some bytes — so an upload never hits the disk
+  io/adapters/generic.py     the fallback reader; proposes a mapping, never assumes one
+  io/units.py                unit validation: reject, never convert
   io/failure.py              chance-failure detector -> POS from the trials
   io/qc.py                   the report that gates the analysis tabs
   io/synthetic.py            two generators for cases the real data cannot reach

@@ -51,6 +51,7 @@ from .theme import (
     colour,
     depth_axis_plotly,
     palette,
+    reference_label,
     rgba,
 )
 
@@ -438,7 +439,10 @@ def pfig_a3_chance_decomposition(
     if current_z is not None:
         _hline(fig, current_z, p["text_secondary"], "dash")
 
-    fig.update_layout(title="A3 · Chance decomposition vs location", xaxis_title="Probability (%)")
+    fig.update_layout(
+        title=f"A3 · Chance decomposition vs location ({reference_label(sweep.reference)})",
+        xaxis_title="Probability (%)",
+    )
     fig.update_xaxes(range=[0, 100])
     apply_plotly(fig, dark, height)
     depth_axis_plotly(fig, zlim or (float(sweep.z.min()), float(sweep.z.max())),
@@ -731,7 +735,10 @@ def pfig_b2_chance_vs_regret(
         _hline(fig, current_z, p["text_secondary"], "dash")
 
     fig.update_layout(
-        title=f"B2 · Chance vs regret (MEFS {vsweep.mefs:.1f} MMboe)",
+        title=(
+            f"B2 · Chance vs regret (MEFS {vsweep.mefs:.1f} MMboe, "
+            f"{reference_label(vsweep.reference)})"
+        ),
         xaxis_title="Probability (%)",
     )
     fig.update_xaxes(range=[0, 100])

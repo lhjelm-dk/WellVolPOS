@@ -26,12 +26,12 @@ imagined:
 from __future__ import annotations
 
 import re
-from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
 from .base import TrialSet
+from .source import Source
 
 # canonical field -> ordered list of regexes tried against the cleaned header
 SYNONYMS: dict[str, list[str]] = {
@@ -133,10 +133,10 @@ class GeoXAdapter:
 
     name = "GeoX trial browser export"
 
-    def sniff(self, path: str) -> float:
-        p = Path(path)
+    def sniff(self, path) -> float:
+        src = Source.from_any(path)
         try:
-            names = self._raw_header(p)
+            names = self._raw_header(src)
         except Exception:
             return 0.0
         if not names:
@@ -154,9 +154,9 @@ class GeoXAdapter:
         return min(score, 1.0)
 
     # ------------------------------------------------------------------ read
-    def read(self, path: str) -> TrialSet:
-        p = Path(path)
-        raw, units = self._read_raw(p)
+    def read(self, path) -> TrialSet:
+        src = Source.from_any(path)
+        raw, units = self._read_raw(src)
         prospect = _detect_prospect([str(c) for c in raw.columns])
         cleaned = [_clean_header(c, prospect) for c in raw.columns]
         cleaned = _resolve_duplicates(cleaned, raw)
@@ -176,9 +176,17 @@ class GeoXAdapter:
             col = pd.to_numeric(raw[src], errors="coerce")
             data[canon] = col.to_numpy()
         frame = pd.DataFrame(data)
+        before = len(frame)
         frame = frame[frame["contact"].notna() & frame["resource"].notna()].reset_index(drop=True)
 
         notes = []
+        if before != len(frame):
+            # Said out loud rather than done quietly: a trial count that silently
+            # differs from the one the exporter reports is the sort of discrepancy
+            # that gets discovered halfway through arguing about a number.
+            notes.append(
+                f"Dropped {before - len(frame):,} row(s) with no contact or no resource."
+            )
         if any(c.startswith(("Inplace.", "Recoverable.")) for c in cleaned):
             notes.append(
                 "Resolved GeoX duplicate column names into Inplace./Recoverable. "
@@ -194,12 +202,12 @@ class GeoXAdapter:
         )
 
     # ------------------------------------------------------------- internals
-    def _raw_header(self, p: Path) -> list[str]:
-        if p.suffix.lower() in (".xlsx", ".xlsm"):
-            head = pd.read_excel(p, header=None, nrows=8)
+    def _raw_header(self, src: Source) -> list[str]:
+        if src.is_excel:
+            head = pd.read_excel(src.buffer(), header=None, nrows=8)
             row = self._header_row_index(head)
             return [str(x) for x in head.iloc[row].tolist() if str(x) != "nan"]
-        text = p.read_text(encoding="utf-8", errors="replace").splitlines()[:8]
+        text = src.lines(8)
         sep = "\t" if text and text[0].count("\t") >= text[0].count(",") else ","
         return [c.strip() for c in text[0].split(sep)] if text else []
 
@@ -212,9 +220,9 @@ class GeoXAdapter:
                 return i
         return 0
 
-    def _read_raw(self, p: Path) -> tuple[pd.DataFrame, dict[str, str]]:
-        if p.suffix.lower() in (".xlsx", ".xlsm"):
-            head = pd.read_excel(p, header=None, nrows=8)
+    def _read_raw(self, src: Source) -> tuple[pd.DataFrame, dict[str, str]]:
+        if src.is_excel:
+            head = pd.read_excel(src.buffer(), header=None, nrows=8)
             hrow = self._header_row_index(head)
             names = [str(x) for x in head.iloc[hrow].tolist()]
             unit_row = head.iloc[hrow + 1].tolist() if hrow + 1 < len(head) else []
@@ -223,17 +231,16 @@ class GeoXAdapter:
                 for n, u in zip(names, unit_row)
                 if str(u) not in ("nan", "None", "")
             }
-            df = pd.read_excel(p, header=None, skiprows=hrow + 2)
+            df = pd.read_excel(src.buffer(), header=None, skiprows=hrow + 2)
             df = df.iloc[:, : len(names)]
             df.columns = names
             keep = [c for c in df.columns if str(c) != "nan"]
             return df[keep], units
 
-        text = p.read_text(encoding="utf-8", errors="replace")
-        lines = text.splitlines()
+        lines = src.lines()
         sep = "\t" if lines and lines[0].count("\t") >= lines[0].count(",") else ","
         decimal, thousands = _sniff_decimal(lines[1:60], sep)
-        df = pd.read_csv(p, sep=sep, decimal=decimal, thousands=thousands)
+        df = pd.read_csv(src.buffer(), sep=sep, decimal=decimal, thousands=thousands)
         # a units row written as the first data row (all non-numeric) is metadata
         units: dict[str, str] = {}
         if len(df) and df.iloc[0].apply(lambda v: not _is_number(v)).all():

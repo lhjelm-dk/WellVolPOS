@@ -41,7 +41,14 @@ from ..core.sweep import (
     volume_target_curve,
 )
 from ..io.adapters.base import TrialSet
-from .theme import SEQUENTIAL_CMAP, colour, depth_axis, new_figure, palette
+from .theme import (
+    SEQUENTIAL_CMAP,
+    colour,
+    depth_axis,
+    new_figure,
+    palette,
+    reference_label,
+)
 
 __all__ = [
     "fig_a1_area_depth",
@@ -261,7 +268,7 @@ def fig_a3_chance_decomposition(
     ax.set_xlim(0, 100)
     depth_axis(ax, zlim=(float(sweep.z.min()), float(sweep.z.max())))
     ax.set_xlabel("Probability (%)")
-    ax.set_title("A3 · Chance decomposition vs location")
+    ax.set_title(f"A3 · Chance decomposition vs location ({reference_label(sweep.reference)})")
     ax.legend(loc="upper right", fontsize=7.5)
     fig.tight_layout()
     return fig, ax
@@ -529,7 +536,10 @@ def fig_b2_chance_vs_regret(
     ax.set_xlim(0, 100)
     depth_axis(ax, zlim=(float(vsweep.z.min()), float(vsweep.z.max())))
     ax.set_xlabel("Probability (%)")
-    ax.set_title(f"B2 · Chance vs regret (MEFS {vsweep.mefs:.1f} MMboe)")
+    ax.set_title(
+        f"B2 · Chance vs regret (MEFS {vsweep.mefs:.1f} MMboe, "
+        f"{reference_label(vsweep.reference)})"
+    )
     ax.legend(loc="upper right", fontsize=7.5)
     fig.tight_layout()
     return fig, ax

@@ -52,7 +52,15 @@ from wellvolpos.core import (
     volume_percentile_threshold,
     volume_target_curve,
 )
-from wellvolpos.io.adapters import read_trials
+from wellvolpos.io.adapters import (
+    CANONICAL_FIELDS,
+    GenericCsvAdapter,
+    Source,
+    propose,
+    read_trials,
+    score_adapters,
+)
+from wellvolpos.io.adapters import signature as adapter_signature
 from wellvolpos.report import export as export_mod
 from wellvolpos.report.case import Case, fingerprint
 from wellvolpos.report.guide import render as render_guide
@@ -117,22 +125,37 @@ st.set_page_config(page_title="WellVolPOS", layout="wide", page_icon="🛢")
 
 # ------------------------------------------------------------------ loading
 @st.cache_data(show_spinner=False)
-def _load(path: str):
-    ts = read_trials(path)
+def _load(name: str, data: bytes, mapping_items: tuple = ()):
+    """Read and QC one trial file, keyed on its *bytes*.
+
+    Bytes rather than a path, because an upload is never written to disk (design
+    plan §10) and there is no path to key on. ``st.cache_data`` hashes them
+    happily, and at these sizes -- the largest demo export is under 3 MB -- the
+    cost of holding them is nothing next to re-parsing 10 000 rows on every
+    slider drag.
+
+    ``mapping_items`` is a sorted tuple rather than a dict so it is hashable: it
+    carries a manual column mapping for the generic reader, and a different
+    mapping is a different import.
+    """
+    src = Source(name=name, data=data)
+    adapter = GenericCsvAdapter(mapping=dict(mapping_items)) if mapping_items else None
+    ts = read_trials(src, adapter=adapter)
     return ts, run_qc(ts)
 
 
 @st.cache_data(show_spinner=False)
-def _volume_sweep(path: str, pos: float, gap: float, mefs: float, reference: str):
+def _volume_sweep(name: str, data: bytes, mapping_items: tuple,
+                  pos: float, gap: float, mefs: float, reference: str):
     """The proven/possible sweep, cached on the settings that determine it.
 
     The most expensive computation on the page -- it re-splits every trial at
     every one of sixty depths and bootstraps each step -- and B6's slider does
-    not change any of its inputs. Keyed on ``path`` plus the scalars rather than
-    on the TrialSet, because a dataclass holding a DataFrame is not hashable and
-    the file path already identifies the trials.
+    not change any of its inputs. Keyed on the file's bytes plus the scalars
+    rather than on the TrialSet, because a dataclass holding a DataFrame is not
+    hashable -- and ``_load`` is itself cached, so re-reading here is free.
     """
-    ts_, _ = _load(path)
+    ts_, _ = _load(name, data, mapping_items)
     ad_ = AreaDepth.from_trials(ts_.col("contact"), ts_.col("area"))
     return run_volume_sweep(
         ts_, ad_, pos, z_gap=gap, mefs=mefs,
@@ -183,64 +206,150 @@ with tabs[0]:
     choice = st.selectbox("Data set", list(DEMOS) + ["Upload your own…"])
     uploaded = None
     if choice == "Upload your own…":
-        uploaded = st.file_uploader("GeoX trial export", type=["csv", "txt", "tsv", "xlsx"])
+        uploaded = st.file_uploader(
+            "Trial export — GeoX, or any delimited file",
+            type=["csv", "txt", "tsv", "dat", "xlsx", "xlsm"],
+            help=(
+                "Read in memory and never written to disk. A GeoX export is recognised "
+                "automatically; anything else goes through the generic reader, which proposes "
+                "a column mapping for you to confirm below."
+            ),
+        )
 
-path = None
+# Uploads are held as (name, bytes) and never written to disk — design plan §10,
+# and it is the licensee's data. `Source` is what makes one code path serve both a
+# demo file and an upload.
+source = None
 if uploaded is not None:
-    tmp = Path(st.session_state.setdefault("_tmpdir", ".streamlit_uploads"))
-    tmp.mkdir(exist_ok=True)
-    path = tmp / uploaded.name
-    path.write_bytes(uploaded.getbuffer())
+    source = Source.from_any(uploaded)
 elif choice in DEMOS:
-    path = DEMOS[choice]
+    source = Source.from_any(DEMOS[choice])
 
-if path is None:
+if source is None:
+    # The sidebar's controls cannot exist yet — the depth sliders take their range
+    # from the contact column — but a sidebar that *vanishes* reads as a crash, so
+    # it says why instead of disappearing.
+    st.sidebar.subheader("Well")
+    st.sidebar.info(
+        "Waiting for trial data.\n\nThe well and convention controls take their range from the "
+        "contact column, so they appear once a file is loaded. Pick a demo or upload a file in "
+        "**tab ①**."
+    )
     with tabs[0]:
-        st.info("Choose a demo dataset or upload a GeoX trial export to begin.")
+        st.info(
+            "Choose a demo dataset above, or upload your own trial export. "
+            "Nothing is written to disk."
+        )
     st.stop()
 
-ts, qc = _load(str(path))
+# One mapping override per *header signature*, so correcting a mapping once means
+# the next export with the same columns is already right (design plan §8's
+# "profile remembered per file signature"). Session-scoped: this app does not
+# write the user's mapping choices anywhere.
+try:
+    sig = adapter_signature(source)
+except Exception:
+    sig = source.name
+overrides = dict(st.session_state.get(f"_map_{sig}", {}))
 
-# ------------------------------------------------------------------ sidebar
+ts, qc = _load(source.name, source.data, tuple(sorted(overrides.items())))
 zmin, zmax = float(ts.col("contact").min()), float(ts.col("contact").max())
 
-# Case load runs *before* the widgets it restores, because a Streamlit widget
-# reads session_state only when it is first created. Writing the values then
+with tabs[0]:
+    scores = score_adapters(source)
+    st.caption(
+        "Reader: **"
+        + ts.source
+        + "** — "
+        + ", ".join(f"{a.name.split()[0]} {s:.2f}" for s, a in scores)
+        + " confidence. The generic reader is capped at 0.30 so it can never outrank an "
+        "adapter that actually recognised the format."
+    )
+    generic = ts.source == GenericCsvAdapter().name
+    if generic:
+        with st.expander("Column mapping — confirm before relying on anything downstream",
+                         expanded=bool(overrides) is False):
+            st.caption(
+                "This file is not a GeoX export, so the mapping below was **proposed** from the "
+                "headers rather than known. A wrong mapping is the most damaging thing that can "
+                "happen at import: every number downstream is then computed from the wrong "
+                "column and nothing looks broken."
+            )
+            proposal = propose(source, mapping=overrides)
+            cols = ["— none —"] + proposal.columns
+            picked: dict[str, str] = {}
+            grid = st.columns(3)
+            for i, canon in enumerate(("contact", "resource", "area", "gross_pay",
+                                       "hc_grv", "thickness")):
+                cur = proposal.mapping.get(canon)
+                with grid[i % 3]:
+                    sel = st.selectbox(
+                        f"{canon} ({CANONICAL_FIELDS[canon][0] or '—'})", cols,
+                        index=cols.index(cur) if cur in cols else 0,
+                        key=f"map_{sig}_{canon}",
+                        help=proposal.why.get(canon, "not found in the headers"),
+                    )
+                if sel != "— none —":
+                    picked[canon] = sel
+            weak = proposal.needs_confirmation
+            if weak:
+                st.warning(
+                    "Matched on a weak header match, so worth a look: "
+                    + ", ".join(f"**{f}** ← `{proposal.mapping[f]}`" for f in weak)
+                )
+            if st.button("Use this mapping", key=f"apply_map_{sig}"):
+                st.session_state[f"_map_{sig}"] = picked
+                st.rerun()
+
+# Case save/load sits here, beside the trial data, because both are *inputs* to
+# the session and having two upload boxes in two different places invited the
+# reasonable question of whether they did the same thing. They do not: a case
+# carries settings, a trial file carries data.
+#
+# It has to run *before* the sidebar widgets it restores. A Streamlit widget reads
+# session_state only when it is first created, so writing the values and then
 # rerunning is the only order in which a loaded case actually reaches the
 # controls; setting them afterwards silently does nothing.
-with st.sidebar.expander("Case", expanded=False):
+with tabs[0]:
+    st.divider()
+    st.subheader("Case — the settings, not the data")
     st.caption(
-        "A case is the settings, never the results — every number is recomputed on load, "
-        "so a reopened case cannot show you figures this build would not produce."
+        "A **case** is every choice that turns this trial file into an answer: the well, the "
+        "threshold volume, the four conventions and the chance table. It carries **no results** — "
+        "every number is recomputed on load, so a reopened case cannot show you figures this "
+        "build would not produce. It is not another way to load trials."
     )
-    up = st.file_uploader("Load a case (.json)", type=["json"], key="_case_upload")
-    if up is not None and st.button("Apply this case", key="_case_apply"):
-        try:
-            loaded = Case.from_json(up.getvalue())
-        except ValueError as e:
-            st.error(str(e))
-        else:
-            st.session_state.update({
-                "w_entry": float(np.clip(loaded.entry, zmin, zmax)),
-                "w_exit": float(np.clip(loaded.exit, zmin, zmax)),
-                "w_mefs": loaded.mefs,
-                "w_ref": ReferenceContour(loaded.reference),
-                "w_scheme": loaded.scheme,
-                "w_area_scale": loaded.area_scale,
-                "w_min_col": loaded.min_column_height,
-                "w_map_interval": loaded.map_interval,
-                "w_map_azimuth": int(round(loaded.map_azimuth_deg)),
-                "risking_convention": loaded.risking_convention,
-                "_case_warnings": loaded.check_against(ts),
-                "_case_loaded": loaded.dataset or "a case file",
-            })
-            for el, v in loaded.chance_table.items():
-                st.session_state[f"w_chance_{el}"] = v
-            st.rerun()
-    if st.session_state.get("_case_loaded"):
-        st.success(f"Settings restored from **{st.session_state['_case_loaded']}**.")
-        for w in st.session_state.get("_case_warnings", []):
-            st.warning(w)
+    cc1, cc2 = st.columns(2)
+    with cc1:
+        up = st.file_uploader("Load a case (.json)", type=["json"], key="_case_upload")
+        if up is not None and st.button("Apply this case", key="_case_apply"):
+            try:
+                loaded = Case.from_json(up.getvalue())
+            except ValueError as e:
+                st.error(str(e))
+            else:
+                st.session_state.update({
+                    "w_entry": float(np.clip(loaded.entry, zmin, zmax)),
+                    "w_exit": float(np.clip(loaded.exit, zmin, zmax)),
+                    "w_mefs": loaded.mefs,
+                    "w_ref": ReferenceContour(loaded.reference),
+                    "w_scheme": loaded.scheme,
+                    "w_area_scale": loaded.area_scale,
+                    "w_min_col": loaded.min_column_height,
+                    "w_map_interval": loaded.map_interval,
+                    "w_map_azimuth": int(round(loaded.map_azimuth_deg)),
+                    "risking_convention": loaded.risking_convention,
+                    "_case_warnings": loaded.check_against(ts),
+                    "_case_loaded": loaded.dataset or "a case file",
+                })
+                for el, v in loaded.chance_table.items():
+                    st.session_state[f"w_chance_{el}"] = v
+                st.rerun()
+        if st.session_state.get("_case_loaded"):
+            st.success(f"Settings restored from **{st.session_state['_case_loaded']}**.")
+            for w in st.session_state.get("_case_warnings", []):
+                st.warning(w)
+    _case_save_slot = cc2
 
 st.sidebar.subheader("Well")
 entry = st.sidebar.slider("Reservoir entry depth (m TVDSS)", zmin, zmax,
@@ -661,7 +770,8 @@ def _location_sweep_tab():
 
     st.divider()
     with st.spinner("Sweeping the volume split…"):
-        vsweep = _volume_sweep(str(path), pos, gap, mefs, ref.value)
+        vsweep = _volume_sweep(source.name, source.data,
+                               tuple(sorted(overrides.items())), pos, gap, mefs, ref.value)
     d1, d2, d3 = st.columns(3)
     with d1:
         _chart(pfig_b0_section(ad, z_entry=entry, z_exit=exit_, zlim=zrow_sweep), key="b0")
@@ -709,7 +819,8 @@ def _current_case() -> Case:
         area_scale=area_scale,
         map_interval=float(ss.get("w_map_interval", 50.0)),
         map_azimuth_deg=float(ss.get("w_map_azimuth", 35.0)),
-        dataset=str(choice), n_trials=ts.n_trials, fingerprint=fingerprint(ts),
+        dataset=str(choice) if choice in DEMOS else source.name,
+        n_trials=ts.n_trials, fingerprint=fingerprint(ts),
     )
 
 
@@ -735,17 +846,10 @@ def _export_section():
         "cover page and a **Case** sheet cannot be cropped out of a file."
     )
 
-    # The case JSON needs no computation, so it is always available -- and it is
-    # the artefact that makes a session reproducible, which makes it the one
-    # worth never putting behind a button.
-    st.download_button(
-        "⬇ Case settings (.json)", case.to_json(),
-        file_name="wellvolpos_case.json", mime="application/json", key="dl_case",
-    )
     st.caption(
-        "Settings only, never results: reopening a case recomputes every number, so it cannot "
-        "show you figures this build would not produce. It records which trial file it was saved "
-        "against and says so if reopened on different trials."
+        "Saving and reloading the **case** — the settings on their own, with no results — lives "
+        "beside the trial data in **tab ①**, so the two things you can load into a session are "
+        "in one place."
     )
 
     st.divider()
@@ -966,6 +1070,21 @@ with tabs[4]:
 
     st.divider()
     _export_section()
+
+# The case download is written into the slot beside the case *loader* in tab ①, not
+# here, so save and load sit together. It has to happen this late because a case is
+# the state of every widget, and the last of them (the chance table) is only
+# created above. Writing into a container declared earlier is exactly what
+# Streamlit containers are for.
+with _case_save_slot:
+    st.download_button(
+        "⬇ Save this case (.json)", _current_case().to_json(),
+        file_name="wellvolpos_case.json", mime="application/json", key="dl_case",
+    )
+    st.caption(
+        "Records the trial file it was saved against and fingerprints it, so reopening it on "
+        "different trials says so rather than quietly answering a different question."
+    )
 
 with tabs[5]:
     render_guide(

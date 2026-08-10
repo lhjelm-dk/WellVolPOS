@@ -17,6 +17,7 @@ from ..core.reservoir import thickness_from_pay
 from ..core.structure import AreaDepth
 from .adapters.base import CANONICAL_FIELDS, TrialSet
 from .failure import FailureReport, detect_failures
+from .units import verdict as unit_verdict
 
 LEVELS = ("pass", "warn", "fail")
 
@@ -114,6 +115,12 @@ def run_qc(ts: TrialSet, *, min_trials_warn: int = 10_000) -> QCReport:
                     f"HC GRV / (area x gross pay) varies by {spread:.3g}. The model is not a plain "
                     f"area x thickness one; the per-trial split rests on a weaker assumption.",
                 )
+
+    # ---- units: reject, never convert (design plan 6.4 and 8)
+    # Before anything numerical, because every check below reads the numbers as if
+    # they were MMboe / m / km2, and a file in feet passes all of them.
+    lvl, msg = unit_verdict(ts)
+    rep.add("units", lvl, msg)
 
     # ---- failure-case detection
     rep.failure = detect_failures(ts)
