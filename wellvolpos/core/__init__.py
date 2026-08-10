@@ -14,7 +14,25 @@ from .chance import (
 from .classes import check_area_pay_correlation, class_summary, split_trials
 from .groups import group_summary, group_trials
 from .structure import AreaDepth
-from .sweep import Sweep, VolumeSweep, run_sweep, run_volume_sweep
+from .stats import (
+    MIN_SUPPORT,
+    Support,
+    bootstrap_mean_ci,
+    bootstrap_proportion_ci,
+    describe_support,
+    support_mask,
+    thin,
+)
+from .sweep import (
+    InverseResult,
+    Sweep,
+    VolumeSweep,
+    find_crossing,
+    invert_volume_target,
+    run_sweep,
+    run_volume_sweep,
+    volume_target_curve,
+)
 from .threshold import (
     ThresholdMapping,
     apply_min_column_height,
@@ -30,6 +48,9 @@ __all__ = [
     "ELEMENTS", "SCHEMES", "SCHEME_LABELS", "SHIPPED_SCHEMES", "normalised_weights",
     "waterfall_steps",
     "Sweep", "run_sweep", "VolumeSweep", "run_volume_sweep",
+    "InverseResult", "invert_volume_target", "volume_target_curve", "find_crossing",
+    "MIN_SUPPORT", "Support", "bootstrap_mean_ci", "bootstrap_proportion_ci",
+    "describe_support", "support_mask", "thin",
     "ThresholdMapping", "apply_min_column_height", "compare_definitions",
     "spread_at_fixed_column", "volume_percentile_threshold",
 ]

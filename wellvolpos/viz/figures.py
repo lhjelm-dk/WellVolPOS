@@ -28,8 +28,16 @@ from ..core.chance import ELEMENTS, SCHEME_LABELS, SHIPPED_SCHEMES, allocate
 from ..core.chance import waterfall_steps as chance_waterfall_steps
 from ..core.classes import VolumeClasses
 from ..core.groups import Groups
+from ..core.stats import MIN_SUPPORT, thin
 from ..core.structure import AreaDepth
-from ..core.sweep import Sweep, VolumeSweep
+from ..core.sweep import (
+    Sweep,
+    VolumeSweep,
+    find_crossing,
+    invert_volume_target,
+    volume_target_band,
+    volume_target_curve,
+)
 from ..io.adapters.base import TrialSet
 from .theme import SEQUENTIAL_CMAP, colour, depth_axis, new_figure, palette
 
@@ -46,6 +54,7 @@ __all__ = [
     "fig_b3_uncertainty_reduction",
     "fig_b4_chance_waterfall",
     "fig_b5_allocation_dumbbell",
+    "fig_b6_inverse",
 ]
 
 
@@ -374,20 +383,32 @@ def fig_b0_section(
     return fig, ax
 
 
-def fig_b1_volume_split(vsweep: VolumeSweep, *, current_z: float | None = None, dark: bool = False):
+def fig_b1_volume_split(
+    vsweep: VolumeSweep, *, current_z: float | None = None, min_support: int = MIN_SUPPORT,
+    dark: bool = False,
+):
     """Mean proven / possible / attic volume vs entry depth.
 
     The Schneider Fig. 7/11/12 equivalent: as the well moves down-dip, mean
     proven volume grows and mean attic shrinks, with possible-below-exit as
     the band the well leaves untested at any given location.
+
+    Steps resting on fewer than ``min_support`` trials are left undrawn. At the
+    deep end the discovery group collapses -- 8 of 10 000 trials at 3677 m on
+    the reference data -- and a mean of eight numbers drawn at the same width as
+    a mean of four thousand invites exactly the wrong conclusion.
     """
     fig, ax = new_figure(figsize=(6, 5), dark=dark)
     p = palette(dark)
 
-    ax.plot(vsweep.proven_mean, vsweep.z, color=colour("proven", dark), lw=2.0, label="Proven | discovery")
-    ax.plot(vsweep.possible_mean, vsweep.z, color=colour("possible", dark), lw=1.6, ls="--",
+    proven = thin(vsweep.proven_mean, vsweep.n_discovery, min_support)
+    possible = thin(vsweep.possible_mean, vsweep.n_discovery, min_support)
+    attic = thin(vsweep.attic_mean, vsweep.n_dry, min_support)
+
+    ax.plot(proven, vsweep.z, color=colour("proven", dark), lw=2.0, label="Proven | discovery")
+    ax.plot(possible, vsweep.z, color=colour("possible", dark), lw=1.6, ls="--",
             label="Possible below exit | discovery")
-    ax.plot(vsweep.attic_mean, vsweep.z, color=colour("attic", dark), lw=2.0, label="Attic | dry hole")
+    ax.plot(attic, vsweep.z, color=colour("attic", dark), lw=2.0, label="Attic | dry hole")
 
     if current_z is not None and vsweep.z.min() <= current_z <= vsweep.z.max():
         ax.axhline(current_z, color=p["text_secondary"], ls="--", lw=1.0)
@@ -401,7 +422,10 @@ def fig_b1_volume_split(vsweep: VolumeSweep, *, current_z: float | None = None, 
     return fig, ax
 
 
-def fig_b2_chance_vs_regret(vsweep: VolumeSweep, *, current_z: float | None = None, dark: bool = False):
+def fig_b2_chance_vs_regret(
+    vsweep: VolumeSweep, *, current_z: float | None = None, min_support: int = MIN_SUPPORT,
+    dark: bool = False,
+):
     """Chance vs regret vs entry depth -- the most decision-relevant plot in the tool.
 
     ``P_well``, the chance a discovery proves more than MEFS, and the chance a
@@ -423,12 +447,32 @@ def fig_b2_chance_vs_regret(vsweep: VolumeSweep, *, current_z: float | None = No
     fig, ax = new_figure(figsize=(6, 5), dark=dark)
     p = palette(dark)
 
+    # P_well is unconditional -- it is a chance over all trials -- so it is
+    # never thinned. The two conditional curves are.
+    p_proven = thin(vsweep.p_proven_exceeds_mefs, vsweep.n_discovery, min_support)
+    p_attic = thin(vsweep.p_attic_exceeds_mefs, vsweep.n_dry, min_support)
+
     ax.plot(vsweep.p_well * 100.0, vsweep.z, color=colour("p_well", dark), lw=2.0, label=r"$P_{well}$")
-    ax.plot(vsweep.p_proven_exceeds_mefs * 100.0, vsweep.z, color=colour("proven", dark), lw=1.8,
+    ax.plot(p_proven * 100.0, vsweep.z, color=colour("proven", dark), lw=1.8,
             label="P(proven > MEFS | discovery)")
-    ax.plot(vsweep.p_attic_exceeds_mefs * 100.0, vsweep.z, color=colour("attic", dark), lw=1.8,
+    ax.plot(p_attic * 100.0, vsweep.z, color=colour("attic", dark), lw=1.8,
             label="P(attic > MEFS | dry & charged)")
 
+    # Labelled for exactly what it is. It is tempting to call this "where
+    # chance stops outweighing regret", and wrong: P_well is unconditional
+    # while the regret curve is conditional on the well being dry *and* the
+    # prospect charged, so the two are not on one scale. A properly risked
+    # comparison would multiply the regret by P(dry & charged) and crosses
+    # some 7 m deeper on the reference data. Naming the curves that meet is
+    # the honest version of the same annotation.
+    crossing = find_crossing(vsweep.z, vsweep.p_well, p_attic)
+    if crossing is not None:
+        ax.axhline(crossing, color=p["text"], ls=":", lw=1.2)
+        ax.annotate(
+            f"$P_{{well}}$ = P(attic > MEFS | dry & charged) at {crossing:.0f} m",
+            (99, crossing), xytext=(0, 4),
+            textcoords="offset points", ha="right", fontsize=7, color=p["text"],
+        )
     if current_z is not None and vsweep.z.min() <= current_z <= vsweep.z.max():
         ax.axhline(current_z, color=p["text_secondary"], ls="--", lw=1.0)
 
@@ -439,6 +483,73 @@ def fig_b2_chance_vs_regret(vsweep: VolumeSweep, *, current_z: float | None = No
     ax.legend(loc="upper right", fontsize=7.5)
     fig.tight_layout()
     return fig, ax
+
+
+def fig_b6_inverse(
+    vsweep: VolumeSweep, *, target: float | None = None, n_targets: int = 40,
+    ts: TrialSet | None = None, dark: bool = False,
+):
+    """B6 -- the inverse: volume to prove against the entry depth it demands.
+
+    The source workbook's H38-H40 block as a curve, and the answer to "given a
+    volume to prove, where must the well go and what does it cost in chance".
+    Depth is on y and inverted like every other depth axis, so the curve is
+    read the way the structure is: further right means more volume demanded,
+    further down means the well has to go deeper to prove it.
+
+    ``P_well`` is carried as the colour of the curve rather than a second
+    y-axis, because dual y-axes are forbidden and because the trade is the
+    point: the curve turns dark as the requirement gets cheap in chance and
+    pale as it gets expensive. One blue hue, light to dark, per the colour rule.
+    """
+    targets, z_req, p_at = volume_target_curve(vsweep, n=n_targets, ts=ts)
+    fig, ax = new_figure(figsize=(6, 5), dark=dark)
+    p = palette(dark)
+
+    if targets.size == 0 or not np.isfinite(z_req).any():
+        ax.text(0.5, 0.5, "No proven-volume curve to invert", transform=ax.transAxes,
+                ha="center", va="center", fontsize=9, color=p["text"])
+        ax.set_title("B6 · Inverse — volume to prove")
+        fig.tight_layout()
+        return fig, ax
+
+    ok = np.isfinite(z_req)
+    if vsweep.alpha is not None:
+        z_lo, z_hi = volume_target_band(vsweep, targets)
+        band = np.isfinite(z_lo) & np.isfinite(z_hi)
+        if band.any():
+            ax.fill_between(
+                targets[band], z_lo[band], z_hi[band],
+                color=colour("p_well", dark), alpha=0.15, lw=0,
+                label=f"nominal {100 * (1 - vsweep.alpha):.0f}% band",
+            )
+
+    sc = ax.scatter(targets[ok], z_req[ok], c=p_at[ok] * 100.0, cmap=SEQUENTIAL_CMAP,
+                    vmin=0, vmax=100, s=22, zorder=4)
+    ax.plot(targets[ok], z_req[ok], color=p["text_secondary"], lw=1.0, zorder=3)
+    cb = fig.colorbar(sc, ax=ax, pad=0.02)
+    cb.set_label(r"$P_{well}$ at that depth (%)", fontsize=8)
+
+    if target is not None:
+        res = invert_volume_target(vsweep, float(target), ts=ts)
+        if res.achievable:
+            ax.axvline(target, color=p["muted"], ls=":", lw=1.0)
+            ax.plot([target], [res.z_required], "o", color=p["text"], zorder=6)
+            ax.annotate(
+                f"{res.z_required:.0f} m\n$P_{{well}}$ {res.p_well_at:.1%}",
+                (target, res.z_required), xytext=(6, 6), textcoords="offset points",
+                fontsize=8, color=p["text"],
+            )
+
+    depth_axis(ax, ylabel="Required entry depth (m TVDSS)")
+    ax.set_xlabel("Volume to prove — mean proven (MMboe)")
+    ax.set_title("B6 · Inverse — where the well must go")
+    if ax.get_legend_handles_labels()[1]:
+        ax.legend(loc="lower right", fontsize=7.5)
+    fig.tight_layout()
+    return fig, ax
+
+
 
 
 def fig_b3_uncertainty_reduction(sweep: Sweep, *, current_z: float | None = None, dark: bool = False):

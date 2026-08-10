@@ -6,7 +6,14 @@ import pytest
 from wellvolpos.core.chance import ReferenceContour, p_well
 from wellvolpos.core.classes import class_summary, split_trials
 from wellvolpos.core.groups import group_trials
-from wellvolpos.core.sweep import run_sweep, run_volume_sweep
+from wellvolpos.core.stats import support_mask
+from wellvolpos.core.sweep import (
+    find_crossing,
+    invert_volume_target,
+    run_sweep,
+    run_volume_sweep,
+    volume_target_curve,
+)
 
 from .conftest import ENTRY, EXIT
 
@@ -202,6 +209,55 @@ def test_volume_sweep_reproduces_the_locked_proven_mean_on_a_real_grid(reduced, 
     assert vsweep.attic_mean[i] == pytest.approx(9.090, abs=5e-3)
 
 
+# ------------------------------------------------- sample-size diagnostics
+def test_volume_sweep_reports_the_sample_size_behind_every_step(reduced, area_depth):
+    """The counts are what let a figure decline to draw what it cannot support."""
+    vsweep = run_volume_sweep(reduced, area_depth, POS, n=40, z_gap=50.0)
+    assert vsweep.n_discovery.shape == vsweep.z.shape
+    assert vsweep.n_dry.shape == vsweep.z.shape
+    # Deeper entry can only shrink the discovery group.
+    assert np.all(np.diff(vsweep.n_discovery) <= 0)
+    # On the reference data it collapses from thousands to single figures.
+    assert vsweep.n_discovery.max() > 5_000
+    assert vsweep.n_discovery.min() < 30
+
+
+def test_volume_sweep_carries_the_conventions_that_produced_it(reduced, area_depth):
+    """A curve without its conventions cannot state which contour it used."""
+    vsweep = run_volume_sweep(
+        reduced, area_depth, POS, n=10, reference=ReferenceContour.P90_AREA
+    )
+    assert vsweep.pos_prospect == pytest.approx(POS)
+    assert vsweep.reference is ReferenceContour.P90_AREA
+
+
+def test_bootstrap_band_is_absent_unless_asked_for(reduced, area_depth):
+    plain = run_volume_sweep(reduced, area_depth, POS, n=8)
+    assert plain.proven_mean_lo is None and plain.alpha is None
+    banded = run_volume_sweep(reduced, area_depth, POS, n=8, n_boot=100)
+    assert banded.proven_mean_lo is not None and banded.alpha == pytest.approx(0.10)
+
+
+def test_bootstrap_band_brackets_the_proven_mean_where_supported(reduced, area_depth):
+    vsweep = run_volume_sweep(reduced, area_depth, POS, n=20, n_boot=200)
+    ok = support_mask(vsweep.n_discovery) & np.isfinite(vsweep.proven_mean_lo)
+    assert ok.any()
+    assert np.all(vsweep.proven_mean_lo[ok] <= vsweep.proven_mean[ok] + 1e-9)
+    assert np.all(vsweep.proven_mean[ok] <= vsweep.proven_mean_hi[ok] + 1e-9)
+
+
+def test_bootstrap_band_widens_where_the_discovery_group_thins(reduced, area_depth):
+    """Down-dip the band should widen by itself -- that is the whole point of
+    resampling within each step rather than applying one global width."""
+    vsweep = run_volume_sweep(reduced, area_depth, POS, n=30, n_boot=300)
+    width = vsweep.proven_mean_hi - vsweep.proven_mean_lo
+    ok = np.isfinite(width) & (vsweep.n_discovery > 0)
+    n, w = vsweep.n_discovery[ok], width[ok]
+    shallow = w[n > 2000].mean()          # thousands of trials
+    deep = w[n < 200].mean()              # a few dozen
+    assert deep > shallow
+
+
 def test_proven_mean_rises_with_depth_over_the_well_supported_range(reduced, area_depth):
     """Deeper entry can only mean a bigger discovery, where there is data.
 
@@ -212,3 +268,111 @@ def test_proven_mean_rises_with_depth_over_the_well_supported_range(reduced, are
     vsweep = run_volume_sweep(reduced, area_depth, POS, z_min=3400.0, z_max=3600.0, n=30, z_gap=50.0)
     ok = np.isfinite(vsweep.proven_mean)
     assert np.all(np.diff(vsweep.proven_mean[ok]) > -1e-6)
+
+
+# ------------------------------------------------------------ B6: the inverse
+def test_inverting_the_locked_proven_mean_returns_the_reference_well(reduced, area_depth):
+    """The round trip that ties B6 to the rest of the tool.
+
+    The design plan's headline KPI is a proven mean of 15.76 MMboe at entry
+    3500 / exit 3550. Asking the inverse for that volume must hand back that
+    entry depth, and the P_well there must be the locked 0.4576 -- otherwise
+    B6 is answering a different question from tab 4.
+    """
+    vsweep = run_volume_sweep(
+        reduced, area_depth, POS, z_min=3400.0, z_max=3600.0, n=201, z_gap=EXIT - ENTRY,
+    )
+    res = invert_volume_target(vsweep, 15.756, ts=reduced)
+    assert res.achievable
+    # Tolerances near the real error (~5e-4 m), not a whole grid step: at
+    # abs=1.5 the test still passed with interpolation removed entirely.
+    assert res.z_required == pytest.approx(ENTRY, abs=0.05)
+    assert res.p_well_at == pytest.approx(p_well(reduced, res.z_required, POS).p_well, abs=1e-12)
+    assert res.p_well_at == pytest.approx(0.4576, abs=1e-3)
+
+
+def test_demanding_more_volume_requires_a_deeper_well_and_costs_chance(reduced, area_depth):
+    """The trade B6 exists to show, asserted rather than assumed."""
+    vsweep = run_volume_sweep(reduced, area_depth, POS, n=60, z_gap=50.0)
+    prev_z, prev_p = -np.inf, np.inf
+    for target in (12.0, 16.0, 20.0, 24.0):
+        res = invert_volume_target(vsweep, target)
+        assert res.achievable, target
+        assert res.z_required >= prev_z - 1e-9
+        assert res.p_well_at <= prev_p + 1e-9
+        prev_z, prev_p = res.z_required, res.p_well_at
+
+
+def test_an_unreachable_target_says_nowhere_rather_than_the_deepest_step(reduced, area_depth):
+    """Asking for more than the closure holds is a fair question whose honest
+    answer is 'nowhere' -- returning the deepest depth would answer a different
+    question."""
+    vsweep = run_volume_sweep(reduced, area_depth, POS, n=20, z_gap=50.0)
+    res = invert_volume_target(vsweep, 10_000.0)
+    assert not res.achievable
+    assert res.z_required is None and res.p_well_at is None
+    assert "No location" in res.message()
+
+
+def test_the_inverse_reports_the_support_behind_its_answer(reduced, area_depth):
+    vsweep = run_volume_sweep(reduced, area_depth, POS, n=40, z_gap=50.0)
+    # The deepest *supported* target, not the raw curve's peak: the peak sits in
+    # the region the inverse now refuses to answer in.
+    targets, _, _ = volume_target_curve(vsweep, n=2)
+    shallow = invert_volume_target(vsweep, 12.0)
+    deep = invert_volume_target(vsweep, float(targets[-1]))
+    assert deep.achievable
+    assert shallow.n_discovery_at > deep.n_discovery_at
+
+
+def test_the_inverse_band_brackets_the_requirement(reduced, area_depth):
+    vsweep = run_volume_sweep(reduced, area_depth, POS, n=40, z_gap=50.0, n_boot=200)
+    res = invert_volume_target(vsweep, 20.0)
+    assert res.achievable
+    assert res.z_lo is not None and res.z_hi is not None
+    assert res.z_lo <= res.z_required + 1e-6 <= res.z_hi + 1e-6
+    assert "band" in res.message()
+
+
+def test_no_band_is_offered_when_the_sweep_carried_no_bootstrap(reduced, area_depth):
+    vsweep = run_volume_sweep(reduced, area_depth, POS, n=20, z_gap=50.0)
+    res = invert_volume_target(vsweep, 20.0)
+    assert res.z_lo is None and res.z_hi is None
+    assert "band" not in res.message()
+
+
+def test_volume_target_curve_is_monotone_in_depth(reduced, area_depth):
+    vsweep = run_volume_sweep(reduced, area_depth, POS, n=40, z_gap=50.0)
+    targets, z_req, p_at = volume_target_curve(vsweep, n=25)
+    ok = np.isfinite(z_req)
+    assert ok.sum() > 5
+    assert np.all(np.diff(z_req[ok]) >= -1e-6)
+    assert np.all(np.diff(p_at[ok]) <= 1e-6)
+
+
+# ---------------------------------------------------------- B2's crossings
+def test_find_crossing_locates_a_sign_change_by_interpolation():
+    z = np.array([0.0, 1.0, 2.0, 3.0])
+    a = np.array([3.0, 2.0, 1.0, 0.0])
+    b = np.array([0.0, 1.0, 2.0, 3.0])
+    assert find_crossing(z, a, b) == pytest.approx(1.5)
+
+
+def test_find_crossing_returns_none_when_curves_never_meet():
+    z = np.array([0.0, 1.0, 2.0])
+    assert find_crossing(z, np.array([5.0, 5.0, 5.0]), np.array([1.0, 1.0, 1.0])) is None
+
+
+def test_find_crossing_tolerates_the_nan_gaps_thinning_leaves():
+    z = np.array([0.0, 1.0, 2.0, 3.0])
+    a = np.array([3.0, 2.0, 1.0, 0.0])
+    b = np.array([0.0, 1.0, np.nan, 3.0])
+    assert find_crossing(z, a, b) is not None
+
+
+def test_chance_and_regret_cross_on_the_reference_data(reduced, area_depth):
+    """The crossing is the decision depth B2 exists to make visible."""
+    vsweep = run_volume_sweep(reduced, area_depth, POS, n=60, mefs=14.0, z_gap=50.0)
+    z_cross = find_crossing(vsweep.z, vsweep.p_well, vsweep.p_attic_exceeds_mefs)
+    assert z_cross is not None
+    assert vsweep.z.min() < z_cross < vsweep.z.max()

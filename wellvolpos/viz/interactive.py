@@ -31,16 +31,26 @@ from ..core.chance import ELEMENTS, SCHEME_LABELS, SHIPPED_SCHEMES, allocate
 from ..core.chance import waterfall_steps as chance_waterfall_steps
 from ..core.classes import VolumeClasses
 from ..core.groups import Groups
+from ..core.stats import MIN_SUPPORT, thin
 from ..core.structure import AreaDepth
-from ..core.sweep import Sweep, VolumeSweep
+from ..core.sweep import (
+    Sweep,
+    VolumeSweep,
+    find_crossing,
+    invert_volume_target,
+    volume_target_band,
+    volume_target_curve,
+)
 from ..io.adapters.base import TrialSet
 from .figures import _depth_percentile_trend, _exceedance
 from .theme import (
     PANEL_HEIGHT,
+    SEQUENTIAL_CMAP,
     apply_plotly,
     colour,
     depth_axis_plotly,
     palette,
+    rgba,
 )
 
 __all__ = [
@@ -56,6 +66,7 @@ __all__ = [
     "pfig_b3_uncertainty_reduction",
     "pfig_b4_chance_waterfall",
     "pfig_b5_allocation_dumbbell",
+    "pfig_b6_inverse",
     "row_zlim",
 ]
 
@@ -80,16 +91,22 @@ def row_zlim(*ranges: tuple[float, float] | None, pad_frac: float = 0.0) -> tupl
 
 
 def _hline(fig, y: float, colour_: str, dash: str = "dash", label: str | None = None):
-    fig.add_hline(y=y, line=dict(color=colour_, width=1.2, dash=dash),
-                  annotation_text=label, annotation_position="top left",
-                  annotation_font_size=10)
+    # The annotation kwargs are passed *only* when there is a label. Passing
+    # annotation_text=None alongside annotation_position makes plotly create an
+    # annotation anyway and fill it with its placeholder, "new text" -- which
+    # then appears on every unlabelled entry/exit rule in the app.
+    kw = dict(
+        annotation_text=label, annotation_position="top left", annotation_font_size=10
+    ) if label else {}
+    fig.add_hline(y=y, line=dict(color=colour_, width=1.2, dash=dash), **kw)
     return fig
 
 
 def _vline(fig, x: float, colour_: str, dash: str = "dot", label: str | None = None):
-    fig.add_vline(x=x, line=dict(color=colour_, width=1.0, dash=dash),
-                  annotation_text=label, annotation_position="top",
-                  annotation_font_size=10)
+    kw = dict(
+        annotation_text=label, annotation_position="top", annotation_font_size=10
+    ) if label else {}
+    fig.add_vline(x=x, line=dict(color=colour_, width=1.0, dash=dash), **kw)
     return fig
 
 
@@ -234,7 +251,8 @@ def pfig_a3_chance_decomposition(
 
 # ------------------------------------------------------------------- A4
 def pfig_a4_resource_vs_depth(
-    ts: TrialSet, *, current_entry: float | None = None, mefs: float | None = None,
+    ts: TrialSet, *, current_entry: float | None = None, current_exit: float | None = None,
+    mefs: float | None = None,
     n_bins: int = 40, gridsize: int = 60, zlim: tuple[float, float] | None = None,
     show_depth_labels: bool = True, dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
@@ -269,8 +287,12 @@ def pfig_a4_resource_vs_depth(
             x=values, y=zb, mode="lines", name=name, line=dict(color=c, width=width, dash=dash),
             hovertemplate=name + " %{x:.2f} MMboe at " + DEPTH_HOVER + "<extra></extra>",
         )
+    # Named, and both of them: an unlabelled rule at the entry depth was
+    # indistinguishable from the exit, and the exit was not drawn at all.
     if current_entry is not None:
-        _hline(fig, current_entry, p["text_secondary"], "dash")
+        _hline(fig, current_entry, p["well"], "dash", "well entry")
+    if current_exit is not None and current_exit != current_entry:
+        _hline(fig, current_exit, p["well"], "dot", "well exit")
     if mefs is not None:
         _vline(fig, mefs, p["muted"], "dot", "MEFS")
 
@@ -424,15 +446,25 @@ def pfig_b0_section(
 # ------------------------------------------------------------------- B1
 def pfig_b1_volume_split(
     vsweep: VolumeSweep, *, current_z: float | None = None, zlim: tuple[float, float] | None = None,
-    show_depth_labels: bool = True, dark: bool = False, height: int | None = PANEL_HEIGHT,
+    show_depth_labels: bool = True, min_support: int = MIN_SUPPORT,
+    dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
-    """B1 -- mean proven / possible / attic volume vs entry depth."""
+    """B1 -- mean proven / possible / attic volume vs entry depth.
+
+    Steps resting on fewer than ``min_support`` trials are left undrawn: the
+    discovery group collapses down-dip (8 of 10 000 trials at 3677 m on the
+    reference data) and drawing a mean of eight as boldly as a mean of four
+    thousand invites the wrong conclusion.
+    """
     p = palette(dark)
     fig = go.Figure()
     for values, name, role, dash, width in (
-        (vsweep.proven_mean, "Proven | discovery", "proven", "solid", 3),
-        (vsweep.possible_mean, "Possible below exit | discovery", "possible", "dash", 2),
-        (vsweep.attic_mean, "Attic | dry hole", "attic", "solid", 3),
+        (thin(vsweep.proven_mean, vsweep.n_discovery, min_support),
+         "Proven | discovery", "proven", "solid", 3),
+        (thin(vsweep.possible_mean, vsweep.n_discovery, min_support),
+         "Possible below exit | discovery", "possible", "dash", 2),
+        (thin(vsweep.attic_mean, vsweep.n_dry, min_support),
+         "Attic | dry hole", "attic", "solid", 3),
     ):
         fig.add_scatter(
             x=values, y=vsweep.z, mode="lines", name=name,
@@ -456,7 +488,8 @@ def pfig_b1_volume_split(
 # ------------------------------------------------------------------- B2
 def pfig_b2_chance_vs_regret(
     vsweep: VolumeSweep, *, current_z: float | None = None, zlim: tuple[float, float] | None = None,
-    show_depth_labels: bool = True, dark: bool = False, height: int | None = PANEL_HEIGHT,
+    show_depth_labels: bool = True, min_support: int = MIN_SUPPORT,
+    dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
     """B2 -- chance against regret vs entry depth; the crossings are the argument.
 
@@ -469,16 +502,27 @@ def pfig_b2_chance_vs_regret(
         raise ValueError("pfig_b2_chance_vs_regret needs a VolumeSweep run with a mefs threshold")
     p = palette(dark)
     fig = go.Figure()
+    # P_well is unconditional, so it is never thinned; the two conditional
+    # curves are.
+    p_proven = thin(vsweep.p_proven_exceeds_mefs, vsweep.n_discovery, min_support)
+    p_attic = thin(vsweep.p_attic_exceeds_mefs, vsweep.n_dry, min_support)
     for values, name, role, width in (
         (vsweep.p_well, "P<sub>well</sub>", "p_well", 3),
-        (vsweep.p_proven_exceeds_mefs, "P(proven > MEFS | discovery)", "proven", 2.5),
-        (vsweep.p_attic_exceeds_mefs, "P(attic > MEFS | dry & charged)", "attic", 2.5),
+        (p_proven, "P(proven > MEFS | discovery)", "proven", 2.5),
+        (p_attic, "P(attic > MEFS | dry & charged)", "attic", 2.5),
     ):
         fig.add_scatter(
             x=np.asarray(values) * 100.0, y=vsweep.z, mode="lines", name=name,
             line=dict(color=colour(role, dark), width=width),
             hovertemplate=name + "<br>%{x:.1f}% at " + DEPTH_HOVER + "<extra></extra>",
         )
+    # Named for the curves that actually meet -- see the matplotlib twin: these
+    # two are not on one scale, so "chance = regret" would be a claim the
+    # figure does not support.
+    crossing = find_crossing(vsweep.z, vsweep.p_well, p_attic)
+    if crossing is not None:
+        _hline(fig, crossing, p["text"], "dot",
+               f"P<sub>well</sub> = P(attic > MEFS | dry & charged) at {crossing:.0f} m")
     if current_z is not None:
         _hline(fig, current_z, p["text_secondary"], "dash")
 
@@ -509,7 +553,7 @@ def pfig_b3_uncertainty_reduction(
     fig.add_scatter(
         x=sweep.uncertainty_reduction, y=sweep.z, mode="lines", name="Reduction",
         line=dict(color=c, width=3), fill="tozerox",
-        fillcolor="rgba(42,120,214,0.15)",
+        fillcolor=rgba("p_well", 0.15, dark),
         hovertemplate="%{x:.1f}% reduction at " + DEPTH_HOVER + "<extra></extra>",
     )
     fig.add_scatter(
@@ -656,4 +700,86 @@ def pfig_b5_allocation_dumbbell(
     fig.update_layout(title="B5 · Allocation dumbbell")
     fig.update_annotations(font_size=10)
     apply_plotly(fig, dark, height)
+    return fig
+
+
+# ------------------------------------------------------------------- B6
+def pfig_b6_inverse(
+    vsweep: VolumeSweep, *, target: float | None = None, n_targets: int = 40,
+    ts: TrialSet | None = None, zlim: tuple[float, float] | None = None,
+    show_depth_labels: bool = True, dark: bool = False, height: int | None = PANEL_HEIGHT,
+):
+    """B6 -- the inverse: volume to prove against the entry depth it demands.
+
+    The workbook's H38-H40 block as a curve, and the fourth question the tool
+    exists to answer. Depth on y and inverted like every other depth axis, so
+    demanding more volume moves the answer visibly *down* the structure.
+
+    ``P_well`` is the colour of the curve rather than a second y-axis -- dual
+    y-axes are forbidden, and the trade is the point: the marker darkens where
+    the requirement is cheap in chance and pales where it is expensive. Hover
+    gives all three numbers at once, which is what this figure is for.
+    """
+    p = palette(dark)
+    targets, z_req, p_at = volume_target_curve(vsweep, n=n_targets, ts=ts)
+    fig = go.Figure()
+
+    if targets.size == 0 or not np.isfinite(z_req).any():
+        fig.add_annotation(x=0.5, y=0.5, xref="paper", yref="paper", showarrow=False,
+                           text="No proven-volume curve to invert",
+                           font=dict(size=13, color=p["text"]))
+        fig.update_layout(title="B6 · Inverse — volume to prove")
+        apply_plotly(fig, dark, height)
+        return fig
+
+    if vsweep.alpha is not None:
+        z_lo, z_hi = volume_target_band(vsweep, targets)
+        band = np.isfinite(z_lo) & np.isfinite(z_hi)
+        if band.any():
+            level = 100 * (1 - vsweep.alpha)
+            fig.add_scatter(
+                x=np.concatenate([targets[band], targets[band][::-1]]),
+                y=np.concatenate([z_lo[band], z_hi[band][::-1]]),
+                fill="toself", fillcolor=rgba("p_well", 0.15, dark), mode="lines",
+                line=dict(width=0), name=f"nominal {level:.0f}% band", hoverinfo="skip",
+            )
+
+    ok = np.isfinite(z_req)
+    fig.add_scatter(
+        x=targets[ok], y=z_req[ok], mode="lines+markers",
+        line=dict(color=p["text_secondary"], width=1.2),
+        marker=dict(
+            size=9, color=p_at[ok] * 100.0, colorscale=SEQUENTIAL_CMAP, cmin=0, cmax=100,
+            colorbar=dict(title=dict(text="P<sub>well</sub> (%)", side="right"),
+                          thickness=12, len=0.6),
+        ),
+        name="Required entry",
+        customdata=p_at[ok] * 100.0,
+        hovertemplate=(
+            "to prove %{x:.2f} MMboe<br>enter at " + DEPTH_HOVER
+            + "<br>P<sub>well</sub> %{customdata:.1f}%<extra></extra>"
+        ),
+    )
+
+    if target is not None:
+        res = invert_volume_target(vsweep, float(target), ts=ts)
+        if res.achievable:
+            _vline(fig, float(target), p["muted"], "dot", f"{target:.1f} MMboe")
+            fig.add_scatter(
+                x=[target], y=[res.z_required], mode="markers+text",
+                marker=dict(size=11, color=p["text"], symbol="circle-open", line=dict(width=2.5)),
+                text=[f" {res.z_required:.0f} m · P<sub>well</sub> {res.p_well_at:.1%}"],
+                textposition="middle right", textfont=dict(size=10, color=p["text"]),
+                showlegend=False, hoverinfo="skip",
+            )
+
+    fig.update_layout(
+        title="B6 · Inverse — where the well must go",
+        xaxis_title="Volume to prove — mean proven (MMboe)",
+    )
+    apply_plotly(fig, dark, height)
+    depth_axis_plotly(
+        fig, zlim or (float(np.nanmin(z_req)), float(np.nanmax(z_req))),
+        title="Required entry depth (m TVDSS)", show_ticklabels=show_depth_labels,
+    )
     return fig

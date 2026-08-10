@@ -397,3 +397,84 @@ def test_b5_draws_the_shared_p_well_when_given_a_pos():
     for ax in axes:
         xs = [ln.get_xdata()[0] for ln in ax.get_lines() if len(set(ln.get_xdata())) == 1]
         assert any(abs(x - expected) < 1e-9 for x in xs)
+
+
+# ------------------------------------------------------------------- B6
+@pytest.fixture(scope="module")
+def vsweep_banded(reduced, area_depth):
+    return run_volume_sweep(reduced, area_depth, POS, n=30, mefs=14.0, z_gap=50.0, n_boot=150)
+
+
+def test_b6_puts_required_depth_on_y_inverted(vsweep_banded):
+    """B6's y-axis carries a depth, so non-negotiable 2 applies to it too."""
+    fig, ax = figures.fig_b6_inverse(vsweep_banded, target=20.0)
+    assert is_depth_axis_correct(ax)
+    assert "TVDSS" in ax.get_ylabel()
+
+
+def test_b6_encodes_p_well_as_colour_not_a_second_axis(vsweep_banded):
+    """Dual y-axes are forbidden, so the cost side of the trade is the colour."""
+    fig, ax = figures.fig_b6_inverse(vsweep_banded, target=20.0)
+    assert len(fig.axes) == 2                       # the second is the colourbar
+    assert fig.axes[1].get_ylabel().startswith("$P_{well}$")
+    assert ax.get_shared_x_axes().get_siblings(ax) == [ax]   # no twinned axis
+
+
+def test_b6_marks_the_requested_target(vsweep_banded):
+    fig, ax = figures.fig_b6_inverse(vsweep_banded, target=20.0)
+    said = " ".join(t.get_text() for t in ax.texts)
+    assert "P_{well}" in said
+
+
+def test_b6_draws_a_band_only_when_the_sweep_carried_one(reduced, area_depth, vsweep_banded):
+    banded, _ = figures.fig_b6_inverse(vsweep_banded)
+    assert banded.axes[0].collections, "expected a filled bootstrap band"
+    plain_sweep = run_volume_sweep(reduced, area_depth, POS, n=20, z_gap=50.0)
+    fig, ax = figures.fig_b6_inverse(plain_sweep)
+    labels = ax.get_legend_handles_labels()[1]
+    assert not any("band" in lbl for lbl in labels)
+
+
+def test_b6_says_so_rather_than_drawing_nothing_when_there_is_no_curve(reduced, area_depth):
+    empty = run_volume_sweep(reduced, area_depth, POS, z_min=4000.0, z_max=4100.0, n=5, z_gap=50.0)
+    fig, ax = figures.fig_b6_inverse(empty)
+    said = " ".join(t.get_text() for t in ax.texts)
+    assert "invert" in said
+
+
+# --------------------------------------------------- thinning the deep end
+def test_b1_leaves_undersupported_steps_undrawn(vsweep_banded):
+    """A mean of 8 trials must not be drawn as boldly as a mean of 4 000."""
+    fig, ax = figures.fig_b1_volume_split(vsweep_banded)
+    lines = {ln.get_label(): ln for ln in ax.get_lines()}
+    proven = lines["Proven | discovery"].get_xdata()
+    assert np.isnan(np.asarray(proven, dtype=float)).any()
+
+
+def test_b1_draws_everything_when_the_floor_is_lowered(vsweep_banded):
+    """The floor is a presentation choice, so it has to be a real argument."""
+    fig, ax = figures.fig_b1_volume_split(vsweep_banded, min_support=0)
+    lines = {ln.get_label(): ln for ln in ax.get_lines()}
+    proven = np.asarray(lines["Proven | discovery"].get_xdata(), dtype=float)
+    # Only genuinely empty steps stay NaN at a zero floor.
+    assert np.isnan(proven).sum() <= int((vsweep_banded.n_discovery == 0).sum())
+
+
+def test_b2_thins_conditional_curves_but_never_p_well(vsweep_banded):
+    """P_well is a chance over all trials, so it is supported everywhere."""
+    fig, ax = figures.fig_b2_chance_vs_regret(vsweep_banded)
+    lines = {ln.get_label(): ln for ln in ax.get_lines()}
+    p_well_x = np.asarray(lines[r"$P_{well}$"].get_xdata(), dtype=float)
+    assert not np.isnan(p_well_x).any()
+    proven_x = np.asarray(lines["P(proven > MEFS | discovery)"].get_xdata(), dtype=float)
+    assert np.isnan(proven_x).any()
+
+
+def test_b2_names_the_curves_that_meet_rather_than_claiming_chance_equals_regret(vsweep_banded):
+    """P_well is unconditional; the regret curve is conditional on dry *and*
+    charged. Calling their intersection "chance = regret" would put those two
+    on one scale, which is the conflation this project keeps having to undo."""
+    fig, ax = figures.fig_b2_chance_vs_regret(vsweep_banded)
+    said = " ".join(t.get_text() for t in ax.texts)
+    assert "chance = regret" not in said
+    assert "dry & charged" in said

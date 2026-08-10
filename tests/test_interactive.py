@@ -246,3 +246,90 @@ def test_b5_panels_share_one_x_range_so_the_schemes_are_comparable(r):
         if ax.startswith("xaxis") and getattr(fig.layout, ax).range is not None
     }
     assert len(ranges) == 1
+
+
+# ------------------------------------------------------------------- B6
+@pytest.fixture(scope="module")
+def vsweep_banded(reduced, area_depth):
+    return run_volume_sweep(reduced, area_depth, POS, n=25, mefs=14.0, z_gap=50.0, n_boot=150)
+
+
+def test_pb6_puts_required_depth_on_y_inverted(vsweep_banded):
+    fig = I.pfig_b6_inverse(vsweep_banded, target=20.0)
+    assert is_depth_axis_correct_plotly(fig)
+    assert "TVDSS" in fig.layout.yaxis.title.text
+
+
+def test_pb6_carries_p_well_as_marker_colour_with_a_scale(vsweep_banded):
+    """No dual y-axes, so the cost side of the trade is the colour."""
+    fig = I.pfig_b6_inverse(vsweep_banded)
+    curve = next(t for t in fig.data if t.name == "Required entry")
+    assert curve.marker.colorscale is not None
+    assert curve.marker.color is not None
+    assert "yaxis2" not in fig.layout
+
+
+def test_pb6_hover_gives_volume_depth_and_chance_together(vsweep_banded):
+    fig = I.pfig_b6_inverse(vsweep_banded)
+    curve = next(t for t in fig.data if t.name == "Required entry")
+    assert "MMboe" in curve.hovertemplate
+    assert "TVDSS" in curve.hovertemplate
+    assert "P<sub>well</sub>" in curve.hovertemplate
+
+
+def test_pb6_band_only_appears_when_the_sweep_carried_one(reduced, area_depth, vsweep_banded):
+    banded = I.pfig_b6_inverse(vsweep_banded)
+    assert any("band" in (t.name or "") for t in banded.data)
+    plain = I.pfig_b6_inverse(run_volume_sweep(reduced, area_depth, POS, n=15, z_gap=50.0))
+    assert not any("band" in (t.name or "") for t in plain.data)
+
+
+def test_pb6_says_so_when_there_is_nothing_to_invert(reduced, area_depth):
+    empty = run_volume_sweep(reduced, area_depth, POS, z_min=4000.0, z_max=4100.0, n=5, z_gap=50.0)
+    fig = I.pfig_b6_inverse(empty)
+    said = " ".join(a.text or "" for a in fig.layout.annotations)
+    assert "invert" in said
+
+
+def test_pb1_and_pb2_leave_undersupported_steps_undrawn(vsweep_banded):
+    b1 = I.pfig_b1_volume_split(vsweep_banded)
+    proven = next(t for t in b1.data if t.name == "Proven | discovery")
+    assert np.isnan(np.asarray(proven.x, dtype=float)).any()
+
+    b2 = I.pfig_b2_chance_vs_regret(vsweep_banded)
+    p_well = next(t for t in b2.data if t.name == "P<sub>well</sub>")
+    assert not np.isnan(np.asarray(p_well.x, dtype=float)).any()   # unconditional
+    conditional = next(t for t in b2.data if (t.name or "").startswith("P(proven"))
+    assert np.isnan(np.asarray(conditional.x, dtype=float)).any()
+
+
+def test_pb2_names_the_curves_that_meet(vsweep_banded):
+    fig = I.pfig_b2_chance_vs_regret(vsweep_banded)
+    said = " ".join(a.text or "" for a in fig.layout.annotations)
+    assert "chance = regret" not in said
+    assert "dry & charged" in said
+
+
+def test_no_figure_leaves_plotlys_placeholder_annotation_behind(reduced, area_depth, sweep, vsweep):
+    """add_hline with annotation_text=None still creates an annotation, and
+    plotly fills it with "new text" -- which appeared on every unlabelled
+    entry/exit rule in the app."""
+    figs = [
+        I.pfig_a1_area_depth(area_depth, current_entry=ENTRY, current_exit=EXIT),
+        I.pfig_a2_outcome_tree(sweep, current_z=ENTRY),
+        I.pfig_a3_chance_decomposition(sweep, pos_prospect=POS, current_z=ENTRY),
+        I.pfig_a4_resource_vs_depth(reduced, current_entry=ENTRY, current_exit=EXIT, mefs=14.0),
+        I.pfig_b1_volume_split(vsweep, current_z=ENTRY),
+        I.pfig_b2_chance_vs_regret(vsweep, current_z=ENTRY),
+        I.pfig_b3_uncertainty_reduction(sweep, current_z=ENTRY),
+    ]
+    for fig in figs:
+        for ann in fig.layout.annotations:
+            assert ann.text not in (None, "", "new text"), fig.layout.title.text
+
+
+def test_a4_names_both_well_rules(reduced):
+    fig = I.pfig_a4_resource_vs_depth(reduced, current_entry=ENTRY, current_exit=EXIT, mefs=14.0)
+    said = [a.text for a in fig.layout.annotations]
+    assert "well entry" in said
+    assert "well exit" in said

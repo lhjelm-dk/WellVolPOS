@@ -37,6 +37,7 @@ from .chance import ReferenceContour
 from .chance import p_well as _p_well
 from .classes import split_trials
 from .groups import group_trials
+from .stats import MIN_SUPPORT, bootstrap_mean_ci, thin
 from .structure import AreaDepth
 
 
@@ -45,6 +46,28 @@ def _spread(values: np.ndarray) -> float:
     if values.size == 0:
         return 0.0
     return float(np.percentile(values, 90.0) - np.percentile(values, 10.0))
+
+
+def _sweep_grid(
+    ts: TrialSet, z_min: float | None, z_max: float | None, n: int
+) -> np.ndarray:
+    """The depth grid both sweeps run on, so they cannot disagree about it.
+
+    Defaults run from just above the shallowest successful contact -- so the
+    chance curves visibly saturate towards 1 rather than starting mid-rise --
+    down to the deepest. Explicit bounds are taken literally and never padded,
+    which is what lets a caller zoom a sweep to exactly the interval the sliders
+    are showing.
+    """
+    res, contact = ts.col("resource"), ts.col("contact")
+    success = res > 0.0
+    if not success.any():
+        raise ValueError("no successful trials to sweep")
+    pad_lo = z_min is None
+    lo = float(contact[success].min()) if z_min is None else float(z_min)
+    hi = float(contact[success].max()) if z_max is None else float(z_max)
+    pad = 0.03 * (hi - lo) if pad_lo and hi > lo else 0.0
+    return np.linspace(lo - pad, hi, max(int(n), 1))
 
 
 @dataclass
@@ -105,16 +128,8 @@ def run_sweep(
     outcome, which the entered POS does not change.
     """
     res = ts.col("resource")
-    contact = ts.col("contact")
+    z = _sweep_grid(ts, z_min, z_max, n)
     success = res > 0.0
-    if not success.any():
-        raise ValueError("no successful trials to sweep")
-
-    pad_lo = z_min is None
-    lo = float(contact[success].min()) if z_min is None else float(z_min)
-    hi = float(contact[success].max()) if z_max is None else float(z_max)
-    pad = 0.03 * (hi - lo) if pad_lo and hi > lo else 0.0
-    z = np.linspace(lo - pad, hi, max(int(n), 1))
 
     prospect_spread = _spread(res)
 
@@ -172,9 +187,21 @@ class VolumeSweep:
 
     Companion to :class:`Sweep`, kept separate because it needs the recovered
     area-depth curve (:class:`wellvolpos.core.structure.AreaDepth`) that the
-    reference-engine sweep does not. Drives B1 (volume split vs location) and
-    B2 (chance vs regret); ``p_proven_exceeds_mefs`` / ``p_attic_exceeds_mefs``
-    are ``None`` unless a ``mefs`` threshold is supplied.
+    reference-engine sweep does not. Drives B1 (volume split vs location),
+    B2 (chance vs regret) and B6 (the inverse);
+    ``p_proven_exceeds_mefs`` / ``p_attic_exceeds_mefs`` are ``None`` unless a
+    ``mefs`` threshold is supplied.
+
+    ``n_discovery`` / ``n_dry`` are the sample sizes each step's conditional
+    statistics rest on, and they collapse down-dip: on the reference data the
+    discovery group falls from 4 576 trials to 8. Carrying them means a figure
+    can decline to draw what it cannot support, instead of every depth getting
+    the same line width -- see :mod:`wellvolpos.core.stats`.
+
+    ``pos_prospect`` and ``reference`` are carried for the same reason
+    :class:`Sweep` carries them: the conventions that produced a curve must
+    travel with it, or a figure cannot state which reference contour it used
+    (non-negotiable 5).
     """
 
     z: np.ndarray
@@ -187,6 +214,14 @@ class VolumeSweep:
     mefs: float | None
     p_proven_exceeds_mefs: np.ndarray | None
     p_attic_exceeds_mefs: np.ndarray | None
+    n_discovery: np.ndarray
+    n_dry: np.ndarray
+    pos_prospect: float
+    reference: ReferenceContour
+    # Bootstrap band on the proven mean, or None when n_boot was 0.
+    proven_mean_lo: np.ndarray | None = None
+    proven_mean_hi: np.ndarray | None = None
+    alpha: float | None = None
 
 
 def run_volume_sweep(
@@ -201,24 +236,23 @@ def run_volume_sweep(
     z_min: float | None = None,
     z_max: float | None = None,
     n: int = 60,
+    n_boot: int = 0,
+    alpha: float = 0.10,
+    seed: int | None = 0,
 ) -> VolumeSweep:
     """Sweep entry depth with a fixed entry-to-exit spacing, splitting each step.
 
     A lower ``n`` than :func:`run_sweep`'s default is deliberate: each step
     here also runs :func:`wellvolpos.core.classes.split_trials`, so this is
     the more expensive of the two sweeps.
-    """
-    res = ts.col("resource")
-    contact = ts.col("contact")
-    success = res > 0.0
-    if not success.any():
-        raise ValueError("no successful trials to sweep")
 
-    pad_lo = z_min is None
-    lo = float(contact[success].min()) if z_min is None else float(z_min)
-    hi = float(contact[success].max()) if z_max is None else float(z_max)
-    pad = 0.03 * (hi - lo) if pad_lo and hi > lo else 0.0
-    z = np.linspace(lo - pad, hi, max(int(n), 1))
+    ``n_boot`` > 0 adds a percentile bootstrap band around the proven mean,
+    resampled *within* each step's discovery group -- so the band widens by
+    itself where the group is small, which is exactly where the curve deserves
+    less trust. It is off by default because the band costs another resampling
+    pass per step and B1 does not need it.
+    """
+    z = _sweep_grid(ts, z_min, z_max, n)
     # The exit is not clipped to the deepest sampled contact. Clipping bought
     # nothing numerically -- an exit at or below every sampled contact gives
     # LKH = contact either way -- and it broke two things: a sweep whose z_max
@@ -231,8 +265,12 @@ def run_volume_sweep(
     proven_mean = np.full(z.size, np.nan)
     possible_mean = np.full(z.size, np.nan)
     attic_mean = np.full(z.size, np.nan)
+    n_disc = np.zeros(z.size, dtype=int)
+    n_dry = np.zeros(z.size, dtype=int)
     p_proven_ex = np.full(z.size, np.nan) if mefs is not None else None
     p_attic_ex = np.full(z.size, np.nan) if mefs is not None else None
+    boot_lo = np.full(z.size, np.nan) if n_boot > 0 else None
+    boot_hi = np.full(z.size, np.nan) if n_boot > 0 else None
 
     for i, zi in enumerate(z):
         zx = float(z_exit[i])
@@ -244,13 +282,20 @@ def run_volume_sweep(
 
         groups_i = group_trials(ts, float(zi), zx)
         vc = split_trials(ts, ad, groups_i, float(zi), zx)
+        n_disc[i] = int(groups_i.discovery.sum())
+        n_dry[i] = int(groups_i.dry_with_attic.sum())
 
-        if groups_i.discovery.any():
-            proven_mean[i] = float(vc.proven[groups_i.discovery].mean())
+        if n_disc[i]:
+            proven = vc.proven[groups_i.discovery]
+            proven_mean[i] = float(proven.mean())
             possible_mean[i] = float(vc.possible[groups_i.discovery].mean())
             if mefs is not None:
-                p_proven_ex[i] = float((vc.proven[groups_i.discovery] > mefs).mean())
-        if groups_i.dry_with_attic.any():
+                p_proven_ex[i] = float((proven > mefs).mean())
+            if n_boot > 0:
+                boot_lo[i], boot_hi[i] = bootstrap_mean_ci(
+                    proven, n_boot=n_boot, alpha=alpha, seed=seed
+                )
+        if n_dry[i]:
             attic_mean[i] = float(vc.attic[groups_i.dry_with_attic].mean())
             if mefs is not None:
                 p_attic_ex[i] = float((vc.attic[groups_i.dry_with_attic] > mefs).mean())
@@ -259,4 +304,260 @@ def run_volume_sweep(
         z=z, z_exit=z_exit, z_gap=float(z_gap), p_well=pw,
         proven_mean=proven_mean, possible_mean=possible_mean, attic_mean=attic_mean,
         mefs=mefs, p_proven_exceeds_mefs=p_proven_ex, p_attic_exceeds_mefs=p_attic_ex,
+        n_discovery=n_disc, n_dry=n_dry,
+        pos_prospect=float(pos_prospect), reference=reference,
+        proven_mean_lo=boot_lo, proven_mean_hi=boot_hi,
+        alpha=float(alpha) if n_boot > 0 else None,
     )
+
+
+# ------------------------------------------------------------------ inverse
+@dataclass
+class InverseResult:
+    """B6: the depth a well must reach to prove a given volume, and its cost.
+
+    ``achievable`` is False when no location on the swept structure proves the
+    target -- asking for more than the closure holds is a legitimate question
+    with "nowhere" as its legitimate answer, and returning the deepest depth
+    instead would quietly answer a different one.
+
+    ``z_lo`` / ``z_hi`` bracket the requirement using the bootstrap band on the
+    proven mean: the optimistic edge of the band reaches the target shallower,
+    the pessimistic edge deeper. They are ``None`` unless the sweep was run with
+    ``n_boot`` > 0.
+    """
+
+    target: float
+    achievable: bool
+    z_required: float | None
+    p_well_at: float | None
+    z_lo: float | None = None
+    z_hi: float | None = None
+    n_discovery_at: int | None = None
+    # False when the target is already met at the shallowest swept location, so
+    # it imposes no requirement at all. Distinguished from achievable=True
+    # because "anywhere on the structure does this" is a different answer from
+    # "you must get down to 3500 m".
+    binds: bool = True
+
+    def message(self) -> str:
+        if not self.achievable:
+            return (
+                f"No location on this structure proves {self.target:.2f} MMboe on the mean — "
+                f"the deepest well-supported entry does not reach it."
+            )
+        if not self.binds:
+            return (
+                f"{self.target:.2f} MMboe is already proven at the shallowest swept location "
+                f"({self.z_required:.0f} m TVDSS), so it imposes no constraint on the well."
+            )
+        band = ""
+        if self.z_lo is not None and self.z_hi is not None and np.isfinite([self.z_lo, self.z_hi]).all():
+            band = f" (band {self.z_lo:.0f}–{self.z_hi:.0f} m)"
+        return (
+            f"Proving {self.target:.2f} MMboe on the mean needs entry at "
+            f"{self.z_required:.0f} m TVDSS{band}, where P_well is {self.p_well_at:.1%}."
+        )
+
+
+def _required_depth(x: np.ndarray, y: np.ndarray, level: float) -> float | None:
+    """Shallowest depth from which ``y`` never again falls below ``level``.
+
+    Not the first touch of the level, which is the obvious reading and the wrong
+    one. "Deeper proves more" is a geological monotonicity, but a *sampled*
+    proven-mean curve violates it wherever the discovery group is small -- even
+    after under-supported steps are dropped, the reference data still steps
+    down by 0.45 MMboe in places. Inverting the first crossing then returns a
+    depth that deeper locations contradict, which is no basis for a well
+    proposal.
+
+    Taking the last crossing of the running minimum from the deep end instead
+    makes the answer a guarantee: at the depth returned, and at every deeper
+    depth still supported by trials, the proven mean is at least ``level``.
+    That is conservative -- it can sit a step deeper than the first touch -- and
+    conservative is the right direction for a requirement.
+    """
+    ok = np.isfinite(y)
+    if not ok.any():
+        return None
+    xs, ys = np.asarray(x, dtype=float)[ok], np.asarray(y, dtype=float)[ok]
+    # Running minimum looking deeper: rev_min[i] = min(ys[i:])
+    rev_min = np.minimum.accumulate(ys[::-1])[::-1]
+    holds = rev_min >= level
+    if not holds.any():
+        return None
+    j = int(np.argmax(holds))
+    if j == 0:
+        return float(xs[0])
+    # Interpolate on the guarantee curve, so the reported depth is the point at
+    # which the guarantee actually starts rather than the grid node after it.
+    y0, y1 = rev_min[j - 1], rev_min[j]
+    if y1 == y0:
+        return float(xs[j])
+    frac = (level - y0) / (y1 - y0)
+    return float(xs[j - 1] + frac * (xs[j] - xs[j - 1]))
+
+
+def _supported_proven(vsweep: VolumeSweep, min_support: int) -> np.ndarray:
+    """The proven-mean curve with under-supported steps removed.
+
+    The inverse reads the same curve the figures draw. Inverting the raw curve
+    instead let B6 answer at 3688 m from a mean of two trials, in a region B1
+    and B2 decline to draw at all -- and gave sampling noise at the deep end
+    the appearance of the structure running out of volume.
+    """
+    return thin(vsweep.proven_mean, vsweep.n_discovery, min_support)
+
+
+def invert_volume_target(
+    vsweep: VolumeSweep,
+    target: float,
+    *,
+    min_support: int = MIN_SUPPORT,
+    ts: TrialSet | None = None,
+    reference_percentile: float = 0.90,
+) -> InverseResult:
+    """Given a volume to prove, where must the well go and what does it cost?
+
+    The fourth question in CLAUDE.md's list, and the source workbook's H38-H40
+    block as a curve. Inverts the proven-mean-versus-depth relationship: deeper
+    entry proves more, because a deeper reservoir entry means the well's lowest
+    known hydrocarbon sits further down the area-depth curve -- and costs
+    chance, because ``r_location`` falls monotonically with depth. Both halves
+    of that trade are reported together; the depth alone would be half an answer.
+
+    Pass ``ts`` to have ``P_well`` evaluated exactly at the required depth by
+    :func:`wellvolpos.core.chance.p_well`, using the conventions the sweep
+    already carries. Without it the value is interpolated off the sweep grid,
+    which on a 60-step grid disagrees with tab 4's own figure by up to 0.2
+    percentage points -- small, but a visible disagreement about one well.
+    """
+    curve = _supported_proven(vsweep, min_support)
+    z_req = _required_depth(vsweep.z, curve, float(target))
+    if z_req is None:
+        return InverseResult(target=float(target), achievable=False, z_required=None, p_well_at=None)
+
+    if ts is not None:
+        p_at = _p_well(
+            ts, z_req, vsweep.pos_prospect,
+            reference=vsweep.reference, reference_percentile=reference_percentile,
+        ).p_well
+    else:
+        p_at = float(np.interp(z_req, vsweep.z, vsweep.p_well))
+
+    # The support behind the answer is the *deeper* bracketing step, not an
+    # average across the bracket: that is the step whose thinness would make
+    # the crossing untrustworthy.
+    j = int(np.searchsorted(vsweep.z, z_req))
+    n_at = int(vsweep.n_discovery[min(j, vsweep.n_discovery.size - 1)])
+
+    # The optimistic edge of the band (hi) reaches the target shallower, so it
+    # supplies the shallow end of the requirement.
+    z_lo = z_hi = None
+    if vsweep.proven_mean_hi is not None and vsweep.proven_mean_lo is not None:
+        z_lo = _required_depth(
+            vsweep.z, thin(vsweep.proven_mean_hi, vsweep.n_discovery, min_support), float(target)
+        )
+        z_hi = _required_depth(
+            vsweep.z, thin(vsweep.proven_mean_lo, vsweep.n_discovery, min_support), float(target)
+        )
+    binds = z_req > float(vsweep.z[np.isfinite(curve)][0]) + 1e-9 if np.isfinite(curve).any() else True
+    return InverseResult(
+        target=float(target), achievable=True, z_required=z_req, p_well_at=float(p_at),
+        z_lo=z_lo, z_hi=z_hi, n_discovery_at=n_at, binds=binds,
+    )
+
+
+def volume_target_curve(
+    vsweep: VolumeSweep,
+    targets: np.ndarray | None = None,
+    n: int = 40,
+    *,
+    min_support: int = MIN_SUPPORT,
+    ts: TrialSet | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """The whole inverse as a curve: (targets, required depth, P_well there).
+
+    B6 draws this rather than a single answer, because the interesting content
+    is the *shape* of the trade -- how fast chance is given up per extra MMboe
+    demanded, and where the curve turns vertical because the structure has run
+    out of volume to prove. The default target range spans the *supported*
+    proven means only, so the curve never offers a volume the tool would refuse
+    to draw elsewhere.
+    """
+    curve = _supported_proven(vsweep, min_support)
+    finite = curve[np.isfinite(curve)]
+    if finite.size == 0:
+        return np.array([]), np.array([]), np.array([])
+    if targets is None:
+        # The ceiling is the *deepest* supported proven mean, not the curve's
+        # peak. Under the guarantee convention in _required_depth nothing above
+        # that can be promised: if the curve peaks and then dips, the peak is a
+        # volume some single location happens to prove, not one the well can be
+        # relied on to prove. Generating targets up to the peak would put points
+        # on B6 that the inverse then reports as unachievable.
+        targets = np.linspace(float(finite.min()), float(finite[-1]), max(int(n), 2))
+    targets = np.asarray(targets, dtype=float)
+
+    z_req = np.full(targets.size, np.nan)
+    p_at = np.full(targets.size, np.nan)
+    for i, t in enumerate(targets):
+        res = invert_volume_target(vsweep, float(t), min_support=min_support, ts=ts)
+        if res.achievable:
+            z_req[i] = res.z_required
+            p_at[i] = res.p_well_at
+    return targets, z_req, p_at
+
+
+def volume_target_band(
+    vsweep: VolumeSweep,
+    targets: np.ndarray,
+    *,
+    min_support: int = MIN_SUPPORT,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Required-depth band implied by the bootstrap band on the proven mean.
+
+    Lives here rather than in either figure because it is arithmetic, and both
+    backends must invert the band by exactly the same code path as the curve --
+    two subtly different implementations of an inversion is how a matplotlib
+    export and an on-screen plot come to disagree.
+    """
+    if vsweep.proven_mean_lo is None or vsweep.proven_mean_hi is None:
+        empty = np.full(np.asarray(targets).size, np.nan)
+        return empty, empty.copy()
+    hi_curve = thin(vsweep.proven_mean_hi, vsweep.n_discovery, min_support)
+    lo_curve = thin(vsweep.proven_mean_lo, vsweep.n_discovery, min_support)
+    z_lo = np.full(np.asarray(targets).size, np.nan)
+    z_hi = np.full(np.asarray(targets).size, np.nan)
+    for i, t in enumerate(np.asarray(targets, dtype=float)):
+        a = _required_depth(vsweep.z, hi_curve, float(t))
+        b = _required_depth(vsweep.z, lo_curve, float(t))
+        if a is not None:
+            z_lo[i] = a
+        if b is not None:
+            z_hi[i] = b
+    return z_lo, z_hi
+
+
+def find_crossing(
+    z: np.ndarray, a: np.ndarray, b: np.ndarray
+) -> float | None:
+    """Depth where curves ``a`` and ``b`` cross, or None if they never do.
+
+    B2's crossings are the argument the figure exists to make -- the depth at
+    which the chance of success stops outweighing the regret of leaving volume
+    up-dip -- so they are found rather than eyeballed, the same way the Haskett
+    optimum is an argmax rather than a reading off a chart.
+    """
+    ok = np.isfinite(a) & np.isfinite(b)
+    if ok.sum() < 2:
+        return None
+    zs, d = np.asarray(z)[ok], np.asarray(a)[ok] - np.asarray(b)[ok]
+    sign_change = np.signbit(d[:-1]) != np.signbit(d[1:])
+    if not sign_change.any():
+        return None
+    j = int(np.argmax(sign_change))
+    d0, d1 = d[j], d[j + 1]
+    if d1 == d0:
+        return float(zs[j])
+    return float(zs[j] - d0 * (zs[j + 1] - zs[j]) / (d1 - d0))

@@ -74,6 +74,19 @@ def colour(role: str, dark: bool = False) -> str:
     return p[ROLES.get(role, role)]
 
 
+def rgba(role: str, alpha: float, dark: bool = False) -> str:
+    """A role's colour as a plotly ``rgba(...)`` string at the given alpha.
+
+    Exists so a translucent fill on the interactive path comes from the same
+    role lookup as the opaque line beside it. Hardcoding an rgba literal is how
+    a fill ends up frozen at its light-mode value while everything around it
+    follows the palette.
+    """
+    hex_colour = colour(role, dark).lstrip("#")
+    r, g, b = (int(hex_colour[i : i + 2], 16) for i in (0, 2, 4))
+    return f"rgba({r},{g},{b},{alpha})"
+
+
 def apply(dark: bool = False) -> dict[str, str]:
     """Set matplotlib rcParams for the project. Returns the palette in use."""
     p = palette(dark)

@@ -21,6 +21,7 @@ from .figures import (
     fig_b3_uncertainty_reduction,
     fig_b4_chance_waterfall,
     fig_b5_allocation_dumbbell,
+    fig_b6_inverse,
 )
 from .interactive import (
     pfig_a1_area_depth,
@@ -35,6 +36,7 @@ from .interactive import (
     pfig_b3_uncertainty_reduction,
     pfig_b4_chance_waterfall,
     pfig_b5_allocation_dumbbell,
+    pfig_b6_inverse,
     row_zlim,
 )
 from .theme import (
@@ -55,9 +57,11 @@ __all__ = [
     "fig_a4_resource_vs_depth", "fig_a5_exceedance", "fig_a6_overlap",
     "fig_b0_section", "fig_b1_volume_split", "fig_b2_chance_vs_regret",
     "fig_b3_uncertainty_reduction", "fig_b4_chance_waterfall", "fig_b5_allocation_dumbbell",
+    "fig_b6_inverse",
     # plotly / interactive
     "pfig_a1_area_depth", "pfig_a2_outcome_tree", "pfig_a3_chance_decomposition",
     "pfig_a4_resource_vs_depth", "pfig_a5_exceedance", "pfig_a6_overlap",
     "pfig_b0_section", "pfig_b1_volume_split", "pfig_b2_chance_vs_regret",
     "pfig_b3_uncertainty_reduction", "pfig_b4_chance_waterfall", "pfig_b5_allocation_dumbbell",
+    "pfig_b6_inverse",
 ]

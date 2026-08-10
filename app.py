@@ -27,6 +27,7 @@ import streamlit as st
 
 from wellvolpos.core import (
     ELEMENTS,
+    MIN_SUPPORT,
     SCHEME_LABELS,
     SHIPPED_SCHEMES,
     AreaDepth,
@@ -35,14 +36,17 @@ from wellvolpos.core import (
     apply_min_column_height,
     class_summary,
     compare_definitions,
+    describe_support,
     group_summary,
     group_trials,
+    invert_volume_target,
     p_well,
     run_sweep,
     run_volume_sweep,
     split_trials,
     spread_at_fixed_column,
     volume_percentile_threshold,
+    volume_target_curve,
 )
 from wellvolpos.io.adapters import read_trials
 from wellvolpos.io.qc import run_qc
@@ -60,6 +64,7 @@ from wellvolpos.viz import (
     pfig_b3_uncertainty_reduction,
     pfig_b4_chance_waterfall,
     pfig_b5_allocation_dumbbell,
+    pfig_b6_inverse,
     row_zlim,
 )
 
@@ -95,6 +100,24 @@ st.set_page_config(page_title="WellVolPOS", layout="wide", page_icon="🛢")
 def _load(path: str):
     ts = read_trials(path)
     return ts, run_qc(ts)
+
+
+@st.cache_data(show_spinner=False)
+def _volume_sweep(path: str, pos: float, gap: float, mefs: float, reference: str):
+    """The proven/possible sweep, cached on the settings that determine it.
+
+    The most expensive computation on the page -- it re-splits every trial at
+    every one of sixty depths and bootstraps each step -- and B6's slider does
+    not change any of its inputs. Keyed on ``path`` plus the scalars rather than
+    on the TrialSet, because a dataclass holding a DataFrame is not hashable and
+    the file path already identifies the trials.
+    """
+    ts_, _ = _load(path)
+    ad_ = AreaDepth.from_trials(ts_.col("contact"), ts_.col("area"))
+    return run_volume_sweep(
+        ts_, ad_, pos, z_gap=gap, mefs=mefs,
+        reference=ReferenceContour(reference), n_boot=400,
+    )
 
 
 def _badge(level: str) -> str:
@@ -293,8 +316,8 @@ with tabs[2]:
             _chart(pfig_a1_area_depth(ad, current_entry=entry, current_exit=exit_, zlim=zrow_prospect), key="a1")
         with c2:
             _chart(pfig_a4_resource_vs_depth(
-                    ts, current_entry=entry, mefs=mefs, zlim=zrow_prospect,
-                    show_depth_labels=False,
+                    ts, current_entry=entry, current_exit=exit_, mefs=mefs,
+                    zlim=zrow_prospect, show_depth_labels=False,
                 ), key="a4")
         with c3:
             _chart(pfig_a5_exceedance(ts, groups, vc, mefs=mefs), key="a5")
@@ -407,7 +430,7 @@ def _location_sweep_tab():
 
     st.divider()
     with st.spinner("Sweeping the volume split…"):
-        vsweep = run_volume_sweep(ts, ad, pos, z_gap=gap, mefs=mefs, reference=ref)
+        vsweep = _volume_sweep(str(path), pos, gap, mefs, ref.value)
     d1, d2, d3 = st.columns(3)
     with d1:
         _chart(pfig_b0_section(ad, z_entry=entry, z_exit=exit_, zlim=zrow_sweep), key="b0")
@@ -419,10 +442,66 @@ def _location_sweep_tab():
         _chart(pfig_b2_chance_vs_regret(
                 vsweep, current_z=entry, zlim=zrow_sweep, show_depth_labels=False
             ), key="b2")
+    # Both conditional groups, because they thin at opposite ends: the discovery
+    # group fails down-dip, the dry-with-attic group up-dip where almost nothing
+    # is dry. Reporting only the first left the missing top of B1's orange curve
+    # unexplained.
+    sup_disc = describe_support(vsweep.n_discovery, vsweep.z, name="discovery")
+    sup_dry = describe_support(vsweep.n_dry, vsweep.z, name="dry-with-attic")
     st.caption(
         f"B1/B2 sweep entry with a fixed {vsweep.z_gap:.0f} m entry-to-exit spacing, on the same "
-        f"depth range as the row above. B6 (inverse: volume-to-prove → required entry) lands in "
-        f"phase 4."
+        f"depth range as the row above. B2's dotted rule marks where those two particular curves "
+        f"meet — it is not a risked comparison, since P_well is unconditional and the regret "
+        f"curve is conditional on a dry *and* charged outcome. {sup_disc.message()} "
+        f"{sup_dry.message()}"
+    )
+
+    _inverse_section(vsweep, ts)
+
+
+@st.fragment
+def _inverse_section(vsweep, ts):
+    """B6, in its own fragment.
+
+    The volume-to-prove slider must not re-run either sweep: at n=60 with a
+    bootstrap that is the most expensive thing on the page, and CLAUDE.md's rule
+    is that dragging a slider does not recompute everything. The sweeps are
+    cached besides, so this is belt and braces.
+    """
+    st.divider()
+    st.subheader("Inverse — given a volume to prove, where must the well go?")
+    # The *supported* range: offering a target the tool would refuse to draw in
+    # B1/B2 would be inviting a requirement it will not stand behind.
+    targets, _, _ = volume_target_curve(vsweep, n=2)
+    if targets.size == 0:
+        st.warning("No proven-volume curve to invert on this sweep.")
+        return
+    lo_t, hi_t = float(targets[0]), float(targets[-1])
+    default_t = float(np.clip(15.76, lo_t, hi_t))
+    target = st.slider(
+        "Volume to prove — mean proven (MMboe)",
+        lo_t, hi_t, default_t, max((hi_t - lo_t) / 100.0, 0.01),
+        help=(
+            "The mean proven volume the well must establish. B6 returns the shallowest entry "
+            "depth from which the proven mean stays at or above it all the way down — a "
+            "guarantee rather than a first touch, because the sampled curve dips where the "
+            "discovery group is small. The range covers only well-supported volumes."
+        ),
+    )
+    inv = invert_volume_target(vsweep, target, ts=ts)
+    st.markdown(f"**{inv.message()}**")
+    if inv.achievable and inv.n_discovery_at is not None and inv.n_discovery_at < MIN_SUPPORT:
+        st.warning(
+            f"That depth rests on only {inv.n_discovery_at:,} discovery trials, below the "
+            f"{MIN_SUPPORT}-trial floor — treat the requirement as indicative, not surveyed."
+        )
+    _chart(pfig_b6_inverse(vsweep, target=target, ts=ts), key="b6")
+    st.caption(
+        "The workbook's H38–H40 block as a curve. Marker colour is P_well at that depth — the "
+        "cost side of the trade — because a second y-axis is not allowed and the trade is the "
+        "point. The shaded band is the bootstrap interval on the proven mean, inverted through "
+        "the same curve, so it widens down-dip where the discovery group thins. The level is "
+        "nominal: a percentile bootstrap under-covers on small skewed samples."
     )
 
 
