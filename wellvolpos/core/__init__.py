@@ -6,6 +6,7 @@ from .chance import (
     ReferenceContour,
     allocate,
     cube_root_factor,
+    expected_volume,
     normalised_weights,
     p_well,
     r_location,
@@ -44,7 +45,7 @@ from .threshold import (
 __all__ = [
     "AreaDepth", "group_trials", "group_summary", "split_trials", "class_summary",
     "check_area_pay_correlation",
-    "r_location", "p_well", "allocate", "cube_root_factor", "ReferenceContour",
+    "r_location", "p_well", "allocate", "cube_root_factor", "expected_volume", "ReferenceContour",
     "ELEMENTS", "SCHEMES", "SCHEME_LABELS", "SHIPPED_SCHEMES", "normalised_weights",
     "waterfall_steps",
     "Sweep", "run_sweep", "VolumeSweep", "run_volume_sweep",

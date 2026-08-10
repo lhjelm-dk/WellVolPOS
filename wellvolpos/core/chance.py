@@ -183,6 +183,23 @@ def allocate(
     return revised, warnings
 
 
+def expected_volume(mean: float, chance: float) -> float:
+    """A success-case mean multiplied by the chance of getting it.
+
+    The source workbook's column O, "'Risked' Pmean" (`Results!O4:O8`), and the
+    only volume figure in this tool that is **additive across prospects** -- two
+    success-case means cannot be added, because each is conditional on its own
+    outcome, whereas two expected volumes can.
+
+    It is deliberately *not* the headline anywhere. An expected volume of 7.6
+    MMboe describes no outcome that can actually occur: the well either finds
+    something near 16.5 or it finds nothing. Quoting it alone hides both the
+    chance and the size, which is why the app shows it beside them rather than
+    instead of them. It is what a portfolio adds up, not what a well finds.
+    """
+    return float(mean) * float(chance)
+
+
 def cube_root_factor(r: float) -> float:
     """The source workbook's ``Results!V15``.
 

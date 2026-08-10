@@ -54,6 +54,7 @@ from .theme import (
 )
 
 __all__ = [
+    "pfig_concepts",
     "pfig_map_view",
     "pfig_a1_area_depth",
     "pfig_a2_outcome_tree",
@@ -980,4 +981,146 @@ def pfig_b6_inverse(
         fig, zlim or (float(np.nanmin(z_req)), float(np.nanmax(z_req))),
         title="Required entry depth (m TVDSS)", show_ticklabels=show_depth_labels,
     )
+    return fig
+
+
+# ----------------------------------------------------- the concepts figure
+def pfig_concepts(
+    ad: AreaDepth, ts: TrialSet, groups: Groups, vc: VolumeClasses, *,
+    z_entry: float, z_exit: float,
+    pos_prospect: float, p_well: float, mefs: float | None = None,
+    dark: bool = False, height: int = 640,
+):
+    """The teaching figure: the same volumes in section and in distribution.
+
+    A structural section on the left, the matching exceedance curves on the
+    right, one colour per concept across both, and braces under the curves
+    showing how each range nests inside the next:
+
+        up-dip ⊂ tested by well ⊂ well associated ⊂ prospect
+
+    This is the one figure in the project that is deliberately a *composite*
+    rather than a standalone panel, because the pairing is the content. The
+    section makes the geometry obvious and the exceedance curves make the
+    consequence obvious, and it is seeing them together, in one colour scheme,
+    that makes the point land.
+
+    **The exceedance curves are risked**, and that is the whole trick. Plotting
+    the *risked* distribution -- zeros standing in for the outcomes that do not
+    occur -- makes each curve start at its own chance rather than at 100 %: the
+    prospect curve begins at ``pos_prospect``, the well-associated curve at
+    ``p_well``. So the two POS values are not annotations bolted on, they are
+    where the curves physically start, and the vertical gap between those two
+    starts *is* the location penalty. Which is the argument the tool exists to
+    make: you drill a well, not a prospect.
+    """
+    p = palette(dark)
+    res = ts.col("resource")
+    fig = make_subplots(
+        rows=1, cols=2, column_widths=[0.32, 0.68], horizontal_spacing=0.11,
+        subplot_titles=("Section through the well", "The same volumes, as exceedance curves"),
+    )
+
+    # ---------------------------------------------------------------- section
+    halfwidth = np.sqrt(np.maximum(ad.a, 0.0))
+    z = ad.z
+
+    def band(lo: float, hi: float, role: str, label: str) -> None:
+        m = (z >= lo) & (z <= hi)
+        if m.sum() < 2:
+            return
+        fig.add_scatter(
+            x=np.concatenate([-halfwidth[m], halfwidth[m][::-1]]),
+            y=np.concatenate([z[m], z[m][::-1]]),
+            fill="toself", fillcolor=rgba(role, 0.55, dark), mode="lines",
+            line=dict(width=0), showlegend=False, hoverinfo="skip", row=1, col=1,
+        )
+        fig.add_annotation(
+            x=0, y=0.5 * (max(lo, ad.shallowest) + min(hi, ad.deepest)), text=label,
+            showarrow=False, font=dict(size=9, color=p["text"]), row=1, col=1,
+        )
+
+    band(ad.shallowest, z_entry, "up_dip", "up-dip")
+    band(z_entry, z_exit, "tested", "tested")
+    band(z_exit, ad.deepest, "possible", "possible")
+    for sign in (1, -1):
+        fig.add_scatter(x=sign * halfwidth, y=z, mode="lines", showlegend=False,
+                        line=dict(color=p["text_secondary"], width=1), hoverinfo="skip",
+                        row=1, col=1)
+    fig.add_scatter(
+        x=[0, 0], y=[z_entry, z_exit], mode="lines", name="Well",
+        line=dict(color=p["well"], width=6), showlegend=False,
+        hovertemplate="well " + DEPTH_HOVER + "<extra></extra>", row=1, col=1,
+    )
+    fig.add_annotation(x=0, y=z_entry, text="WELL", showarrow=False, yshift=16,
+                       font=dict(size=11, color=p["well"]), row=1, col=1)
+
+    # ------------------------------------------------- risked exceedance curves
+    risked = [
+        ("Prospect resource potential", res, "prospect"),
+        ("Well associated resource potential",
+         np.where(groups.discovery, res, 0.0), "well_associated"),
+        ("Resource tested by well", np.where(groups.discovery, vc.proven, 0.0), "tested"),
+        ("Up-dip volume", np.where(groups.dry_with_attic, res, 0.0), "up_dip"),
+    ]
+    spans: dict[str, tuple[float, float, str]] = {}
+    for name, values, role in risked:
+        v, pct = _exceedance(values)
+        fig.add_scatter(
+            x=v, y=pct, mode="lines", name=name,
+            line=dict(color=colour(role, dark), width=2.6),
+            hovertemplate=name + "<br>%{y:.1f}% chance of exceeding %{x:.2f} MMboe<extra></extra>",
+            row=1, col=2,
+        )
+        positive = v[v > 0]
+        if positive.size:
+            spans[name] = (float(positive.min()), float(positive.max()), role)
+
+    # The two POS values, drawn where the curves actually start.
+    for value, label, role in (
+        (pos_prospect, "Asso. Final Prospect POS", "prospect"),
+        (p_well, "Asso. Well POS", "well_associated"),
+    ):
+        fig.add_hline(
+            y=value * 100.0, line=dict(color=colour(role, dark), width=1, dash="dot"),
+            annotation_text=f"{label} {value:.0%}", annotation_position="top right",
+            annotation_font=dict(size=10, color=colour(role, dark)), row=1, col=2,
+        )
+    if mefs is not None:
+        fig.add_vline(
+            x=mefs, line=dict(color=colour("minimum", dark), width=1.2, dash="dot"),
+            annotation_text="min. volume", annotation_position="top",
+            annotation_font=dict(size=10, color=colour("minimum", dark)), row=1, col=2,
+        )
+
+    # ------------------------------------------------------- the nesting braces
+    # Below the 0 % line, widest at the bottom, so the containment reads at a
+    # glance: each range sits inside the one under it.
+    order = ["Up-dip volume", "Resource tested by well",
+             "Well associated resource potential", "Prospect resource potential"]
+    step, base = 7.5, -9.0
+    for i, name in enumerate(order):
+        if name not in spans:
+            continue
+        lo, hi, role = spans[name]
+        y = base - i * step
+        col_ = colour(role, dark)
+        fig.add_scatter(x=[lo, hi], y=[y, y], mode="lines", showlegend=False,
+                        hoverinfo="skip", line=dict(color=col_, width=2.5), row=1, col=2)
+        for xx in (lo, hi):
+            fig.add_scatter(x=[xx, xx], y=[y - 1.8, y + 1.8], mode="lines", showlegend=False,
+                            hoverinfo="skip", line=dict(color=col_, width=2.5), row=1, col=2)
+        fig.add_annotation(x=hi, y=y, text=f"  {name}", showarrow=False, xanchor="left",
+                           font=dict(size=9, color=col_), row=1, col=2)
+
+    fig.update_layout(
+        title="Concepts — the same volumes in section and in distribution",
+        showlegend=False,
+    )
+    fig.update_xaxes(title_text="Schematic width (∝ √area)", showticklabels=False, row=1, col=1)
+    fig.update_xaxes(title_text="Recoverable resource (MMboe)", rangemode="tozero", row=1, col=2)
+    fig.update_yaxes(title_text="Probability of exceedance (%)",
+                     range=[base - len(order) * step - 3.0, 107.0], row=1, col=2)
+    apply_plotly(fig, dark, height)
+    depth_axis_plotly(fig, (ad.shallowest, ad.deepest), row=1, col=1)
     return fig

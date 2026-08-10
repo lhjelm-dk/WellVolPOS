@@ -458,3 +458,98 @@ def test_a4_uses_the_same_percentile_convention_as_a1(reduced):
     assert named["Mean"].line.color == colour("prospect")
     for k in ("P90", "P50", "P10"):
         assert named[k].line.color == palette()["muted"]
+
+
+# ------------------------------------------------- the concepts teaching figure
+@pytest.fixture(scope="module")
+def concepts(area_depth, reduced, groups, vc):
+    from wellvolpos.core import p_well as p_well_fn
+
+    ch = p_well_fn(reduced, ENTRY, POS)
+    return I.pfig_concepts(
+        area_depth, reduced, groups, vc, z_entry=ENTRY, z_exit=EXIT,
+        pos_prospect=POS, p_well=ch.p_well, mefs=14.0,
+    ), ch
+
+
+def test_concepts_risked_curves_start_at_their_own_chance(concepts):
+    """The whole trick of the figure, and the reason it teaches the decomposition.
+
+    Plotting the *risked* distribution -- zeros for the outcomes that do not
+    happen -- makes each curve begin at its own chance rather than at 100 %. The
+    two POS values are then where the curves physically start, and the gap
+    between them is the location penalty rather than a caption.
+    """
+    fig, ch = concepts
+    starts = {}
+    for t in fig.data:
+        if t.name in ("Prospect resource potential", "Well associated resource potential",
+                      "Up-dip volume"):
+            x = np.asarray(t.x, dtype=float)
+            y = np.asarray(t.y, dtype=float)
+            starts[t.name] = float(y[x > 0].max())
+    assert starts["Prospect resource potential"] == pytest.approx(100 * POS, abs=1e-6)
+    assert starts["Well associated resource potential"] == pytest.approx(100 * ch.p_well, abs=1e-6)
+    # Up-dip starts at P(dry and charged) = POS - P_well.
+    assert starts["Up-dip volume"] == pytest.approx(100 * (POS - ch.p_well), abs=1e-6)
+
+
+def test_concepts_marks_both_pos_values_where_the_curves_start(concepts):
+    fig, ch = concepts
+    said = " ".join(a.text or "" for a in fig.layout.annotations)
+    assert "Asso. Final Prospect POS" in said
+    assert "Asso. Well POS" in said
+    assert f"{POS:.0%}" in said
+    assert f"{ch.p_well:.0%}" in said
+
+
+def test_concepts_braces_nest_from_narrowest_to_widest(concepts):
+    """up-dip inside tested inside well associated inside prospect. Drawn widest
+    at the bottom, so the containment is visible rather than asserted."""
+    fig, _ = concepts
+    order = ["Up-dip volume", "Resource tested by well",
+             "Well associated resource potential", "Prospect resource potential"]
+    # Each brace is a horizontal 2-point segment below the 0 % line.
+    braces = {}
+    for t in fig.data:
+        if t.x is not None and len(t.x) == 2 and t.y is not None and len(t.y) == 2:
+            y0, y1 = float(t.y[0]), float(t.y[1])
+            if y0 == y1 and y0 < 0:
+                braces[round(y0, 3)] = (float(t.x[0]), float(t.x[1]))
+    assert len(braces) == len(order)
+    rows = [braces[k] for k in sorted(braces, reverse=True)]   # shallowest brace first
+    widths = [hi - lo for lo, hi in rows]
+    assert widths == sorted(widths), "braces must widen downward"
+
+
+def test_concepts_uses_one_colour_per_concept_across_both_panels(concepts):
+    """The pairing only teaches if the section and the curves agree on colour."""
+    fig, _ = concepts
+    curve_colour = {t.name: t.line.color for t in fig.data if t.name and t.line}
+    assert curve_colour["Prospect resource potential"] == colour("prospect")
+    assert curve_colour["Well associated resource potential"] == colour("well_associated")
+    assert curve_colour["Resource tested by well"] == colour("tested")
+    assert curve_colour["Up-dip volume"] == colour("up_dip")
+    # The section's bands carry the same roles, as translucent fills.
+    fills = [t.fillcolor for t in fig.data if t.fillcolor]
+    for role in ("up_dip", "tested", "possible"):
+        assert any(rgba_of(role) in (f or "") for f in fills), role
+
+
+def rgba_of(role):
+    from wellvolpos.viz.theme import rgba
+
+    return rgba(role, 0.55).rsplit(",", 1)[0]
+
+
+def test_concepts_section_keeps_depth_on_y_inverted(concepts):
+    """It is a section, so non-negotiable 2 applies to its left panel."""
+    fig, _ = concepts
+    assert is_depth_axis_correct_plotly(fig, "yaxis")
+
+
+def test_concepts_probability_axis_leaves_room_for_the_braces(concepts):
+    fig, _ = concepts
+    lo, hi = fig.layout.yaxis2.range
+    assert hi >= 100.0
+    assert lo < 0.0, "the braces are drawn below the 0 % line"

@@ -38,6 +38,7 @@ from wellvolpos.core import (
     apply_min_column_height,
     class_summary,
     compare_definitions,
+    expected_volume,
     describe_support,
     group_summary,
     group_trials,
@@ -67,6 +68,7 @@ from wellvolpos.viz import (
     pfig_b4_chance_waterfall,
     pfig_b5_allocation_dumbbell,
     pfig_b6_inverse,
+    pfig_concepts,
     pfig_map_view,
     row_zlim,
 )
@@ -423,9 +425,42 @@ with tabs[1]:
 
 with tabs[2]:
     st.subheader("Well location")
+
     if has_area:
         cs = class_summary(vc, groups)
-        st.metric("Proven mean — headline KPI", f"{cs['proven']['mean']:.2f} MMboe")
+        gs = group_summary(ts, groups)
+        # The two numbers a well proposal is actually made on, side by side with
+        # the two the prospect is described by — because they are what this tool
+        # exists to distinguish. A discovery-case mean is not comparable with a
+        # prospect mean, and P_well is not comparable with POS.
+        k = st.columns(4)
+        k[0].metric("Proven mean — headline KPI", f"{cs['proven']['mean']:.2f}",
+                    help="MMboe. What this well would establish between entry and exit.")
+        k[1].metric("Well associated mean", f"{gs['discovery']['mean']:.2f}",
+                    help="MMboe. The whole accumulation given a discovery — Rose's 'Downdip'.")
+        k[2].metric("P well", f"{chance.p_well:.1%}",
+                    help="POS prospect × r location. The chance THIS well finds hydrocarbons.")
+        k[3].metric("Attic mean | dry & charged", f"{cs['attic_dry_hole']['mean']:.2f}",
+                    help="MMboe left up-dip if the well is dry but the prospect is charged.")
+
+        # Expected volumes: mean × chance. Additive across prospects, and the
+        # only figures here that are — but they describe no outcome that can
+        # occur, so they sit below the success-case means, never instead of them.
+        e = st.columns(3)
+        e[0].metric("Expected prospect volume",
+                    f"{expected_volume(gs['prospect']['mean'], chance.pos_prospect):.2f}")
+        e[1].metric("Expected well associated",
+                    f"{expected_volume(gs['discovery']['mean'], chance.p_well):.2f}")
+        e[2].metric("Expected proven",
+                    f"{expected_volume(cs['proven']['mean'], chance.p_well):.2f}")
+        st.caption(
+            "MMboe. **Expected** volumes are mean × chance — the source workbook's "
+            "\"'Risked' Pmean\" column. They are what a portfolio adds up, and they describe no "
+            "outcome that can happen: this well either finds something near "
+            f"{gs['discovery']['mean']:.1f} or it finds nothing. Quote them beside the chance and "
+            "the size, never instead of them."
+        )
+
     c = st.columns(4)
     c[0].metric("POS prospect", f"{chance.pos_prospect:.4f}")
     c[1].metric("r location", f"{chance.r_location:.4f}")
@@ -464,6 +499,21 @@ with tabs[2]:
             hide_index=True,
             width="stretch",
         )
+        st.divider()
+        _chart(pfig_concepts(
+                ad, ts, groups, vc, z_entry=entry, z_exit=exit_,
+                pos_prospect=chance.pos_prospect, p_well=chance.p_well, mefs=mefs,
+            ), key="concepts")
+        st.caption(
+            "**The concepts, in one picture.** Left: where each volume sits in the structure. "
+            "Right: the same four volumes as *risked* exceedance curves — zeros included for the "
+            "outcomes that do not happen, so each curve starts at its own chance rather than at "
+            "100 %. That is why the prospect curve begins at "
+            f"{chance.pos_prospect:.0%} and the well-associated curve at {chance.p_well:.0%}: the "
+            "vertical gap between those two starts **is** the location penalty. The braces show "
+            "the nesting — up-dip inside tested inside well associated inside prospect."
+        )
+
         st.divider()
         c1, c2 = st.columns(2)
         with c1:
