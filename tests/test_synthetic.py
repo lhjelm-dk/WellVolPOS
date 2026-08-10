@@ -154,9 +154,24 @@ def test_the_correlated_file_makes_the_split_guard_speak(tmp_path):
     for an unqualified answer."""
     ts = _read(correlated_area_pay(4_000), tmp_path, "correlated")
     level, message, r = check_area_pay_correlation(ts)
-    assert level == "fail"
+    assert level == "warn"
     assert r > 0.5
     assert "not defensible" in message and "reference grouping" in message
+
+
+def test_a_correlated_file_is_not_blocked_by_the_qc_gate(tmp_path):
+    """Decided 2026-08-10, and this is the test that pins it. The correlation
+    disqualifies the *extension* only -- the reference engine groups whole trials
+    and apportions nothing, so it does not rest on the assumption at all. Failing
+    the gate closed the whole app and hid a result that was still valid, so the
+    check warns loudly and names what to read instead."""
+    ts = _read(correlated_area_pay(4_000), tmp_path, "qc_corr")
+    report = run_qc(ts)
+    assert not report.blocked
+    assert report.worst == "warn"
+    check = next(c for c in report.checks if "correlation" in c.name)
+    assert check.level == "warn"
+    assert "reference grouping" in check.message
 
 
 def test_the_independent_file_leaves_the_guard_silent(tmp_path):

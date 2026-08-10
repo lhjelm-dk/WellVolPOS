@@ -67,7 +67,6 @@ class Case:
 
     # --- presentation, which changes no number -----------------------------
     area_scale: str = "area"
-    dark: bool = False
     map_interval: float = 50.0
     map_azimuth_deg: float = 35.0
 

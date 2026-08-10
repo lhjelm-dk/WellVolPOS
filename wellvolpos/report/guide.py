@@ -16,7 +16,7 @@ from wellvolpos.core import commercial_chance, expected_volume, no_regrets, thic
 from wellvolpos.viz import pfig_colour_key
 
 
-def render(*, ts, ad, groups, vc, chance, mefs, entry, exit_, pos_source, dark=False):
+def render(*, ts, ad, groups, vc, chance, mefs, entry, exit_, pos_source):
     """Draw the guide. Live numbers throughout, from the loaded trial set."""
     st.subheader("Theory, definitions and references")
     st.caption(
@@ -52,7 +52,7 @@ conflation in **206 cells**, not one.
     # ----------------------------------------------------------- the volumes
     st.divider()
     st.markdown("### The volumes, and the colour each one always has")
-    st.plotly_chart(pfig_colour_key(dark=dark), width="stretch", theme=None, key="colourkey")
+    st.plotly_chart(pfig_colour_key(), width="stretch", theme=None, key="colourkey")
     st.info(
         "**They nest**: minimum ⊂ up-dip ⊂ tested ⊂ well associated ⊂ prospect. And **a chance "
         "takes the colour of the volume it is the chance of** — P_well is olive like the "

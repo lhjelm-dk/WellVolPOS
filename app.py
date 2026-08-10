@@ -21,7 +21,6 @@ Run with:  streamlit run app.py
 
 from __future__ import annotations
 
-from functools import partial
 from pathlib import Path
 
 import numpy as np
@@ -37,6 +36,7 @@ from wellvolpos.core import (
     ReferenceContour,
     allocate,
     apply_min_column_height,
+    check_area_pay_correlation,
     class_summary,
     compare_definitions,
     expected_volume,
@@ -105,35 +105,14 @@ CONVENTION_PROVENANCE = {
 st.set_page_config(page_title="WellVolPOS", layout="wide", page_icon="🛢")
 
 
-# -------------------------------------------------------------- dark mode
-def _dark() -> bool:
-    """True when Streamlit is rendering the page dark.
-
-    Read from the running context rather than offered as a toggle. A toggle can
-    disagree with the page it sits on, and a dark figure on a light page is worse
-    than no dark mode at all. Change it the usual way — the ☰ menu, *Settings*,
-    *Theme* — and the figures follow.
-
-    Dark is a *selected palette* in ``viz/theme.py``, not an inversion of the
-    light one (design plan §7.2): the hues are the same volume-concept hues, with
-    the lightnesses re-tuned until every pair that can share a figure still
-    survives simulated colour-vision deficiency.
-    """
-    try:
-        return str(getattr(st.context.theme, "type", "light")).lower() == "dark"
-    except Exception:                                  # no context, e.g. under pytest
-        return False
-
-
-DARK = _dark()
-if DARK:
-    # Bound once, here, instead of adding ``dark=DARK`` to eighteen call sites
-    # where the nineteenth would eventually be forgotten — and a figure drawn in
-    # the wrong palette is a figure whose colours no longer mean what the key
-    # says they mean (non-negotiable 3).
-    _ns = globals()
-    for _name in [n for n in list(_ns) if n.startswith("pfig_")]:
-        _ns[_name] = partial(_ns[_name], dark=True)
+# Dark mode was built and then dropped, on Lars's instruction (2026-08-10). The
+# app draws in the light palette only. ``viz/theme.py`` keeps its dark palette and
+# every figure still takes a ``dark`` keyword -- they cost nothing, the
+# colour-vision-deficiency test in ``tests/test_axes.py`` exercises both, and the
+# export path can use them -- but nothing here selects it, and it should not be
+# rebuilt without asking. What made it not worth having was that Streamlit's own
+# chrome follows its theme setting while the figures had to be told separately, so
+# the two could disagree; one palette cannot.
 
 
 # ------------------------------------------------------------------ loading
@@ -413,6 +392,19 @@ if has_area:
     ad = AreaDepth.from_trials(ts.col("contact"), ts.col("area"))
     vc = split_trials(ts, ad, groups, entry, exit_)
 
+
+# The correlation check warns rather than fails (decided 2026-08-10), because the
+# assumption it tests belongs to the extension alone and blocking closed the
+# reference engine with it. Warning in the QC list is not enough on its own: the
+# reader who goes straight to tab ③ never sees that list, so the caveat is raised
+# again wherever the split's own numbers are drawn.
+_split_level, _split_message, _split_r = check_area_pay_correlation(ts)
+
+
+def _split_caveat() -> None:
+    if _split_level == "warn" and np.isfinite(_split_r) and abs(_split_r) >= 0.5:
+        st.warning(f"**The proven/possible split is not defensible on this data.** {_split_message}")
+
 with tabs[1]:
     st.subheader("Prospect — the un-cut model")
     res_all = ts.col("resource")
@@ -518,6 +510,7 @@ with tabs[1]:
 
 with tabs[2]:
     st.subheader("Well location")
+    _split_caveat()
 
     if has_area:
         cs = class_summary(vc, groups)
@@ -626,6 +619,7 @@ with tabs[2]:
 @st.fragment
 def _location_sweep_tab():
     st.subheader("Location sweep")
+    _split_caveat()
     # The sweeps carry the well's *own* entry-to-exit spacing, so a swept
     # location is the same well moved up or down the structure. Left at a
     # default gap, B1's proven curve would disagree with the headline KPI in
@@ -712,7 +706,7 @@ def _current_case() -> Case:
         reference=ref.value, scheme=scheme,
         min_column_height=float(ss.get("w_min_col", 0.0)),
         chance_table=dict(elements),
-        area_scale=area_scale, dark=DARK,
+        area_scale=area_scale,
         map_interval=float(ss.get("w_map_interval", 50.0)),
         map_azimuth_deg=float(ss.get("w_map_azimuth", 35.0)),
         dataset=str(choice), n_trials=ts.n_trials, fingerprint=fingerprint(ts),
@@ -977,7 +971,7 @@ with tabs[5]:
     render_guide(
         ts=ts, ad=ad if has_area else None, groups=groups,
         vc=vc if has_area else None, chance=chance, mefs=mefs,
-        entry=entry, exit_=exit_, pos_source=pos_source, dark=DARK,
+        entry=entry, exit_=exit_, pos_source=pos_source,
     )
 
 st.divider()

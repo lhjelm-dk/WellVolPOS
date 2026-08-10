@@ -334,7 +334,7 @@ def workbook_bytes(b: Bundle) -> bytes:
 
 
 # -------------------------------------------------------------------- figures
-def build_figures(b: Bundle, *, dark: bool | None = None) -> dict[str, object]:
+def build_figures(b: Bundle, *, dark: bool = False) -> dict[str, object]:
     """Draw the whole matplotlib set for this bundle.
 
     One place that knows which figures an export contains, so the PDF, the ZIP
@@ -342,11 +342,14 @@ def build_figures(b: Bundle, *, dark: bool | None = None) -> dict[str, object]:
     a productive-area column are skipped rather than faked when the export has
     none.
 
+    ``dark`` is plumbed through but never selected: the app dropped dark mode and
+    draws light only. It is kept because ``viz/theme.py`` still carries the dark
+    palette and an export is the one place a dark figure could make sense.
+
     The caller owns the returned figures and must close them --
     :func:`pdf_bytes` and :func:`figures_zip` do; a dozen live figures per rerun
     is how a Streamlit session runs matplotlib out of memory.
     """
-    dark = b.case.dark if dark is None else dark
     c, ch, sc = b.case, b.chance, b.case.scheme
     figs: dict[str, object] = {}
 
@@ -469,13 +472,11 @@ def pdf_bytes(b: Bundle) -> bytes:
     cover = None
     try:
         with PdfPages(buf) as pdf:
-            cover, ax = F.new_figure(figsize=(11.7, 8.3), dark=b.case.dark) \
-                if hasattr(F, "new_figure") else (None, None)
-            if cover is not None:
-                ax.axis("off")
-                ax.text(0.0, 1.0, _cover_text(b), va="top", ha="left", fontsize=9,
-                        family="monospace", wrap=True, transform=ax.transAxes)
-                pdf.savefig(cover)
+            cover, ax = new_figure(figsize=(11.7, 8.3))
+            ax.axis("off")
+            ax.text(0.0, 1.0, _cover_text(b), va="top", ha="left", fontsize=9,
+                    family="monospace", transform=ax.transAxes)
+            pdf.savefig(cover)
             for name, fig in figs.items():
                 pdf.savefig(fig)
             info = pdf.infodict()

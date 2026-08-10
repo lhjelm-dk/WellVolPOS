@@ -115,6 +115,15 @@ def check_area_pay_correlation(ts: TrialSet) -> tuple[str, str, float]:
     means the down-dip part of a closure carries thicker pay than the up-dip
     part, so apportioning resource by area alone understates the deep volume.
     Schneider et al. (2023) show this materially changes the conclusion.
+
+    **Never worse than ``warn``, decided 2026-08-10.** It was a ``fail``, and any
+    fail closes the analysis tabs -- so a strongly correlated export locked the
+    whole app, including the *reference* engine, which apportions nothing and is
+    entirely unaffected by this assumption. Blocking there hides a result that is
+    still valid. The correct behaviour is to disqualify the extension loudly and
+    let the reference engine be read, which is what the message says to do. The
+    synthetic correlated file in :mod:`wellvolpos.io.synthetic` is what made this
+    visible; no real export in ``data/`` triggers it.
     """
     if not (ts.has("area") and ts.has("gross_pay")):
         return "warn", "Cannot check area/net-pay correlation: area or gross pay not exported.", float("nan")
@@ -127,4 +136,11 @@ def check_area_pay_correlation(ts: TrialSet) -> tuple[str, str, float]:
         return "pass", f"Area and gross pay are effectively independent (r = {r:+.3f}); the uniform-yield split is sound.", r
     if abs(r) < 0.5:
         return "warn", f"Area and gross pay are moderately correlated (r = {r:+.3f}); the split understates the depth dependence of pay.", r
-    return "fail", f"Area and gross pay are strongly correlated (r = {r:+.3f}); apportioning resource by area alone is not defensible. Use the reference grouping engine.", r
+    return (
+        "warn",
+        f"Area and gross pay are strongly correlated (r = {r:+.3f}); apportioning resource by "
+        f"area alone is not defensible on this data. **Read the reference grouping engine and "
+        f"disregard the proven/possible split** — the reference engine groups whole trials and "
+        f"apportions nothing, so it does not rest on this assumption.",
+        r,
+    )

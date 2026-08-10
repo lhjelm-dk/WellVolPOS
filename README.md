@@ -30,7 +30,7 @@ The short version:
 ```bash
 python -m venv .venv && .venv/Scripts/Activate.ps1   # Windows
 pip install -r requirements.txt
-pytest                 # the specification — 338 passed
+pytest                 # the specification — 339 passed
 streamlit run app.py   # opens on the bundled demo data
 ```
 
@@ -75,7 +75,7 @@ roughly 40 % too low.
 | 3 | Chance table, reference contours, allocation schemes, B4/B5, threshold mapping | **done** |
 | 4 | Inverse tool, optimum finders, bootstrap bands | **done** |
 | — | The teaching layer: map view, concepts figure, reservoir-thickness inversion, Rose's three quantities, theory & guide tab | **done** |
-| 5 | Export, dark mode, case save/load, synthetic generators, docs | **done** |
+| 5 | Export, case save/load, synthetic generators, docs | **done** |
 
 Six tabs, all live. Every interactive figure has a matplotlib twin for the export
 path, and a test compares the two modules so a new figure cannot skip it.
@@ -149,11 +149,6 @@ Every artefact carries the same stamp: the POS in force **and where it came
 from**, `r_location`, `P_well`, the well, the reference contour, the allocation
 scheme and the threshold volume. A caption can be cropped out of a screenshot; a
 cover page cannot be cropped out of a file.
-
-Dark mode follows Streamlit's own theme setting rather than a separate toggle —
-a toggle can disagree with the page it sits on. Dark is a *selected* palette, not
-an inversion: the same volume-concept hues, with lightnesses re-tuned so every
-pair that can share a figure still survives simulated colour-vision deficiency.
 
 ---
 
