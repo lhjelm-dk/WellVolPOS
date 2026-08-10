@@ -4,9 +4,17 @@ import numpy as np
 import pytest
 
 from wellvolpos.core import ReferenceContour, allocate, cube_root_factor, p_well, r_location
-from wellvolpos.core.chance import SCHEMES
+from wellvolpos.core.chance import (
+    ELEMENTS,
+    SCHEMES,
+    SHIPPED_SCHEMES,
+    normalised_weights,
+    waterfall_steps,
+)
 
 from .conftest import ENTRY
+
+TABLE = {"charge": 0.92, "trap": 0.94, "reservoir": 0.95, "retention": 0.93}
 
 
 def test_r_location_is_conditional_on_success(reduced):
@@ -86,3 +94,86 @@ def test_floor_warning_fires():
     _, warnings = allocate({"charge": 0.15, "trap": 0.9, "reservoir": 0.9, "retention": 0.9},
                            0.05, "equal_cube_root")
     assert any("floor" in w for w in warnings)
+
+
+# ------------------------------------------------------- normalised weights
+def test_shipped_scheme_weights_are_zero_or_normalised_to_one():
+    for scheme in SHIPPED_SCHEMES:
+        w, _ = normalised_weights(scheme)
+        total = sum(w.values())
+        assert total == pytest.approx(0.0) or total == pytest.approx(1.0)
+
+
+def test_partial_weights_are_normalised_not_taken_at_face_value():
+    """The bug this guards: reading a raw weight sum of 0.6 and then adding a
+    separate r^0.4 term double-counts the location factor, because allocate has
+    already scaled those weights up to sum to 1."""
+    w, notes = normalised_weights({"charge": 0.3, "trap": 0.3})
+    assert sum(w.values()) == pytest.approx(1.0)
+    assert w["charge"] == pytest.approx(0.5)
+    assert any("normalised" in n for n in notes)
+
+
+# ------------------------------------------------------------ B4 waterfall
+@pytest.mark.parametrize("scheme", SHIPPED_SCHEMES)
+def test_waterfall_total_is_p_well_from_the_real_function(reduced, scheme):
+    """Cross-checked against p_well itself, not against the waterfall's own product.
+
+    This is the assertion that catches a waterfall drawn from the chance table
+    while the app's P_well comes from the trials: the two ran 0.6017 against
+    0.4576 on the demo data, and a self-consistency check passed throughout.
+    """
+    pos = 0.7605
+    expected = p_well(reduced, ENTRY, pos).p_well
+    steps = waterfall_steps(TABLE, r_location(reduced, ENTRY)[0], pos, scheme)
+    total = float(np.prod([f for _, f, _ in steps]))
+    assert total == pytest.approx(expected, abs=1e-12)
+
+
+@pytest.mark.parametrize("pos", [0.7605, 0.60, 1.0])
+@pytest.mark.parametrize("scheme", SHIPPED_SCHEMES)
+def test_waterfall_total_holds_for_any_pos_and_scheme(pos, scheme):
+    r = 0.6017094
+    steps = waterfall_steps(TABLE, r, pos, scheme)
+    assert float(np.prod([f for _, f, _ in steps])) == pytest.approx(pos * r, abs=1e-12)
+
+
+def test_waterfall_names_a_reconciliation_step_when_the_table_disagrees_with_pos():
+    """A table that does not multiply to the POS in use is the normal case when
+    the trials carry the risking. The gap has to be named, not absorbed."""
+    steps = waterfall_steps(TABLE, 0.6017094, 0.7605, "none")
+    roles = [role for _, _, role in steps]
+    assert "reconcile" in roles
+    labels = [lab for lab, _, role in steps if role == "reconcile"]
+    assert labels == ["POS reconciliation"]
+
+
+def test_waterfall_has_no_reconciliation_step_when_the_table_is_the_pos():
+    pos = float(np.prod([TABLE[e] for e in ELEMENTS]))
+    steps = waterfall_steps(TABLE, 0.6017094, pos, "none")
+    assert "reconcile" not in [role for _, _, role in steps]
+
+
+def test_waterfall_reports_r_separately_only_under_the_none_scheme():
+    r = 0.6017094
+    none_steps = waterfall_steps(TABLE, r, 0.7605, "none")
+    standalone = [f for lab, f, role in none_steps if role == "location" and lab.startswith("Location")]
+    assert standalone == [pytest.approx(r)]
+
+    for scheme in ("equal_cube_root", "all_to_trap"):
+        steps = waterfall_steps(TABLE, r, 0.7605, scheme)
+        assert not [lab for lab, _, role in steps if role == "location" and lab.startswith("Location")]
+        # ...but the location penalty is still shown, attached to the elements
+        # that carry it, rather than vanishing into them silently.
+        assert [lab for lab, _, role in steps if role == "location"]
+
+
+def test_waterfall_attaches_the_penalty_to_the_elements_a_scheme_weights():
+    steps = waterfall_steps(TABLE, 0.6017094, 0.7605, "all_to_trap")
+    carriers = [lab.split(" ")[0] for lab, _, role in steps if role == "location"]
+    assert carriers == ["Trap"]
+
+    steps = waterfall_steps(TABLE, 0.6017094, 0.7605, "equal_cube_root")
+    carriers = [lab.split(" ")[0] for lab, _, role in steps if role == "location"]
+    assert carriers == ["Charge", "Trap", "Retention"]      # reservoir exempt
+    assert "Reservoir" not in carriers

@@ -135,22 +135,14 @@ def run_sweep(
         groups_i = group_trials(ts, float(zi), float(zi) + z_gap)
         discovery = groups_i.discovery
 
-        # The outcome tree is risked onto the *entered* POS, not onto the trial
-        # file's own zero count. The two coincide only when pos_prospect is
-        # POS_trials; under any real chance table they do not, and A2 would
-        # otherwise contradict A3 in the same row -- the same conflation as
-        # CLAUDE.md's "one idea", running the other way. Pinning the discovery
-        # mass to p_well makes the two figures incapable of disagreeing.
-        #
-        # dry-with-attic then absorbs the rest of the success mass, which is
-        # also what the Rose reference contour means: a well at or up-dip of the
-        # P90-area contour is taken as certain to find hydrocarbons if any are
-        # present, so the dry-with-attic outcome shrinks to match.
-        n_disc = int(discovery.sum())
-        seen_frac = float(groups_i.contact_seen.sum()) / n_disc if n_disc else 0.0
-        share_seen[i] = pw[i] * seen_frac
-        share_past[i] = pw[i] * (1.0 - seen_frac)
-        share_dry[i] = pos_prospect - pw[i]
+        # The outcome tree is risked onto the *entered* POS via risked_shares,
+        # not onto the trial file's own zero count -- see Groups.risked_shares
+        # for why: the two coincide only when pos_prospect is POS_trials, and
+        # under any real chance table they do not.
+        risked = groups_i.risked_shares(pos_prospect, pw[i])
+        share_seen[i] = risked["contact_seen"]
+        share_past[i] = risked["hc_to_exit"]
+        share_dry[i] = risked["dry_with_attic"]
 
         p_disc = float(discovery.mean())
         disc_spread = _spread(res[discovery])

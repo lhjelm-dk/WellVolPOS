@@ -119,6 +119,37 @@ SCHEME_LABELS = {
     "custom": "Custom weights",
 }
 
+# The schemes the app offers, in the order it offers them. Named rather than
+# sliced off SCHEME_LABELS positionally, so adding "custom" (or any other
+# label) cannot silently reorder or change what the UI presents.
+SHIPPED_SCHEMES = ("none", "equal_cube_root", "all_to_trap")
+
+
+def normalised_weights(
+    weights: dict[str, float] | str = "none",
+) -> tuple[dict[str, float], list[str]]:
+    """Resolve a scheme name or a weight dict to weights summing to 1, or all zero.
+
+    Split out of :func:`allocate` because the waterfall needs the *same*
+    normalised weights in order to work out how much of the location factor
+    the elements have already absorbed. Reading the raw ``SCHEMES`` table
+    instead would double-count it for any weight set that does not already
+    sum to 1.
+    """
+    if isinstance(weights, str):
+        if weights not in SCHEMES:
+            raise KeyError(f"unknown scheme {weights!r}; choose from {sorted(SCHEMES)} or pass weights")
+        w = dict(SCHEMES[weights])
+    else:
+        w = dict(weights)
+
+    total = sum(w.values())
+    notes: list[str] = []
+    if total > 0 and abs(total - 1.0) > 1e-9:
+        w = {k: v / total for k, v in w.items()}
+        notes.append(f"Weights summed to {total:.3f}; normalised to 1.")
+    return w, notes
+
 
 def allocate(
     elements: dict[str, float],
@@ -137,18 +168,7 @@ def allocate(
 
     Returns ``(revised_elements, warnings)``.
     """
-    if isinstance(weights, str):
-        if weights not in SCHEMES:
-            raise KeyError(f"unknown scheme {weights!r}; choose from {sorted(SCHEMES)} or pass weights")
-        w = dict(SCHEMES[weights])
-    else:
-        w = dict(weights)
-
-    total = sum(w.values())
-    warnings: list[str] = []
-    if total > 0 and abs(total - 1.0) > 1e-9:
-        w = {k: v / total for k, v in w.items()}
-        warnings.append(f"Weights summed to {total:.3f}; normalised to 1.")
+    w, warnings = normalised_weights(weights)
 
     revised = {}
     for el in ELEMENTS:
@@ -173,3 +193,60 @@ def cube_root_factor(r: float) -> float:
     fill / spill / retention / charge statement, not a reservoir-presence one.
     """
     return float(r ** (1.0 / 3.0))
+
+
+# ---------------------------------------------------------------- waterfall
+# (label, factor, role) -- role is "chance", "location" or "reconcile"
+WaterfallStep = tuple[str, float, str]
+
+
+def waterfall_steps(
+    elements: dict[str, float],
+    r: float,
+    pos_prospect: float,
+    weights: dict[str, float] | str = "none",
+) -> list[WaterfallStep]:
+    """The multiplicative steps from 1.0 down to ``P_well``, for B4.
+
+    The arithmetic lives here rather than in the figure so that the product of
+    the returned factors is **exactly** ``pos_prospect * r`` by construction,
+    and so it can be tested without a plotting library. A figure that merely
+    computed its own running product could -- and did -- end up drawing a total
+    that disagreed with the ``P_well`` shown elsewhere in the app.
+
+    Three kinds of step:
+
+    ``chance``
+        One per geological element, at its entered value.
+    ``location``
+        The location factor, or the share of it a scheme has pushed onto an
+        element. Split out rather than folded silently into the element,
+        because "which elements carry the location penalty" is one of the
+        questions the tool exists to answer.
+    ``reconcile``
+        Present only when the entered chance table does not multiply to the
+        POS actually in use -- which is the normal case when the trials carry
+        the risking and the table is display-only. Naming it is the point: the
+        alternative is a waterfall that quietly totals something other than
+        ``P_well``.
+    """
+    w, _ = normalised_weights(weights)
+    steps: list[WaterfallStep] = []
+
+    prod_elements = 1.0
+    for el in ELEMENTS:
+        base = float(elements.get(el, 1.0))
+        prod_elements *= base
+        steps.append((el.capitalize(), base, "chance"))
+        wi = float(w.get(el, 0.0))
+        if wi > 0.0:
+            steps.append((f"{el.capitalize()} · r^{wi:.2f}", float(r ** wi), "location"))
+
+    if prod_elements > 0.0 and abs(prod_elements - pos_prospect) > 1e-12:
+        steps.append(("POS reconciliation", pos_prospect / prod_elements, "reconcile"))
+
+    residual = 1.0 - sum(w.values())
+    if residual > 1e-9:
+        label = "Location (r)" if residual >= 1.0 - 1e-9 else f"Location (r^{residual:.2f})"
+        steps.append((label, float(r ** residual), "location"))
+    return steps

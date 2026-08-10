@@ -42,12 +42,50 @@ class Groups:
         return int(self.success.size)
 
     def shares(self) -> dict[str, float]:
+        """The trial file's *own* outcome shares -- 1 - this mask's chance_failure
+        share is POS_trials, not the entered POS_prospect. Use
+        :meth:`risked_shares` wherever the number is shown next to a P_well
+        that came from an entered chance table, or the two will disagree
+        exactly the way CLAUDE.md's "one idea" warns against.
+        """
         return {
             "chance_failure": float(self.chance_failure.mean()),
             "dry_with_attic": float(self.dry_with_attic.mean()),
             "contact_seen": float(self.contact_seen.mean()),
             "hc_to_exit": float(self.hc_to_exit.mean()),
             "p_well": float(self.discovery.mean()),
+        }
+
+    def risked_shares(self, pos_prospect: float, p_well: float) -> dict[str, float]:
+        """The four outcome shares, risked onto ``pos_prospect`` / ``p_well``.
+
+        Discovery mass is pinned to ``p_well`` and split into contact-seen /
+        HC-to-exit using this mask's own *proportions* (not its raw counts),
+        so the result partitions to 1.0 and cannot disagree with a P_well
+        computed from the same ``pos_prospect`` -- the fix behind A2's outcome
+        tree, generalised so the same number can be shown anywhere else in the
+        app without re-deriving it.
+
+        Dry-with-attic absorbs the residual success mass, ``pos_prospect -
+        p_well``. That is also exactly what the Rose reference contour means: at
+        or up-dip of the P90-area contour ``r_location`` caps at 1.0, so the
+        residual goes to zero and the dry-with-attic outcome disappears -- a
+        well that high on the structure finds hydrocarbons whenever the prospect
+        has any.
+
+        Preconditions, unchecked because nothing in the app can violate them:
+        ``0 <= p_well <= pos_prospect <= 1``. ``r_location <= 1`` always, so
+        ``p_well`` cannot exceed ``pos_prospect``; a ``p_well`` larger than
+        ``pos_prospect`` would return a negative dry-with-attic share.
+        """
+        n_disc = int(self.discovery.sum())
+        seen_frac = float(self.contact_seen.sum()) / n_disc if n_disc else 0.0
+        return {
+            "chance_failure": 1.0 - pos_prospect,
+            "dry_with_attic": pos_prospect - p_well,
+            "contact_seen": p_well * seen_frac,
+            "hc_to_exit": p_well * (1.0 - seen_frac),
+            "p_well": p_well,
         }
 
 

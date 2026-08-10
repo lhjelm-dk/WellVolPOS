@@ -1,12 +1,12 @@
-"""Reference-engine and extension figures: A1-A6, B0-B3.
+"""Reference-engine and extension figures: A1-A6, B0-B5.
 
 Every figure here is built on :func:`wellvolpos.viz.theme.new_figure` so
 palette and rcParams can never drift between figures, and every axis that
-carries a depth goes through :func:`wellvolpos.viz.theme.depth_axis`. A5 and
-A6 are the figures in this set with no depth on either axis (both are about
-the resource distribution itself, not where it sits structurally), so they
-are the two that do not call it -- see ``tests/test_axes.py`` and
-``tests/test_figures.py``.
+carries a depth goes through :func:`wellvolpos.viz.theme.depth_axis`. A5, A6,
+B4 and B5 are the figures in this set with no depth on either axis (all four
+are about chance or the resource distribution, not where either sits
+structurally), so they are the ones that do not call it -- see
+``tests/test_axes.py`` and ``tests/test_figures.py``.
 
 Colour is assigned by meaning throughout, per ``theme.ROLES``: the two chance
 curves in A3 and the single curve in B3 both use the discovery/chance blue
@@ -15,13 +15,17 @@ percentile trend and A1's area-depth curve both use the prospect aqua because
 they characterise the whole un-cut model, not any one outcome; A5's and B1's
 series map onto the canonical roles directly; A2's stacked outcome tree and
 B0's schematic section colour-key the same four outcomes; B2 layers the
-chance/regret curves onto the same roles as A5/B1.
+chance/regret curves onto the same roles as A5/B1; B4's waterfall and B5's
+"at the well" markers both use the chance/discovery blue, since every bar and
+every revised point in those two figures is a chance, not an outcome.
 """
 
 from __future__ import annotations
 
 import numpy as np
 
+from ..core.chance import ELEMENTS, SCHEME_LABELS, SHIPPED_SCHEMES, allocate
+from ..core.chance import waterfall_steps as chance_waterfall_steps
 from ..core.classes import VolumeClasses
 from ..core.groups import Groups
 from ..core.structure import AreaDepth
@@ -40,6 +44,8 @@ __all__ = [
     "fig_b1_volume_split",
     "fig_b2_chance_vs_regret",
     "fig_b3_uncertainty_reduction",
+    "fig_b4_chance_waterfall",
+    "fig_b5_allocation_dumbbell",
 ]
 
 
@@ -143,15 +149,24 @@ def fig_a2_outcome_tree(sweep: Sweep, *, current_z: float | None = None, dark: b
 
 
 def fig_a3_chance_decomposition(
-    sweep: Sweep, *, pos_trials: float | None = None, current_z: float | None = None, dark: bool = False,
+    sweep: Sweep, *, pos_prospect: float | None = None, pos_trials: float | None = None,
+    current_z: float | None = None, dark: bool = False,
 ):
-    """P_well and r_location vs entry depth, POS_trials as a rule.
+    """P_well and r_location vs entry depth, POS as a rule.
 
     Both curves are the same quantity's family -- a chance -- so both use
     the discovery/chance blue; solid for P_well, dashed for r_location. This
     is the figure that makes the decomposition in CLAUDE.md's "one idea
     everything rests on" impossible to misread: the two lines never touch
     except at the crest, and only P_well answers "will this well work".
+
+    ``pos_prospect`` is the POS actually in use -- the one the curves are built
+    from. ``pos_trials`` is the trial file's own implied POS, and is drawn as a
+    second rule only when the two differ, which happens as soon as a chance
+    table is entered instead of the trials being taken as already risked. The
+    two used to share one argument labelled "POS_trials", which meant that
+    entering a chance table drew a rule at the entered value under the file's
+    label.
     """
     fig, ax = new_figure(figsize=(6, 5), dark=dark)
     p = palette(dark)
@@ -161,10 +176,17 @@ def fig_a3_chance_decomposition(
     ax.plot(sweep.r_location * 100.0, sweep.z, color=c, lw=1.4, ls="--",
             label="r = P(contact deeper | HC present)")
 
-    if pos_trials is not None:
-        ax.axvline(pos_trials * 100.0, color=p["muted"], ls=":", lw=1.0)
-        ax.text(pos_trials * 100.0, sweep.z.min(), f" POS$_{{trials}}$ {pos_trials:.3f}",
+    def _pos_rule(value: float, label: str, ls: str) -> None:
+        ax.axvline(value * 100.0, color=p["muted"], ls=ls, lw=1.0)
+        ax.text(value * 100.0, sweep.z.min(), f" {label} {value:.3f}",
                 rotation=90, va="top", ha="right", fontsize=7, color=p["text_secondary"])
+
+    if pos_prospect is not None:
+        _pos_rule(pos_prospect, "POS$_{prospect}$", ":")
+    if pos_trials is not None and (
+        pos_prospect is None or abs(pos_trials - pos_prospect) > 1e-9
+    ):
+        _pos_rule(pos_trials, "POS$_{trials}$", "-.")
 
     if current_z is not None and sweep.z.min() <= current_z <= sweep.z.max():
         p_here = float(np.interp(current_z, sweep.z, sweep.p_well))
@@ -445,3 +467,148 @@ def fig_b3_uncertainty_reduction(sweep: Sweep, *, current_z: float | None = None
     ax.set_title("B3 · Uncertainty reduction vs location (Haskett 2003)")
     fig.tight_layout()
     return fig, ax
+
+
+def fig_b4_chance_waterfall(
+    elements: dict[str, float],
+    r: float,
+    pos_prospect: float,
+    *,
+    scheme: str | dict[str, float] = "none",
+    dark: bool = False,
+):
+    """The chance elements then the location factor, as a log-scale waterfall.
+
+    Chance factors are multiplicative, so the natural picture is a running
+    product on a log axis -- bar length *is* the risk each step contributes.
+    The steps come from :func:`wellvolpos.core.chance.waterfall_steps`, whose
+    factors multiply to ``pos_prospect * r`` exactly, so this figure cannot
+    total something other than the ``P_well`` shown elsewhere in the app.
+
+    Colour follows meaning, and the location steps are the interesting case.
+    They stay the chance/discovery blue, because ``r`` *is* a chance and A3
+    already draws it in blue -- giving it a second colour here would break the
+    one mapping a reader is meant to learn once. They are instead separated by
+    **hatching**, so that under an allocating scheme you can still see how much
+    of each element's bar is geological chance and how much is the location
+    penalty it has been made to carry. Under the default "none" scheme the
+    location factor is one hatched bar of its own, which is exactly Milkov's
+    "report r separately". The reconciliation step, when present, is neither a
+    chance nor a location term and takes the neutral muted grey.
+    """
+    steps = chance_waterfall_steps(elements, r, pos_prospect, scheme)
+    labels = [s[0] for s in steps]
+    values = [s[1] for s in steps]
+    roles = [s[2] for s in steps]
+
+    fig, ax = new_figure(figsize=(6.5, 5), dark=dark)
+    p = palette(dark)
+    c = colour("p_well", dark)
+
+    cum = 1.0
+    tops, bottoms = [], []
+    for v in values:
+        bottoms.append(cum)
+        cum *= v
+        tops.append(cum)
+    total = cum
+
+    # A well at or below the deepest sampled contact has r = 0, so the running
+    # product reaches exactly zero and there is no bottom to a log axis. Say so
+    # rather than drawing a misleading stub.
+    if total <= 0.0:
+        ax.text(0.5, 0.5, "r = 0 at this depth\nP_well = 0", transform=ax.transAxes,
+                ha="center", va="center", fontsize=9, color=p["text"])
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_title("B4 · Chance waterfall")
+        fig.tight_layout()
+        return fig, ax
+
+    x = np.arange(len(labels))
+    for xi, (b, t, role) in enumerate(zip(bottoms, tops, roles)):
+        if role == "reconcile":
+            face, hatch = p["muted"], None
+        elif role == "location":
+            face, hatch = c, "///"
+        else:
+            face, hatch = c, None
+        ax.bar(xi, abs(b - t), bottom=min(b, t), color=face, width=0.6,
+               hatch=hatch, edgecolor=p["surface"] if hatch else "none", linewidth=0.0)
+    for xi, (b, v) in enumerate(zip(bottoms, values)):
+        ax.text(xi, b, f"×{v:.3f}", ha="center", va="bottom", fontsize=7.5, color=p["text_secondary"])
+
+    ax.set_yscale("log")
+    ax.set_xticks(x)
+    ax.set_xticklabels(labels, rotation=25, ha="right", fontsize=7.5)
+    ax.axhline(total, color=p["muted"], ls=":", lw=1.0)
+    ax.text(-0.45, total, f"$P_{{well}}$ = {total:.4f}", ha="left", va="bottom",
+            fontsize=8, color=p["text"])
+    if all(abs(float(elements.get(e, 1.0)) - 1.0) < 1e-12 for e in ELEMENTS):
+        ax.text(
+            0.5, 0.02, "Chance table is at 1.0 throughout, so the element steps have no height.",
+            transform=ax.transAxes, ha="center", va="bottom", fontsize=7,
+            color=p["text_secondary"],
+        )
+    ax.set_ylabel("Cumulative chance (log scale)")
+    label = SCHEME_LABELS.get(scheme, "custom weights") if isinstance(scheme, str) else "custom weights"
+    ax.set_title(f"B4 · Chance waterfall ({label})")
+    fig.tight_layout()
+    return fig, ax
+
+
+def fig_b5_allocation_dumbbell(
+    elements: dict[str, float], r: float, *, pos_prospect: float | None = None, dark: bool = False,
+):
+    """Three schemes against the prospect baseline, one row per chance element.
+
+    Every scheme gives the same ``P_well`` (:func:`wellvolpos.core.chance.allocate`
+    proves it, and ``tests/test_chance.py`` locks it) -- only the attribution
+    across elements differs, which is exactly what three panels sharing one
+    x-axis are for. When ``pos_prospect`` is given, that shared ``P_well`` is
+    drawn as a rule on all three panels, so the claim is visible in the figure
+    rather than only asserted in its caption.
+
+    Reservoir is exempt under every shipped scheme, so its baseline and "at the
+    well" markers coincide and no arrow is visible; that falls out of the
+    weights rather than being drawn specially. The "none" panel shows no
+    movement at all, which is the whole content of Milkov's position -- so it is
+    annotated with where the location factor went, rather than left looking
+    like a panel that failed to draw.
+    """
+    schemes = list(SHIPPED_SCHEMES)
+    fig, axes = new_figure(1, len(schemes), figsize=(3.4 * len(schemes), 4.2), dark=dark, sharey=True)
+    axes = np.atleast_1d(axes)
+    p = palette(dark)
+    c = colour("p_well", dark)
+    y = np.arange(len(ELEMENTS))
+
+    for i, (ax, scheme) in enumerate(zip(axes, schemes)):
+        revised, _ = allocate(elements, r, scheme)
+        base = [float(elements.get(e, 1.0)) for e in ELEMENTS]
+        rev = [revised[e] for e in ELEMENTS]
+        for yi, (b, rv) in enumerate(zip(base, rev)):
+            ax.plot([b, rv], [yi, yi], color=c, lw=1.5, zorder=1)
+        ax.scatter(base, y, s=28, facecolor=p["surface"], edgecolor=p["muted"], zorder=2,
+                   label="Baseline")
+        ax.scatter(rev, y, s=28, color=c, zorder=3, label="At the well")
+        if pos_prospect is not None:
+            ax.axvline(pos_prospect * r, color=p["muted"], ls=":", lw=1.0)
+            if i == 0:
+                ax.text(pos_prospect * r, len(ELEMENTS) - 0.5, r" $P_{well}$",
+                        fontsize=7, color=p["text_secondary"], va="top")
+        if scheme == "none":
+            ax.text(0.5, -0.6, f"r = {r:.3f} reported separately", ha="center", va="center",
+                    fontsize=7, color=p["text_secondary"])
+        ax.set_xlim(0, 1.02)
+        ax.set_ylim(-0.9, len(ELEMENTS) - 0.4)
+        ax.set_xlabel("Chance")
+        ax.set_title(SCHEME_LABELS.get(scheme, scheme), fontsize=8)
+        ax.grid(True, axis="x", lw=0.6, alpha=0.6)
+
+    axes[0].set_yticks(y)
+    axes[0].set_yticklabels([e.capitalize() for e in ELEMENTS])
+    axes[0].legend(loc="lower right", fontsize=7)
+    fig.suptitle("B5 · Allocation dumbbell", fontsize=9.5, fontweight="bold", color=p["text"])
+    fig.tight_layout()
+    return fig, axes

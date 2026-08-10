@@ -11,6 +11,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 from matplotlib.colors import to_rgba
@@ -33,6 +34,17 @@ def _bands_by_label(ax) -> dict[str, tuple]:
     """Label -> face colour for filled bands, keyed by name rather than draw order."""
     handles, labels = ax.get_legend_handles_labels()
     return {lab: _rgb(h.get_facecolor()[0]) for lab, h in zip(labels, handles)}
+
+
+@pytest.fixture(autouse=True)
+def _close_figures_after_each_test():
+    """Every test in this file creates at least one figure via Agg; none of
+    them are ever shown, so nothing needs them to survive past the test.
+    Without this, matplotlib accumulates them for the life of the process
+    and pytest's RuntimeWarning-as-error setting turns the 21st into a
+    failure unrelated to whatever that test actually checks."""
+    yield
+    plt.close("all")
 
 
 def _hist_containers(ax) -> dict:
@@ -249,3 +261,139 @@ def test_b2_requires_a_mefs_threshold(reduced, area_depth):
     no_mefs = run_volume_sweep(reduced, area_depth, POS, n=5)
     with pytest.raises(ValueError):
         figures.fig_b2_chance_vs_regret(no_mefs)
+
+
+# ------------------------------------------------------------------- B4
+ELEMENTS_EXAMPLE = {"charge": 0.92, "trap": 0.94, "reservoir": 0.95, "retention": 0.93}
+R_EXAMPLE = 0.6017
+
+
+POS_EXAMPLE = 0.7605
+
+
+def _scatter_by_label(ax, label):
+    """Look scatters up by legend label, never by index into ax.collections."""
+    handles, labels = ax.get_legend_handles_labels()
+    if label in labels:
+        return handles[labels.index(label)]
+    for coll in ax.collections:
+        if coll.get_label() == label:
+            return coll
+    raise AssertionError(f"no scatter labelled {label!r}; have {labels}")
+
+
+# The waterfall's arithmetic is tested in test_chance.py against p_well()
+# itself. These only check that the drawing honours the roles it is given.
+def test_b4_has_no_depth_axis_and_a_log_scale():
+    fig, ax = figures.fig_b4_chance_waterfall(ELEMENTS_EXAMPLE, R_EXAMPLE, POS_EXAMPLE)
+    assert not is_depth_axis_correct(ax)
+    assert ax.get_yscale() == "log"
+
+
+def test_b4_marks_the_total_as_p_well_not_as_the_tables_own_product():
+    """The label a reader takes the number off must name P_well, and the value
+    must be the app's P_well -- not prod(elements) x r, which is what the figure
+    would total if it ignored the POS in use."""
+    fig, ax = figures.fig_b4_chance_waterfall(ELEMENTS_EXAMPLE, R_EXAMPLE, POS_EXAMPLE)
+    said = " ".join(t.get_text() for t in ax.texts)
+    assert "P_{well}" in said
+    assert f"{POS_EXAMPLE * R_EXAMPLE:.4f}" in said
+    assert f"{float(np.prod(list(ELEMENTS_EXAMPLE.values()))) * R_EXAMPLE:.4f}" not in said
+
+
+def test_b4_keeps_location_steps_blue_but_separable_by_hatch():
+    """r is a chance and A3 draws it blue, so B4 must not give it a second
+    colour; the location contribution is separated by hatching instead."""
+    fig, ax = figures.fig_b4_chance_waterfall(ELEMENTS_EXAMPLE, R_EXAMPLE, POS_EXAMPLE, scheme="none")
+    hatched = [p for p in ax.patches if p.get_hatch()]
+    plain = [p for p in ax.patches if not p.get_hatch() and _rgb(p.get_facecolor()) == pytest.approx(_rgb(colour("p_well")))]
+    assert len(hatched) == 1                       # the standalone location bar
+    assert len(plain) == len(figures.ELEMENTS)      # one per chance element
+    assert _rgb(hatched[0].get_facecolor()) == pytest.approx(_rgb(colour("p_well")))
+
+
+def test_b4_reconciliation_step_is_neither_chance_nor_location_coloured():
+    fig, ax = figures.fig_b4_chance_waterfall(ELEMENTS_EXAMPLE, R_EXAMPLE, POS_EXAMPLE)
+    muted = _rgb(palette()["muted"])
+    assert any(_rgb(p.get_facecolor()) == pytest.approx(muted) for p in ax.patches)
+
+
+def test_b4_says_so_rather_than_drawing_a_stub_when_r_is_zero():
+    # Reachable: the entry slider's maximum is the deepest sampled contact.
+    fig, ax = figures.fig_b4_chance_waterfall(ELEMENTS_EXAMPLE, 0.0, POS_EXAMPLE)
+    said = " ".join(t.get_text() for t in ax.texts)
+    assert "r = 0" in said
+    assert ax.patches == [] or all(p.get_height() == 0 for p in ax.patches)
+
+
+# ------------------------------------------------------------------- B5
+def test_b5_has_no_depth_axis_and_one_panel_per_shipped_scheme():
+    fig, axes = figures.fig_b5_allocation_dumbbell(ELEMENTS_EXAMPLE, R_EXAMPLE)
+    assert len(axes) == len(figures.SHIPPED_SCHEMES)
+    for ax in axes:
+        assert not is_depth_axis_correct(ax)
+
+
+def test_b5_panels_share_one_comparable_x_axis():
+    """Three panels whose whole purpose is comparison must not be on
+    three different scales."""
+    fig, axes = figures.fig_b5_allocation_dumbbell(ELEMENTS_EXAMPLE, R_EXAMPLE)
+    xlims = {ax.get_xlim() for ax in axes}
+    assert len(xlims) == 1
+
+
+def test_b5_reservoir_shows_no_movement_under_any_scheme():
+    """Reservoir is exempt from every shipped scheme -- allocate() proves it;
+    here the dumbbell's own baseline/revised markers must coincide because of it."""
+    fig, axes = figures.fig_b5_allocation_dumbbell(ELEMENTS_EXAMPLE, R_EXAMPLE)
+    reservoir_idx = list(figures.ELEMENTS).index("reservoir")
+    for ax in axes:
+        bx = _scatter_by_label(ax, "Baseline").get_offsets()[reservoir_idx][0]
+        rx = _scatter_by_label(ax, "At the well").get_offsets()[reservoir_idx][0]
+        assert bx == pytest.approx(rx, abs=1e-9)
+
+
+@pytest.mark.parametrize(
+    "scheme_idx, element, should_move",
+    [
+        (0, "charge", False),      # none: nothing moves
+        (0, "trap", False),
+        (1, "charge", True),       # equal cube-root: charge/trap/retention move
+        (1, "retention", True),
+        (2, "trap", True),         # all to trap: only trap moves
+        (2, "charge", False),
+        (2, "retention", False),
+    ],
+)
+def test_b5_only_the_elements_a_scheme_weights_move(scheme_idx, element, should_move):
+    fig, axes = figures.fig_b5_allocation_dumbbell(ELEMENTS_EXAMPLE, R_EXAMPLE)
+    ax = axes[scheme_idx]
+    idx = list(figures.ELEMENTS).index(element)
+    bx = _scatter_by_label(ax, "Baseline").get_offsets()[idx][0]
+    rx = _scatter_by_label(ax, "At the well").get_offsets()[idx][0]
+    assert (abs(bx - rx) > 1e-9) == should_move
+
+
+def test_b5_revised_markers_use_chance_colour():
+    fig, axes = figures.fig_b5_allocation_dumbbell(ELEMENTS_EXAMPLE, R_EXAMPLE)
+    for ax in axes:
+        revised = _scatter_by_label(ax, "At the well")
+        assert _rgb(revised.get_facecolor()[0]) == pytest.approx(_rgb(colour("p_well")))
+
+
+def test_b5_explains_where_r_went_in_the_none_panel():
+    """Otherwise panel 1 is four dots and no movement, which reads as a
+    panel that failed to draw rather than as Milkov's point."""
+    fig, axes = figures.fig_b5_allocation_dumbbell(ELEMENTS_EXAMPLE, R_EXAMPLE)
+    said = " ".join(t.get_text() for t in axes[0].texts)
+    assert "separately" in said
+
+
+def test_b5_draws_the_shared_p_well_when_given_a_pos():
+    fig, axes = figures.fig_b5_allocation_dumbbell(
+        ELEMENTS_EXAMPLE, R_EXAMPLE, pos_prospect=POS_EXAMPLE
+    )
+    expected = POS_EXAMPLE * R_EXAMPLE
+    for ax in axes:
+        xs = [ln.get_xdata()[0] for ln in ax.get_lines() if len(set(ln.get_xdata())) == 1]
+        assert any(abs(x - expected) < 1e-9 for x in xs)
