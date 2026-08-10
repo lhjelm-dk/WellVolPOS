@@ -387,17 +387,15 @@ with tabs[1]:
 
         st.divider()
         st.subheader("Conceptual map view")
+        # The apex is derived from A(z), not offered as an input: this figure is
+        # conceptual, and a second apex control here could disagree with the one
+        # the column-height mapping uses in tab ⑤.
+        map_apex = float(ad.apex_estimate())
         m1, m2 = st.columns([1, 3])
         with m1:
             map_interval = st.number_input(
                 "Contour interval (m)", min_value=5.0, max_value=500.0, value=50.0, step=5.0,
-            )
-            map_apex = st.number_input(
-                "Apex depth (m TVDSS)", value=float(ad.apex_estimate()), step=5.0,
-                help=(
-                    "A mapped apex is preferred. The default extrapolates A(z)'s shallow tail to "
-                    "zero area — see AreaDepth.apex_estimate."
-                ),
+                help="Contours land on multiples of this, so they read like a depth map.",
             )
             map_azimuth = st.slider(
                 "Well azimuth on the map (°)", 0, 359, 35,
@@ -407,6 +405,8 @@ with tabs[1]:
                     "nothing about the closure's shape."
                 ),
             )
+            st.metric("Apex (derived)", f"{map_apex:.0f} m")
+            st.caption("From A(z)'s shallow tail, extrapolated to zero area.")
         with m2:
             _chart(pfig_map_view(
                     ad, apex=map_apex, z_entry=entry, z_exit=exit_,

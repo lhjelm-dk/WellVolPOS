@@ -375,14 +375,59 @@ def test_map_view_contour_interval_is_honoured(area_depth):
     assert len(fine.data) > len(coarse.data)
 
 
-def test_map_view_shades_the_up_dip_area_in_the_attic_colour(area_depth):
-    """Everything inside the entry contour is what a dry hole leaves behind, so
-    it carries the attic role rather than a decorative fill."""
+def test_map_view_shades_the_three_areas_the_well_divides_the_closure_into(area_depth):
+    """Potential attic up-dip of entry, potentially proven between entry and exit,
+    possible below exit -- the same split B0 draws in section, so the two figures
+    colour-key identically."""
+    apex = area_depth.apex_estimate()
+    fig = I.pfig_map_view(area_depth, apex=apex, z_entry=ENTRY, z_exit=EXIT)
+    named = {t.name: t for t in fig.data if t.name}
+    attic = next(t for n, t in named.items() if n.startswith("Potential attic"))
+    proven = next(t for n, t in named.items() if n.startswith("Potentially proven"))
+    possible = next(t for n, t in named.items() if n.startswith("Possible"))
+    assert attic.line.color == colour("attic")
+    assert attic.fill == "toself"
+    for band in (proven, possible):
+        assert band.fill == "toself"
+    # Fill colours come from the roles, not from literals.
+    assert "rgba" in proven.fillcolor and "rgba" in possible.fillcolor
+
+
+def test_map_view_areas_sum_to_the_closure_at_the_base(area_depth):
+    """The three shaded areas partition the deepest contour's area, so the
+    numbers in the legend add up to what the closure holds."""
+    apex = area_depth.apex_estimate()
+    fig = I.pfig_map_view(area_depth, apex=apex, z_entry=ENTRY, z_exit=EXIT)
+    import re
+
+    shown = [
+        float(re.search(r"\(([\d.]+) km", t.name).group(1))
+        for t in fig.data if t.name and "km²" in t.name
+    ]
+    assert len(shown) == 3
+    total = np.pi * area_depth.radius_at(area_depth.deepest, apex) ** 2
+    assert sum(shown) == pytest.approx(total, abs=0.02)
+
+
+def test_map_view_uses_the_requested_markers(area_depth):
+    """circle-open-dot for the well, x-thin for the apex, per Lars."""
+    apex = area_depth.apex_estimate()
+    fig = I.pfig_map_view(area_depth, apex=apex, z_entry=ENTRY, z_exit=EXIT)
+    well = next(t for t in fig.data if t.name == "Well")
+    assert well.marker.symbol == "circle-open-dot"
+    apex_marker = next(
+        t for t in fig.data
+        if t.showlegend is False and t.mode and "markers" in t.mode and len(t.x) == 1
+    )
+    assert apex_marker.marker.symbol == "x-thin"
+
+
+def test_map_view_shows_its_y_axis_values(area_depth):
+    """It is a map: both axes are distances and both should be readable."""
     apex = area_depth.apex_estimate()
     fig = I.pfig_map_view(area_depth, apex=apex, z_entry=ENTRY)
-    entry_ring = next(t for t in fig.data if (t.name or "").startswith("Entry contour"))
-    assert entry_ring.line.color == colour("attic")
-    assert entry_ring.fill == "toself"
+    assert fig.layout.yaxis.showticklabels is not False
+    assert "km" in fig.layout.yaxis.title.text
 
 
 # ------------------------------------------------- A1 / A4 percentile family

@@ -244,56 +244,89 @@ def pfig_map_view(
             ),
         )
 
-    # The entry contour, emphasised: this is the line the well sits on, and
-    # everything inside it is the attic a dry hole would leave.
+    # The three areas the well divides the closure into, in plan view: the same
+    # split B0 draws in section, so the two figures colour-key identically.
     r_entry = ad.radius_at(z_entry, apex)
+    r_exit = ad.radius_at(z_exit, apex) if z_exit is not None else r_entry
+    r_base = float(contours.radii.max()) if contours.radii.size else r_exit
+
+    def annulus(r_in: float, r_out: float, role: str, name: str, hover: str) -> None:
+        """A ring, as one closed path: out around the rim, back around the hole."""
+        if r_out <= r_in + 1e-12:
+            return
+        xs = np.concatenate([r_out * np.cos(theta), r_in * np.cos(theta[::-1])])
+        ys = np.concatenate([r_out * np.sin(theta), r_in * np.sin(theta[::-1])])
+        fig.add_scatter(
+            x=xs, y=ys, mode="lines", fill="toself", fillcolor=rgba(role, 0.35, dark),
+            line=dict(width=0), name=name,
+            hovertemplate=hover + "<extra></extra>",
+        )
+
+    a_attic = np.pi * r_entry ** 2
+    a_proven = max(np.pi * (r_exit ** 2 - r_entry ** 2), 0.0)
+    a_possible = max(np.pi * (r_base ** 2 - r_exit ** 2), 0.0)
+
+    # Inside the entry contour: nothing the well touches, so it is the attic a
+    # dry hole leaves behind.
     fig.add_scatter(
         x=r_entry * np.cos(theta), y=r_entry * np.sin(theta), mode="lines",
-        fill="toself", fillcolor=rgba("attic", 0.18, dark),
-        line=dict(color=colour("attic", dark), width=3),
-        name=f"Entry contour {z_entry:.0f} m",
-        hovertemplate=f"entry {z_entry:.0f} m TVDSS<br>{np.pi * r_entry**2:.3f} km² up-dip<extra></extra>",
+        fill="toself", fillcolor=rgba("attic", 0.35, dark),
+        line=dict(color=colour("attic", dark), width=2.5),
+        name=f"Potential attic — up-dip of entry ({a_attic:.2f} km²)",
+        hovertemplate=f"potential attic<br>{a_attic:.3f} km² up-dip of the {z_entry:.0f} m entry<extra></extra>",
     )
-    if z_exit is not None and z_exit != z_entry:
-        r_exit = ad.radius_at(z_exit, apex)
-        fig.add_scatter(
-            x=r_exit * np.cos(theta), y=r_exit * np.sin(theta), mode="lines",
-            line=dict(color=colour("proven", dark), width=2, dash="dash"),
-            name=f"Exit contour {z_exit:.0f} m",
-            hovertemplate=f"exit {z_exit:.0f} m TVDSS<extra></extra>",
-        )
+    # Without an exit depth there is no tested band, and everything outside the
+    # entry contour is untested rather than "below exit".
+    exit_label = f"{z_exit:.0f} m" if z_exit is not None else "the entry"
+    annulus(
+        r_entry, r_exit, "tested",
+        f"Potentially proven — entry to exit ({a_proven:.2f} km²)",
+        f"potentially proven<br>{a_proven:.3f} km² between {z_entry:.0f} m and {exit_label}",
+    )
+    annulus(
+        r_exit, r_base, "possible",
+        f"Possible — below exit ({a_possible:.2f} km²)",
+        f"possible below exit<br>{a_possible:.3f} km² below {exit_label}",
+    )
 
     ang = np.deg2rad(well_azimuth_deg)
     fig.add_scatter(
         x=[r_entry * np.cos(ang)], y=[r_entry * np.sin(ang)], mode="markers+text",
-        marker=dict(symbol="x-thin", size=13, line=dict(color=p["well"], width=3)),
+        marker=dict(symbol="circle-open-dot", size=14,
+                    line=dict(color=p["well"], width=3), color=p["well"]),
         text=["  WELL"], textposition="middle right",
         textfont=dict(size=11, color=p["well"]), name="Well",
         hovertemplate=f"well on the {z_entry:.0f} m contour<br>map position arbitrary<extra></extra>",
     )
     fig.add_scatter(
         x=[0.0], y=[0.0], mode="markers+text",
-        marker=dict(symbol="triangle-up", size=9, color=p["text_secondary"]),
+        marker=dict(symbol="x-thin", size=11, line=dict(color=p["text"], width=2.5)),
         text=[f"  apex {apex:.0f} m"], textposition="middle right",
         textfont=dict(size=9, color=p["text_secondary"]), showlegend=False,
-        hovertemplate=f"apex {apex:.0f} m TVDSS<extra></extra>",
+        hovertemplate=f"apex {apex:.0f} m TVDSS (derived from A(z))<extra></extra>",
     )
 
-    lim = float(contours.radii.max()) * 1.12 if contours.radii.size else 1.0
+    lim = r_base * 1.12 if r_base > 0 else 1.0
     fig.update_layout(
         title=(
             f"Conceptual map view — contours on {interval:.0f} m multiples "
             f"(deepest sampled contact {contours.depths[-1]:.0f} m)"
         ),
-        xaxis_title="km (equivalent-circle radius — shape is illustrative)",
-        legend=dict(font=dict(size=9)),
+        xaxis_title="km east of apex (equivalent-circle radius — shape is illustrative)",
+        legend=dict(font=dict(size=9), yanchor="bottom", y=0.01, xanchor="left", x=0.01),
     )
     fig.update_xaxes(range=[-lim, lim], constrain="domain")
-    # Equal aspect, so a contour that encloses twice the area looks twice the
-    # area. scaleanchor is the only way to hold that through a resize.
-    fig.update_yaxes(range=[-lim, lim], scaleanchor="x", scaleratio=1, title=None,
-                     showticklabels=False)
+    # Equal aspect, so a contour enclosing twice the area looks twice the area.
+    # scaleanchor is the only way to hold that through a resize.
+    fig.update_yaxes(range=[-lim, lim], scaleanchor="x", scaleratio=1,
+                     title="km north of apex", showticklabels=True)
     apply_plotly(fig, dark, height)
+    # Legend inside the axes and given a background, like A2: this figure's
+    # fills reach the corners, and apply_plotly owns placement.
+    fig.update_layout(legend=dict(
+        bgcolor="rgba(252,252,251,0.80)" if not dark else "rgba(26,26,25,0.80)",
+        yanchor="bottom", y=0.01, xanchor="left", x=0.01, font=dict(size=9),
+    ))
     return fig
 
 
