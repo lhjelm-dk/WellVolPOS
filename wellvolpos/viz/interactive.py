@@ -984,6 +984,106 @@ def pfig_b6_inverse(
     return fig
 
 
+def _reservoir_section(fig, ad, ts, *, z_entry, z_exit, dark, row=1, col=1):
+    """The left panel: an area-depth section with top and base reservoir.
+
+    x is **area**, not a lateral distance, and that is the point. A(z) records
+    how much area each depth encloses and carries no lateral geometry
+    whatsoever, so a physical cross-section cannot be drawn from it honestly --
+    an earlier version of this panel used sqrt(area) as a pretend width and
+    looked, correctly, like nothing in the subsurface. In area-depth space every
+    line is a real quantity:
+
+    * **Top reservoir** is A(z) itself.
+    * **Base reservoir** is the same curve shifted down by the reservoir
+      thickness, so the vertical gap between them *is* the thickness and the
+      shaded wedges are gross rock volume per depth interval.
+
+    Reservoir thickness is sampled in the trials (25-65 m on the reference
+    file), so one base curve means one statistic -- the mean. The panel is
+    therefore the mean-thickness case and the caller says so. Where the export
+    carries no thickness column the base cannot be drawn at all, and the panel
+    degrades to the top curve rather than inventing one.
+
+    Returns the thickness used, or None when there was none to use.
+    """
+    p = palette(dark)
+    a, top = ad.a, ad.z
+    thickness = None
+    if ts.has("thickness"):
+        res = ts.col("resource")
+        t = ts.col("thickness")[res > 0.0]
+        if t.size:
+            thickness = float(np.mean(t))
+
+    fig.add_scatter(
+        x=a, y=top, mode="lines", name="Top reservoir", showlegend=False,
+        line=dict(color=p["text"], width=2),
+        hovertemplate="top reservoir<br>%{x:.2f} km² at " + DEPTH_HOVER + "<extra></extra>",
+        row=row, col=col,
+    )
+    fig.add_annotation(x=a[-1], y=top[-1], text=" Top reservoir", showarrow=False,
+                       xanchor="left", font=dict(size=9, color=p["text"]), row=row, col=col)
+
+    if thickness is not None:
+        base = top + thickness
+        fig.add_scatter(
+            x=a, y=base, mode="lines", name="Base reservoir", showlegend=False,
+            line=dict(color=p["text"], width=1.6, dash="dash"),
+            hovertemplate="base reservoir<br>%{x:.2f} km² at " + DEPTH_HOVER + "<extra></extra>",
+            row=row, col=col,
+        )
+        fig.add_annotation(x=a[-1], y=base[-1], text=" Base reservoir", showarrow=False,
+                           xanchor="left", font=dict(size=9, color=p["text"]), row=row, col=col)
+
+        # The reservoir band, cut by the two well depths. At each area the band
+        # runs top..top+thickness; clipping that interval to each depth window
+        # gives the three volumes, and where the clipped interval is empty the
+        # region simply does not exist at that area.
+        for lo, hi, role, label in (
+            (-np.inf, z_entry, "up_dip", "up-dip"),
+            (z_entry, z_exit, "tested", "tested"),
+            (z_exit, np.inf, "possible", "possible"),
+        ):
+            upper = np.clip(top, lo, hi)
+            lower = np.clip(base, lo, hi)
+            m = lower > upper + 1e-9
+            if m.sum() < 2:
+                continue
+            fig.add_scatter(
+                x=np.concatenate([a[m], a[m][::-1]]),
+                y=np.concatenate([upper[m], lower[m][::-1]]),
+                fill="toself", fillcolor=rgba(role, 0.55, dark), mode="lines",
+                line=dict(width=0), showlegend=False, hoverinfo="skip", row=row, col=col,
+            )
+            mid = int(np.flatnonzero(m)[m.sum() // 2])
+            fig.add_annotation(
+                x=a[mid], y=0.5 * (upper[mid] + lower[mid]), text=label, showarrow=False,
+                font=dict(size=9, color=p["text"]), row=row, col=col,
+            )
+
+    # The well, at the area its entry depth encloses. Only that area carries
+    # meaning here; the line is drawn full height so the crossings read clearly.
+    a_entry = float(ad.area_at(z_entry))
+    fig.add_scatter(
+        x=[a_entry, a_entry], y=[float(top.min()), float((top + (thickness or 0.0)).max())],
+        mode="lines", name="Well", showlegend=False,
+        line=dict(color=p["well"], width=2.5),
+        hovertemplate=f"well at {a_entry:.2f} km²<extra></extra>", row=row, col=col,
+    )
+    fig.add_annotation(x=a_entry, y=float(top.min()), text="Well", showarrow=False, yshift=12,
+                       font=dict(size=11, color=p["well"]), row=row, col=col)
+    for depth, label in ((z_entry, "Reservoir entry"), (z_exit, "Reservoir exit")):
+        if depth is None:
+            continue
+        fig.add_annotation(
+            x=a_entry, y=depth, text=f"{label} ", showarrow=True, arrowhead=0, arrowwidth=1,
+            arrowcolor=p["text_secondary"], ax=38, ay=0, xanchor="right",
+            font=dict(size=9, color=p["text_secondary"]), row=row, col=col,
+        )
+    return thickness
+
+
 # ----------------------------------------------------- the concepts figure
 def pfig_concepts(
     ad: AreaDepth, ts: TrialSet, groups: Groups, vc: VolumeClasses, *,
@@ -1018,42 +1118,12 @@ def pfig_concepts(
     res = ts.col("resource")
     fig = make_subplots(
         rows=1, cols=2, column_widths=[0.32, 0.68], horizontal_spacing=0.11,
-        subplot_titles=("Section through the well", "The same volumes, as exceedance curves"),
+        subplot_titles=("Reservoir in area–depth space", "The same volumes, as exceedance curves"),
     )
 
-    # ---------------------------------------------------------------- section
-    halfwidth = np.sqrt(np.maximum(ad.a, 0.0))
-    z = ad.z
-
-    def band(lo: float, hi: float, role: str, label: str) -> None:
-        m = (z >= lo) & (z <= hi)
-        if m.sum() < 2:
-            return
-        fig.add_scatter(
-            x=np.concatenate([-halfwidth[m], halfwidth[m][::-1]]),
-            y=np.concatenate([z[m], z[m][::-1]]),
-            fill="toself", fillcolor=rgba(role, 0.55, dark), mode="lines",
-            line=dict(width=0), showlegend=False, hoverinfo="skip", row=1, col=1,
-        )
-        fig.add_annotation(
-            x=0, y=0.5 * (max(lo, ad.shallowest) + min(hi, ad.deepest)), text=label,
-            showarrow=False, font=dict(size=9, color=p["text"]), row=1, col=1,
-        )
-
-    band(ad.shallowest, z_entry, "up_dip", "up-dip")
-    band(z_entry, z_exit, "tested", "tested")
-    band(z_exit, ad.deepest, "possible", "possible")
-    for sign in (1, -1):
-        fig.add_scatter(x=sign * halfwidth, y=z, mode="lines", showlegend=False,
-                        line=dict(color=p["text_secondary"], width=1), hoverinfo="skip",
-                        row=1, col=1)
-    fig.add_scatter(
-        x=[0, 0], y=[z_entry, z_exit], mode="lines", name="Well",
-        line=dict(color=p["well"], width=6), showlegend=False,
-        hovertemplate="well " + DEPTH_HOVER + "<extra></extra>", row=1, col=1,
+    thickness = _reservoir_section(
+        fig, ad, ts, z_entry=z_entry, z_exit=z_exit, dark=dark, row=1, col=1
     )
-    fig.add_annotation(x=0, y=z_entry, text="WELL", showarrow=False, yshift=16,
-                       font=dict(size=11, color=p["well"]), row=1, col=1)
 
     # ------------------------------------------------- risked exceedance curves
     risked = [
@@ -1113,11 +1183,16 @@ def pfig_concepts(
         fig.add_annotation(x=hi, y=y, text=f"  {name}", showarrow=False, xanchor="left",
                            font=dict(size=9, color=col_), row=1, col=2)
 
-    fig.update_layout(
-        title="Concepts — the same volumes in section and in distribution",
-        showlegend=False,
+    sub = (
+        f"<br><sub>base reservoir = top + {thickness:.0f} m mean reservoir thickness "
+        f"(sampled 25–65 m, so this is the mean-thickness case)</sub>"
+        if thickness is not None else
+        "<br><sub>no reservoir-thickness column in this export, so the base reservoir "
+        "cannot be drawn</sub>"
     )
-    fig.update_xaxes(title_text="Schematic width (∝ √area)", showticklabels=False, row=1, col=1)
+    fig.update_layout(title="Concepts — the same volumes in section and in distribution" + sub,
+                      showlegend=False)
+    fig.update_xaxes(title_text="Productive area (km²)", rangemode="tozero", row=1, col=1)
     fig.update_xaxes(title_text="Recoverable resource (MMboe)", rangemode="tozero", row=1, col=2)
     fig.update_yaxes(title_text="Probability of exceedance (%)",
                      range=[base - len(order) * step - 3.0, 107.0], row=1, col=2)

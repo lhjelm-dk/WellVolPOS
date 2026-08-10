@@ -462,14 +462,47 @@ def test_a4_uses_the_same_percentile_convention_as_a1(reduced):
 
 # ------------------------------------------------- the concepts teaching figure
 @pytest.fixture(scope="module")
-def concepts(area_depth, reduced, groups, vc):
+def concepts(full):
+    """Built from the *full* export, because the left panel needs the reservoir
+    thickness column and the 7-column paste does not carry it."""
+    from wellvolpos.core import AreaDepth, group_trials, split_trials
+    from wellvolpos.core import p_well as p_well_fn
+
+    ad = AreaDepth.from_trials(full.col("contact"), full.col("area"))
+    g = group_trials(full, ENTRY, EXIT)
+    vcl = split_trials(full, ad, g, ENTRY, EXIT)
+    ch = p_well_fn(full, ENTRY, POS)
+    return I.pfig_concepts(
+        ad, full, g, vcl, z_entry=ENTRY, z_exit=EXIT,
+        pos_prospect=POS, p_well=ch.p_well, mefs=14.0,
+    ), ch
+
+
+def test_concepts_draws_the_reservoir_band_from_a_real_thickness(concepts):
+    """Top reservoir is A(z); base is the same curve shifted down by the mean
+    sampled thickness. Both are real quantities -- an earlier version used
+    sqrt(area) as a pretend lateral width, which is not in the data at all."""
+    fig, _ = concepts
+    said = " ".join(a.text or "" for a in fig.layout.annotations)
+    assert "Top reservoir" in said
+    assert "Base reservoir" in said
+    assert "Reservoir entry" in said and "Reservoir exit" in said
+    assert "mean reservoir thickness" in fig.layout.title.text
+    assert "area" in fig.layout.xaxis.title.text.lower()
+
+
+def test_concepts_declines_to_draw_a_base_it_has_no_thickness_for(reduced, groups, vc, area_depth):
+    """The 7-column paste has no thickness column. Better to say so than to
+    invent a reservoir."""
     from wellvolpos.core import p_well as p_well_fn
 
     ch = p_well_fn(reduced, ENTRY, POS)
-    return I.pfig_concepts(
-        area_depth, reduced, groups, vc, z_entry=ENTRY, z_exit=EXIT,
-        pos_prospect=POS, p_well=ch.p_well, mefs=14.0,
-    ), ch
+    fig = I.pfig_concepts(area_depth, reduced, groups, vc, z_entry=ENTRY, z_exit=EXIT,
+                          pos_prospect=POS, p_well=ch.p_well)
+    said = " ".join(a.text or "" for a in fig.layout.annotations)
+    assert "cannot be drawn" in fig.layout.title.text
+    assert "Base reservoir" not in said
+    assert "Top reservoir" in said      # the top curve is still real
 
 
 def test_concepts_risked_curves_start_at_their_own_chance(concepts):
