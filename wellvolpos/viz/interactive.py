@@ -42,7 +42,7 @@ from ..core.sweep import (
     volume_target_curve,
 )
 from ..io.adapters.base import TrialSet
-from .figures import _depth_percentile_trend, _exceedance
+from .figures import _depth_band, _exceedance, area_spread_is_material
 from .theme import (
     PANEL_HEIGHT,
     SEQUENTIAL_CMAP,
@@ -54,6 +54,7 @@ from .theme import (
 )
 
 __all__ = [
+    "pfig_map_view",
     "pfig_a1_area_depth",
     "pfig_a2_outcome_tree",
     "pfig_a3_chance_decomposition",
@@ -112,30 +113,172 @@ def _vline(fig, x: float, colour_: str, dash: str = "dot", label: str | None = N
 
 # ------------------------------------------------------------------- A1
 def pfig_a1_area_depth(
-    ad: AreaDepth, *, current_entry: float | None = None, current_exit: float | None = None,
-    zlim: tuple[float, float] | None = None, show_depth_labels: bool = True,
-    dark: bool = False, height: int | None = PANEL_HEIGHT,
+    ad: AreaDepth, *, ts: TrialSet | None = None,
+    current_entry: float | None = None, current_exit: float | None = None,
+    n_bins: int = 40, zlim: tuple[float, float] | None = None,
+    show_depth_labels: bool = True, dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
-    """A1 -- the area-depth curve recovered from the trials, entry/exit marked."""
+    """A1 -- the area-depth curve recovered from the trials, entry/exit marked.
+
+    Pass ``ts`` to show the *area uncertainty* at each depth as well: P90 / P50 /
+    P10 of the sampled area within equal-count depth bins, thin and grey, against
+    the mean in the prospect colour. On a GeoX run where productive area is a
+    deterministic function of contact depth -- the reference file fits at isotonic
+    R² = 0.9999999987 -- the three grey curves land on the mean, and the subtitle
+    says so rather than leaving a reader to assume the spread is real but small.
+    """
     p = palette(dark)
     fig = go.Figure()
-    fig.add_scatter(
-        x=ad.a, y=ad.z, mode="lines", name="A(z)",
-        line=dict(color=colour("prospect", dark), width=2.5),
-        hovertemplate="%{x:.3f} km² at " + DEPTH_HOVER + "<extra></extra>",
-    )
+
+    # bool(), because TrialSet.has returns numpy's bool and plotly's validators
+    # reject np.True_ for showlegend.
+    with_area = bool(ts is not None and ts.has("area"))
+    subtitle = ""
+    if with_area:
+        contact, area = ts.col("contact"), ts.col("area")
+        ok = area > 0
+        zb, a90, a50, amean, a10 = _depth_band(contact[ok], area[ok], n_bins=n_bins)
+        material, rel_resid = area_spread_is_material(ad)
+        # Thin grey for the percentile family, per Lars: the mean is the number
+        # that gets quoted, so it keeps the colour and the weight.
+        for values, name in ((a90, "P90"), (a50, "P50"), (a10, "P10")):
+            fig.add_scatter(
+                x=values, y=zb, mode="lines", name=name,
+                line=dict(color=p["muted"], width=1),
+                hovertemplate=name + " %{x:.3f} km² in this depth bin<extra></extra>",
+            )
+        fig.add_scatter(
+            x=amean, y=zb, mode="lines", name="Mean area",
+            line=dict(color=colour("prospect", dark), width=2.5),
+            hovertemplate="mean %{x:.3f} km² at " + DEPTH_HOVER + "<extra></extra>",
+        )
+        subtitle = (
+            "<br><sub>"
+            + (
+                f"area scatter about A(z) is {rel_resid:.1%} of the mean — real area uncertainty"
+                if material else
+                "area is a deterministic function of contact depth here, so the P90–P10 "
+                "spread shown is the depth range within each bin, not area uncertainty"
+            )
+            + "</sub>"
+        )
+    else:
+        fig.add_scatter(
+            x=ad.a, y=ad.z, mode="lines", name="A(z)",
+            line=dict(color=colour("prospect", dark), width=2.5),
+            hovertemplate="%{x:.3f} km² at " + DEPTH_HOVER + "<extra></extra>",
+        )
+
     if current_entry is not None:
-        _hline(fig, current_entry, p["well"], "dash", "entry")
+        _hline(fig, current_entry, p["well"], "dash", "well entry")
     if current_exit is not None and current_exit != current_entry:
-        _hline(fig, current_exit, p["well"], "dot", "exit")
+        _hline(fig, current_exit, p["well"], "dot", "well exit")
 
     fig.update_layout(
-        title=f"A1 · Area–depth curve (isotonic R² = {ad.r2:.6f})",
-        xaxis_title="Productive area (km²)", showlegend=False,
+        title=f"A1 · Area–depth curve (isotonic R² = {ad.r2:.6f}){subtitle}",
+        xaxis_title="Productive area (km²)",
+        showlegend=with_area,
     )
     fig.update_xaxes(rangemode="tozero")
     apply_plotly(fig, dark, height)
     depth_axis_plotly(fig, zlim or (ad.shallowest, ad.deepest), show_ticklabels=show_depth_labels)
+    return fig
+
+
+# --------------------------------------------------------------- map view
+def pfig_map_view(
+    ad: AreaDepth, *, apex: float, z_entry: float, z_exit: float | None = None,
+    interval: float = 50.0, well_azimuth_deg: float = 35.0,
+    dark: bool = False, height: int | None = PANEL_HEIGHT,
+):
+    """A conceptual map of the closure: apex at the centre, contours from A(z).
+
+    **A cartoon, not a map.** Each contour is the circle enclosing the area A(z)
+    holds at that depth, so the *areas* and the contour spacing are faithful
+    while the shape is not -- A(z) says nothing about the outline of the closure
+    or which way it is elongated. The well's map position is likewise arbitrary:
+    only its *radius* means anything, and it means the well sits on the contour
+    of its own reservoir entry depth.
+
+    What the picture is for is seeing at a glance how much of the closure lies
+    inside the entry contour -- the part a dry hole would leave up-dip -- against
+    how much lies outside it.
+
+    Contours shallower than the shallowest sampled contact are dashed: the trials
+    never reached the crest, so their area is a taper to the apex rather than
+    anything the model states (see :meth:`AreaDepth.area_at_tapered`).
+    """
+    p = palette(dark)
+    depths, radii, extrap = ad.contour_radii(apex, interval=interval, z_max=ad.deepest)
+    theta = np.linspace(0.0, 2.0 * np.pi, 181)
+    fig = go.Figure()
+
+    # Deepest contour first so the shallow ones draw on top of it.
+    for zz, rr, is_extrap in sorted(zip(depths, radii, extrap), key=lambda t: -t[0]):
+        deepest = abs(zz - depths[-1]) < 1e-9
+        inside_well = zz <= z_entry
+        fig.add_scatter(
+            x=rr * np.cos(theta), y=rr * np.sin(theta), mode="lines",
+            line=dict(
+                color=colour("attic", dark) if inside_well else colour("prospect", dark),
+                width=2.5 if deepest else 1.2,
+                dash="dot" if is_extrap else "solid",
+            ),
+            name=f"{zz:.0f} m", showlegend=False,
+            hovertemplate=(
+                f"{zz:.0f} m TVDSS<br>{np.pi * rr * rr:.3f} km² enclosed"
+                + ("<br>extrapolated above sampled range" if is_extrap else "")
+                + "<extra></extra>"
+            ),
+        )
+
+    # The entry contour, emphasised: this is the line the well sits on, and
+    # everything inside it is the attic a dry hole would leave.
+    r_entry = ad.radius_at(z_entry, apex)
+    fig.add_scatter(
+        x=r_entry * np.cos(theta), y=r_entry * np.sin(theta), mode="lines",
+        fill="toself", fillcolor=rgba("attic", 0.18, dark),
+        line=dict(color=colour("attic", dark), width=3),
+        name=f"Entry contour {z_entry:.0f} m",
+        hovertemplate=f"entry {z_entry:.0f} m TVDSS<br>{np.pi * r_entry**2:.3f} km² up-dip<extra></extra>",
+    )
+    if z_exit is not None and z_exit != z_entry:
+        r_exit = ad.radius_at(z_exit, apex)
+        fig.add_scatter(
+            x=r_exit * np.cos(theta), y=r_exit * np.sin(theta), mode="lines",
+            line=dict(color=colour("proven", dark), width=2, dash="dash"),
+            name=f"Exit contour {z_exit:.0f} m",
+            hovertemplate=f"exit {z_exit:.0f} m TVDSS<extra></extra>",
+        )
+
+    ang = np.deg2rad(well_azimuth_deg)
+    fig.add_scatter(
+        x=[r_entry * np.cos(ang)], y=[r_entry * np.sin(ang)], mode="markers+text",
+        marker=dict(symbol="x-thin", size=13, line=dict(color=p["well"], width=3)),
+        text=["  WELL"], textposition="middle right",
+        textfont=dict(size=11, color=p["well"]), name="Well",
+        hovertemplate=f"well on the {z_entry:.0f} m contour<br>map position arbitrary<extra></extra>",
+    )
+    fig.add_scatter(
+        x=[0.0], y=[0.0], mode="markers+text",
+        marker=dict(symbol="triangle-up", size=9, color=p["text_secondary"]),
+        text=[f"  apex {apex:.0f} m"], textposition="middle right",
+        textfont=dict(size=9, color=p["text_secondary"]), showlegend=False,
+        hovertemplate=f"apex {apex:.0f} m TVDSS<extra></extra>",
+    )
+
+    lim = float(radii.max()) * 1.12 if radii.size else 1.0
+    fig.update_layout(
+        title=f"Conceptual map view — contours every {interval:.0f} m (deepest {depths[-1]:.0f} m)",
+        xaxis_title="km (equivalent-circle radius — shape is illustrative)",
+        legend=dict(font=dict(size=9)),
+    )
+    fig.update_xaxes(range=[-lim, lim], constrain="domain")
+    # Equal aspect, so a contour that encloses twice the area looks twice the
+    # area. scaleanchor is the only way to hold that through a resize.
+    fig.update_yaxes(range=[-lim, lim], scaleanchor="x", scaleratio=1, title=None,
+                     showticklabels=False)
+    apply_plotly(fig, dark, height)
     return fig
 
 
@@ -278,15 +421,22 @@ def pfig_a4_resource_vs_depth(
         colorbar=dict(title=dict(text="log₁₀ n", side="right"), thickness=12, len=0.6),
         hovertemplate="%{x:.1f} MMboe at " + DEPTH_HOVER + "<br>log₁₀ n %{z:.2f}<extra></extra>",
     )
-    zb, p90, p50, p10 = _depth_percentile_trend(y, x, n_bins=n_bins)
-    c = colour("prospect", dark)
-    for values, name, dash, width in (
-        (p50, "P50", "solid", 2.5), (p90, "P90", "dot", 1.6), (p10, "P10", "dot", 1.6),
-    ):
+    # Same convention as A1: the mean keeps the prospect colour and the weight,
+    # because it is the number that gets quoted; the percentile family is thin
+    # and grey. Note the mean is *not* the P50 on a skewed resource
+    # distribution, which is half the reason for showing both.
+    zb, p90, p50, pmean, p10 = _depth_band(y, x, n_bins=n_bins)
+    for values, name in ((p90, "P90"), (p50, "P50"), (p10, "P10")):
         fig.add_scatter(
-            x=values, y=zb, mode="lines", name=name, line=dict(color=c, width=width, dash=dash),
+            x=values, y=zb, mode="lines", name=name,
+            line=dict(color=p["muted"], width=1),
             hovertemplate=name + " %{x:.2f} MMboe at " + DEPTH_HOVER + "<extra></extra>",
         )
+    fig.add_scatter(
+        x=pmean, y=zb, mode="lines", name="Mean",
+        line=dict(color=colour("prospect", dark), width=2.5),
+        hovertemplate="mean %{x:.2f} MMboe at " + DEPTH_HOVER + "<extra></extra>",
+    )
     # Named, and both of them: an unlabelled rule at the entry depth was
     # indistinguishable from the exit, and the exit was not drawn at all.
     if current_entry is not None:

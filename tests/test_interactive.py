@@ -333,3 +333,83 @@ def test_a4_names_both_well_rules(reduced):
     said = [a.text for a in fig.layout.annotations]
     assert "well entry" in said
     assert "well exit" in said
+
+
+# --------------------------------------------------------------- map view
+def test_map_view_is_plan_view_with_no_depth_axis(area_depth):
+    """Depth is the *contour label* here, not an axis, so the depth rule does
+    not apply -- but equal aspect does, or a contour enclosing twice the area
+    would not look it."""
+    apex = area_depth.apex_estimate()
+    fig = I.pfig_map_view(area_depth, apex=apex, z_entry=ENTRY, z_exit=EXIT)
+    assert not is_depth_axis_correct_plotly(fig)
+    assert fig.layout.yaxis.scaleanchor == "x"
+    assert fig.layout.yaxis.scaleratio == 1
+
+
+def test_map_view_puts_the_well_on_its_own_entry_contour(area_depth):
+    apex = area_depth.apex_estimate()
+    fig = I.pfig_map_view(area_depth, apex=apex, z_entry=ENTRY, z_exit=EXIT, well_azimuth_deg=0.0)
+    well = next(t for t in fig.data if t.name == "Well")
+    r_expected = area_depth.radius_at(ENTRY, apex)
+    r_drawn = float(np.hypot(well.x[0], well.y[0]))
+    assert r_drawn == pytest.approx(r_expected, rel=1e-9)
+
+
+def test_map_view_marks_the_deepest_sampled_contact(area_depth):
+    apex = area_depth.apex_estimate()
+    fig = I.pfig_map_view(area_depth, apex=apex, z_entry=ENTRY, interval=50.0)
+    said = fig.layout.title.text
+    assert f"{area_depth.deepest:.0f}" in said
+    # The outer ring is the deepest contour, and nothing is drawn outside it.
+    outer = area_depth.radius_at(area_depth.deepest, apex)
+    for t in fig.data:
+        if t.x is not None and len(t.x):
+            assert np.nanmax(np.abs(np.asarray(t.x, dtype=float))) <= outer + 1e-9
+
+
+def test_map_view_contour_interval_is_honoured(area_depth):
+    apex = area_depth.apex_estimate()
+    coarse = I.pfig_map_view(area_depth, apex=apex, z_entry=ENTRY, interval=100.0)
+    fine = I.pfig_map_view(area_depth, apex=apex, z_entry=ENTRY, interval=25.0)
+    assert len(fine.data) > len(coarse.data)
+
+
+def test_map_view_shades_the_up_dip_area_in_the_attic_colour(area_depth):
+    """Everything inside the entry contour is what a dry hole leaves behind, so
+    it carries the attic role rather than a decorative fill."""
+    apex = area_depth.apex_estimate()
+    fig = I.pfig_map_view(area_depth, apex=apex, z_entry=ENTRY)
+    entry_ring = next(t for t in fig.data if (t.name or "").startswith("Entry contour"))
+    assert entry_ring.line.color == colour("attic")
+    assert entry_ring.fill == "toself"
+
+
+# ------------------------------------------------- A1 / A4 percentile family
+def test_a1_shows_the_area_percentile_family_thin_and_grey(area_depth, reduced):
+    """Lars's convention: the mean keeps the colour and the weight because it is
+    the number that gets quoted; P90/P50/P10 are thin and grey."""
+    fig = I.pfig_a1_area_depth(area_depth, ts=reduced, current_entry=ENTRY)
+    named = {t.name: t for t in fig.data if t.name}
+    assert {"P90", "P50", "P10", "Mean area"} <= set(named)
+    assert named["Mean area"].line.color == colour("prospect")
+    for k in ("P90", "P50", "P10"):
+        assert named[k].line.color == palette()["muted"]
+        assert named[k].line.width < named["Mean area"].line.width
+
+
+def test_a1_says_area_is_deterministic_rather_than_implying_uncertainty(area_depth, reduced):
+    """The binned P90-P10 spread is 20 % of the mean on this file, but that is
+    the depth range inside each bin -- the isotonic residual is 1e-5 of the mean.
+    Reporting the binned figure would invent uncertainty the model lacks."""
+    fig = I.pfig_a1_area_depth(area_depth, ts=reduced)
+    assert "deterministic function of contact depth" in fig.layout.title.text
+
+
+def test_a4_uses_the_same_percentile_convention_as_a1(reduced):
+    fig = I.pfig_a4_resource_vs_depth(reduced, current_entry=ENTRY, current_exit=EXIT)
+    named = {t.name: t for t in fig.data if t.name}
+    assert {"P90", "P50", "P10", "Mean"} <= set(named)
+    assert named["Mean"].line.color == colour("prospect")
+    for k in ("P90", "P50", "P10"):
+        assert named[k].line.color == palette()["muted"]

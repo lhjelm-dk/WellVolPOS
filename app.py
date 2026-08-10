@@ -1,8 +1,10 @@
 """WellVolPOS — Streamlit entry point.
 
-Phase 0–3 scope: all six tabs are live except export. Data and QC & Risking
-gate everything else; the risking convention chosen in tab ② and the chance
-table entered in tab ⑥ together determine POS_prospect (see the "Entered
+Phases 0–4. Five tabs; everything is live except export. Tab ① carries the
+trial-data selector, the import summary, a preview of the trials themselves, the
+QC report and the risking question, and it gates the rest; the risking
+convention chosen there and the chance table entered in tab ⑤ together
+determine POS_prospect (see the "Entered
 here" comment below for why the chance-table widgets sit before the
 computation that uses them). Reference contour and allocation scheme are
 sidebar-level conventions, per CLAUDE.md's "never implicit" rule.
@@ -65,6 +67,7 @@ from wellvolpos.viz import (
     pfig_b4_chance_waterfall,
     pfig_b5_allocation_dumbbell,
     pfig_b6_inverse,
+    pfig_map_view,
     row_zlim,
 )
 
@@ -140,14 +143,29 @@ def _chart(fig, key: str):
     return st.plotly_chart(fig, width="stretch", height=PANEL_HEIGHT, theme=None, key=key)
 
 
-# ------------------------------------------------------------------ sidebar
-st.sidebar.title("WellVolPOS")
-st.sidebar.caption("Well POS and volume, from a stochastic prospect model")
+# ------------------------------------------------------------------- tabs
+# Declared before anything writes into them, because the trial-data selector now
+# lives in tab ① and everything downstream depends on the file it picks. The
+# sidebar keeps only the well geometry and the conventions -- the things a reader
+# changes repeatedly while looking at a figure.
+st.title("WellVolPOS")
+st.caption("Well POS and volume, from a stochastic prospect model")
+tabs = st.tabs(
+    [
+        "① Input data, QC and Risk",
+        "② Prospect",
+        "③ Well location",
+        "④ Location sweep",
+        "⑤ Risk & report",
+    ]
+)
 
-choice = st.sidebar.selectbox("Trial data", list(DEMOS) + ["Upload your own…"])
-uploaded = None
-if choice == "Upload your own…":
-    uploaded = st.sidebar.file_uploader("GeoX trial export", type=["csv", "txt", "tsv", "xlsx"])
+with tabs[0]:
+    st.subheader("Trial data")
+    choice = st.selectbox("Data set", list(DEMOS) + ["Upload your own…"])
+    uploaded = None
+    if choice == "Upload your own…":
+        uploaded = st.file_uploader("GeoX trial export", type=["csv", "txt", "tsv", "xlsx"])
 
 path = None
 if uploaded is not None:
@@ -159,12 +177,13 @@ elif choice in DEMOS:
     path = DEMOS[choice]
 
 if path is None:
-    st.info("Choose a demo dataset or upload a GeoX trial export to begin.")
+    with tabs[0]:
+        st.info("Choose a demo dataset or upload a GeoX trial export to begin.")
     st.stop()
 
 ts, qc = _load(str(path))
 
-st.sidebar.divider()
+# ------------------------------------------------------------------ sidebar
 st.sidebar.subheader("Well")
 zmin, zmax = float(ts.col("contact").min()), float(ts.col("contact").max())
 entry = st.sidebar.slider("Reservoir entry depth (m TVDSS)", zmin, zmax, min(max(3500.0, zmin), zmax), 5.0)
@@ -183,12 +202,8 @@ scheme = st.sidebar.selectbox(
     "Risk-element allocation", SHIPPED_SCHEMES, format_func=lambda k: SCHEME_LABELS[k]
 )
 
-# ------------------------------------------------------------------- tabs
-tabs = st.tabs(
-    ["① Data", "② QC & Risking", "③ Prospect", "④ Well location", "⑤ Location sweep", "⑥ Risk & report"]
-)
-
 with tabs[0]:
+    st.divider()
     st.subheader("Import")
     c1, c2, c3 = st.columns(3)
     c1.metric("Trials", f"{ts.n_trials:,}")
@@ -210,7 +225,24 @@ with tabs[0]:
             st.info(n)
     st.caption("Units are fixed: MMboe, m, km².")
 
-with tabs[1]:
+    st.divider()
+    st.subheader("The trials themselves")
+    n_preview = st.number_input(
+        "Rows to show", min_value=1, max_value=int(ts.n_trials), value=min(20, int(ts.n_trials)),
+        step=10,
+        help=(
+            "The canonical columns after mapping, as the rest of the app sees them — not the raw "
+            "file. Worth a look before trusting anything downstream: the failure trials are the "
+            "ones with every hydrocarbon quantity at exactly zero."
+        ),
+    )
+    st.dataframe(ts.frame.head(int(n_preview)), width="stretch")
+    st.caption(
+        f"First {int(n_preview):,} of {ts.n_trials:,} trials, in canonical form. "
+        f"TrialNumber is shown but is **not** a reliable key in a GeoX export — never join on it."
+    )
+
+    st.divider()
     st.subheader("Quality control")
     for c in qc.checks:
         st.markdown(f"{_badge(c.level)} **{c.name}** — {c.message}")
@@ -252,16 +284,16 @@ with tabs[1]:
 if qc.blocked:
     st.stop()
 
-# Entered here (tab ⑥) even though it is used immediately below, because
+# Entered here (tab ⑤) even though it is used immediately below, because
 # Streamlit executes every tab's body on every rerun regardless of which is
-# visually active -- entering the same `with tabs[5]:` block twice just
+# visually active -- entering the same `with tabs[4]:` block twice just
 # appends to that tab in order, so the input widgets can live before the
 # quantities they feed and still render at the top of the tab that owns them.
-with tabs[5]:
+with tabs[4]:
     st.subheader("Chance table")
     st.caption(
         "Per-element chance of success. Multiplied together they define the prospect's "
-        "POS, unless the risking convention (tab ②) says the trials already carry it — "
+        "POS, unless the risking convention (tab ①) says the trials already carry it — "
         "in which case this table is for the attribution figures below only."
     )
     ec = st.columns(4)
@@ -288,47 +320,108 @@ if has_area:
     ad = AreaDepth.from_trials(ts.col("contact"), ts.col("area"))
     vc = split_trials(ts, ad, groups, entry, exit_)
 
-with tabs[2]:
+with tabs[1]:
     st.subheader("Prospect — the un-cut model")
+    res_all = ts.col("resource")
     s = group_summary(ts, groups)["prospect"]
-    c = st.columns(4)
-    c[0].metric("P90", f"{s['p90']:.2f}")
-    c[1].metric("P50", f"{s['p50']:.2f}")
-    c[2].metric("Mean", f"{s['mean']:.2f}")
-    c[3].metric("P10", f"{s['p10']:.2f}")
-    st.caption("MMboe.")
+    # P99 and P1 in the petroleum orientation: P99 is exceeded 99 % of the time,
+    # so it is the *low* end. On this file P99 is 0.00 because 23.95 % of trials
+    # are chance failures at exactly zero — which is the honest answer and worth
+    # seeing next to the mean.
+    p99 = float(np.percentile(res_all, 1.0))
+    p1 = float(np.percentile(res_all, 99.0))
+    c = st.columns(6)
+    for col, label, value in zip(
+        c, ("P99", "P90", "P50", "Mean", "P10", "P1"),
+        (p99, s["p90"], s["p50"], s["mean"], s["p10"], p1),
+    ):
+        col.metric(label, f"{value:.2f}")
+    st.caption(
+        "MMboe, petroleum orientation — P99 is the low end, exceeded 99 % of the time. "
+        "P99 and P90 are 0.00 here because 23.95 % of trials are chance failures at exactly zero: "
+        "the low end of the *prospect* distribution is dominated by the cases with no hydrocarbons "
+        "at all."
+    )
 
     if not has_area:
-        st.warning("No productive-area column in this export — A1, A4 and A5 need it and are skipped.")
+        st.warning(
+            "No productive-area column in this export — the map view, A1, A4 and A5 need it "
+            "and are skipped."
+        )
     else:
         st.divider()
         # One depth range for the row, so A1 and A4 can be read straight across
-        # at constant depth (non-negotiable 2). A5 carries no depth axis, so it
-        # is not part of the alignment.
-        succ_contact = ts.col("contact")[ts.col("resource") > 0.0]
+        # at constant depth (non-negotiable 2). The map view is in plan view and
+        # A5 has no depth axis, so neither joins the alignment.
+        succ_contact = ts.col("contact")[res_all > 0.0]
         zrow_prospect = row_zlim(
             (ad.shallowest, ad.deepest),
             (float(succ_contact.min()), float(succ_contact.max())),
             pad_frac=0.02,
         )
-        c1, c2, c3 = st.columns(3)
+        c1, c2 = st.columns(2)
         with c1:
-            _chart(pfig_a1_area_depth(ad, current_entry=entry, current_exit=exit_, zlim=zrow_prospect), key="a1")
+            _chart(pfig_a1_area_depth(
+                    ad, ts=ts, current_entry=entry, current_exit=exit_, zlim=zrow_prospect,
+                ), key="a1")
         with c2:
             _chart(pfig_a4_resource_vs_depth(
                     ts, current_entry=entry, current_exit=exit_, mefs=mefs,
                     zlim=zrow_prospect, show_depth_labels=False,
                 ), key="a4")
-        with c3:
-            _chart(pfig_a5_exceedance(ts, groups, vc, mefs=mefs), key="a5")
         st.caption(
             f"A1 and A4 share one depth range ({zrow_prospect[0]:.0f}–{zrow_prospect[1]:.0f} m TVDSS) "
-            f"so the row reads straight across. A4 uses success trials only — the chance-failure "
-            f"zeros belong to POS, not to the shape of the resource distribution. A5 carries no "
-            f"depth axis and is evaluated at the current entry/exit."
+            f"so the row reads straight across. Both draw the mean thick and the P90/P50/P10 family "
+            f"thin and grey — the mean is the number that gets quoted, and on a skewed distribution "
+            f"it is not the P50. A4 uses success trials only: the chance-failure zeros belong to "
+            f"POS, not to the shape of the resource distribution."
         )
 
-with tabs[3]:
+        st.divider()
+        _chart(pfig_a5_exceedance(ts, groups, vc, mefs=mefs), key="a5")
+        st.caption(
+            "A5 — the exceedance curves at the current entry/exit, and the figure the whole tool "
+            "builds towards: the well-associated (discovery-case) distribution against the "
+            "prospect's own. No depth axis, so it sits below the row rather than in it."
+        )
+
+        st.divider()
+        st.subheader("Conceptual map view")
+        m1, m2 = st.columns([1, 3])
+        with m1:
+            map_interval = st.number_input(
+                "Contour interval (m)", min_value=5.0, max_value=500.0, value=50.0, step=5.0,
+            )
+            map_apex = st.number_input(
+                "Apex depth (m TVDSS)", value=float(ad.apex_estimate()), step=5.0,
+                help=(
+                    "A mapped apex is preferred. The default extrapolates A(z)'s shallow tail to "
+                    "zero area — see AreaDepth.apex_estimate."
+                ),
+            )
+            map_azimuth = st.slider(
+                "Well azimuth on the map (°)", 0, 359, 35,
+                help=(
+                    "Arbitrary. Only the well's radius carries meaning — it puts the well on the "
+                    "contour of its own entry depth. A(z) records enclosed area per depth and "
+                    "nothing about the closure's shape."
+                ),
+            )
+        with m2:
+            _chart(pfig_map_view(
+                    ad, apex=map_apex, z_entry=entry, z_exit=exit_,
+                    interval=map_interval, well_azimuth_deg=float(map_azimuth),
+                ), key="mapview")
+        st.caption(
+            f"Concentric contours whose *areas* come from A(z), apex at the centre, deepest "
+            f"sampled contact ({ad.deepest:.0f} m) as the outer ring. The shaded area inside the "
+            f"entry contour is what a dry hole would leave up-dip. Contours shallower than the "
+            f"shallowest sampled contact ({ad.shallowest:.0f} m) are dotted — the trials never "
+            f"reached the crest, so their area is a taper to the apex, not a model output. "
+            f"**The shape is a cartoon**: circles of the right area, in the wrong outline."
+        )
+
+with tabs[2]:
     st.subheader("Well location")
     if has_area:
         cs = class_summary(vc, groups)
@@ -392,7 +485,7 @@ def _location_sweep_tab():
     # The sweeps carry the well's *own* entry-to-exit spacing, so a swept
     # location is the same well moved up or down the structure. Left at a
     # default gap, B1's proven curve would disagree with the headline KPI in
-    # tab ④ for the very well the user has the sliders set to.
+    # tab ③ for the very well the user has the sliders set to.
     gap = exit_ - entry
     with st.spinner("Sweeping well location…"):
         sweep = run_sweep(ts, pos, reference=ref, z_gap=gap)
@@ -505,10 +598,10 @@ def _inverse_section(vsweep, ts):
     )
 
 
-with tabs[4]:
+with tabs[3]:
     _location_sweep_tab()
 
-with tabs[5]:
+with tabs[4]:
     st.caption(f"Effective POS prospect: **{pos:.4f}**, from {pos_source}.")
     if risking_convention == "trials_risked" and abs(pos_from_table - pos) > 1e-9:
         st.info(

@@ -79,6 +79,51 @@ def _depth_percentile_trend(contact: np.ndarray, resource: np.ndarray, n_bins: i
     return np.array(z), np.array(p90), np.array(p50), np.array(p10)
 
 
+def _depth_band(contact: np.ndarray, values: np.ndarray, n_bins: int = 40):
+    """Equal-count depth bins, returning (z, p90, p50, mean, p10) of ``values``.
+
+    The percentile family A1 and A4 both draw. Petroleum convention: P90 is the
+    low value, P10 the high one. The mean is carried alongside because it is the
+    number that gets quoted, and it is not the P50 -- on a skewed resource
+    distribution they can differ by a lot, and seeing both on one panel is the
+    point.
+    """
+    order = np.argsort(contact)
+    c, v = np.asarray(contact)[order], np.asarray(values)[order]
+    z, p90, p50, mean, p10 = [], [], [], [], []
+    for idx in np.array_split(np.arange(c.size), min(n_bins, max(c.size, 1))):
+        if idx.size == 0:
+            continue
+        z.append(float(c[idx].mean()))
+        p90.append(float(np.percentile(v[idx], 10.0)))
+        p50.append(float(np.percentile(v[idx], 50.0)))
+        mean.append(float(v[idx].mean()))
+        p10.append(float(np.percentile(v[idx], 90.0)))
+    return (np.array(z), np.array(p90), np.array(p50), np.array(mean), np.array(p10))
+
+
+def area_spread_is_material(ad: AreaDepth) -> tuple[bool, float]:
+    """Is there real area uncertainty *at a fixed depth*, worth reading off A1?
+
+    Returns ``(material, relative_residual)``, the residual scatter about the
+    fitted A(z) as a fraction of the mean area.
+
+    Measured from the isotonic residual, deliberately, and **not** from
+    percentiles within depth bins. A binned P90-to-P10 spread mostly reflects how
+    much *depth* each bin spans, so on the reference file it comes out at 20 % of
+    the mean and looks like substantial area uncertainty -- while the fit says
+    area is a deterministic function of contact depth to nine decimal places
+    (R2 = 0.9999999987, residual SD 0.00004 km2). Reporting the binned figure
+    would invent an uncertainty the model does not contain, which is the sort of
+    thing this project exists to avoid.
+    """
+    mean_area = float(np.mean(ad.a)) if ad.a.size else 0.0
+    if mean_area <= 0 or not np.isfinite(ad.resid_sd):
+        return False, 0.0
+    rel = float(ad.resid_sd) / mean_area
+    return rel > 0.01, rel
+
+
 def _exceedance(values: np.ndarray):
     """Sorted values and their exceedance probability P(X >= value), in %."""
     v = np.sort(np.asarray(values, dtype=float))

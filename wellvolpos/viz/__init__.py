@@ -37,6 +37,7 @@ from .interactive import (
     pfig_b4_chance_waterfall,
     pfig_b5_allocation_dumbbell,
     pfig_b6_inverse,
+    pfig_map_view,
     row_zlim,
 )
 from .theme import (
@@ -63,5 +64,5 @@ __all__ = [
     "pfig_a4_resource_vs_depth", "pfig_a5_exceedance", "pfig_a6_overlap",
     "pfig_b0_section", "pfig_b1_volume_split", "pfig_b2_chance_vs_regret",
     "pfig_b3_uncertainty_reduction", "pfig_b4_chance_waterfall", "pfig_b5_allocation_dumbbell",
-    "pfig_b6_inverse",
+    "pfig_b6_inverse", "pfig_map_view",
 ]
