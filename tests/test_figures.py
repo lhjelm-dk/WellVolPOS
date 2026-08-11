@@ -88,15 +88,15 @@ def test_a4_depth_axis_and_prospect_colour(reduced):
         assert line.get_color() == colour("prospect")
 
 
-def test_a5_has_no_depth_axis_and_uses_the_four_canonical_roles(reduced, groups, vc):
-    fig, ax = figures.fig_a5_exceedance(reduced, groups, vc, mefs=14.0)
+def test_a5_has_no_depth_axis_and_draws_the_prospect_only(reduced, groups, vc):
+    """A5 carries the prospect and nothing else now; the other three classes live in
+    C2 and in tab 3's table."""
+    fig, ax = figures.fig_a5_exceedance(reduced, groups, vc, mefs=14.0,
+                                        pos_prospect=POS, p_well=0.4576)
     assert not is_depth_axis_correct(ax)
-    lines = {line.get_label(): line for line in ax.get_lines()}
-    assert lines["Prospect (all trials)"].get_color() == colour("prospect")
-    assert lines["Discovery case"].get_color() == colour("discovery")
-    assert lines["Proven at well"].get_color() == colour("proven")
-    assert lines["Attic | dry hole"].get_color() == colour("attic")
-
+    curves = [l for l in ax.get_lines() if len(l.get_xdata()) > 10]
+    assert len(curves) == 2
+    assert {l.get_color() for l in curves} == {colour("prospect")}
 
 def test_b3_depth_axis_and_optimum_is_plotted_inside_the_swept_range(sweep):
     fig, ax = figures.fig_b3_uncertainty_reduction(sweep, current_z=ENTRY)
@@ -104,7 +104,7 @@ def test_b3_depth_axis_and_optimum_is_plotted_inside_the_swept_range(sweep):
     assert sweep.z.min() <= sweep.z_optimum <= sweep.z.max()
 
 
-def test_a5_draws_both_readings_and_labels_which_is_which(reduced, groups, vc):
+def test_c2_draws_both_readings_and_labels_which_is_which(reduced, groups, vc):
     """A5 draws each case twice (Lars, 2026-08-11): solid conditional from 100 %,
     dashed unconditional from that case's own chance.
 
@@ -115,9 +115,9 @@ def test_a5_draws_both_readings_and_labels_which_is_which(reduced, groups, vc):
     matters because the four chances are different numbers.
     """
     pos, pw = POS, 0.4576
-    fig, ax = figures.fig_a5_exceedance(reduced, groups, vc,
+    fig, ax = figures.fig_c2_exceedance(reduced, groups, vc,
                                         pos_prospect=pos, p_well=pw)
-    assert "conditional" in ax.get_title() and "risked" in ax.get_title()
+    assert "conditional" in ax.get_title() and "unconditional" in ax.get_title()
 
     solid = [l for l in ax.get_lines()
              if l.get_linestyle() == "-" and not l.get_label().startswith("_")]
@@ -168,14 +168,21 @@ def test_a2_depth_axis_and_outcome_colours(sweep):
 
 
 # ------------------------------------------------------------------- A6
-def test_a6_has_no_depth_axis_and_uses_proven_and_attic_colours(groups, vc):
-    fig, ax = figures.fig_a6_overlap(vc, groups, mefs=14.0)
-    assert not is_depth_axis_correct(ax)
-    bars = _hist_containers(ax)
-    assert set(bars) == {"Attic | dry hole", "Proven | discovery"}
-    assert _rgb(bars["Attic | dry hole"].patches[0].get_facecolor()) == pytest.approx(_rgb(colour("attic")))
-    assert _rgb(bars["Proven | discovery"].patches[0].get_facecolor()) == pytest.approx(_rgb(colour("proven")))
+def test_a6_has_no_depth_axis_and_draws_all_four_classes(reduced, groups, vc):
+    """A6 gained the well-associated and prospect distributions (Lars, 2026-08-11),
+    so Schneider's attic/proven pair is now seen against the two larger
+    distributions it is carved out of. Still no depth on either axis.
 
+    Opacity had to come down with four series: at 0.6 the fourth histogram hid the
+    first, and what shows through what is the entire content of this figure.
+    """
+    fig, ax = figures.fig_a6_overlap(vc, groups, ts=reduced, mefs=14.0)
+    assert not is_depth_axis_correct(ax)
+    labels = " ".join(t.get_text() for t in ax.get_legend().get_texts())
+    for expected in ("Prospect", "Well associated", "Attic", "Proven"):
+        assert expected in labels, expected
+    alphas = {round(float(p.get_alpha() or 1.0), 2) for p in ax.patches}
+    assert alphas == {0.45}
 
 def test_a6_densities_each_integrate_to_one(groups, vc):
     """What makes the two series comparable despite n = 4576 vs 3029.
@@ -552,15 +559,22 @@ def test_the_c2_twin_starts_its_curves_at_their_own_chance(reduced, area_depth, 
     assert tops_dashed == pytest.approx(expected, abs=0.6)
 
 
-def test_the_c1_twin_keeps_the_depth_rule_on_its_section(reduced, area_depth, groups, vc):
-    """Non-negotiable 2 applies to the composite too: the left panel carries a
-    depth, so it goes on y, inverted."""
+def test_the_c1_twin_is_an_unlabelled_recognition_panel(reduced, area_depth, groups, vc):
+    """C1 is deliberately stripped (Lars, 2026-08-11): A1 carries the full version
+    with axes and the thickness family, and C1's only job beside C2 is to be
+    *recognised*.
+
+    So it is exempt from the depth *label* rule while keeping the part that matters
+    -- depth still on y and still inverted. A reader taking a number off this panel
+    is using the wrong figure, and stripping the ticks is what says so.
+    """
     fig, ax_sec = figures.fig_c1_section(
         area_depth, reduced, z_entry=ENTRY, z_exit=EXIT,
     )
     lo, hi = ax_sec.get_ylim()
-    assert lo > hi                                       # inverted
-    assert "TVDSS" in ax_sec.get_ylabel()
+    assert lo > hi                                       # inverted: the part that matters
+    assert ax_sec.get_ylabel() == "" and ax_sec.get_xlabel() == ""
+    assert len(ax_sec.get_xticks()) == 0 and len(ax_sec.get_yticks()) == 0
 
 
 def test_the_c2_twin_colours_by_the_same_roles_as_its_plotly_original(
@@ -579,19 +593,19 @@ def test_the_c2_twin_colours_by_the_same_roles_as_its_plotly_original(
         assert colour(role, False).lower() in used
 
 
-def test_the_c1_twin_degrades_rather_than_inventing_a_base_reservoir(
+def test_the_a1_twin_degrades_rather_than_inventing_a_base_reservoir(
     reduced, area_depth, groups, vc
 ):
-    """No recoverable thickness means no base reservoir -- and the figure says so
-    instead of drawing a surface it cannot support."""
+    """No recoverable thickness means no base reservoir -- and A1, which carries the
+    reservoir band now, says so instead of drawing a surface it cannot support."""
     import copy
 
     ts = copy.deepcopy(reduced)
     ts.frame["hc_grv"] = ts.frame["hc_grv"] * 1000.0     # nothing can be inverted
-    fig, _ax = figures.fig_c1_section(area_depth, ts, z_entry=ENTRY, z_exit=EXIT)
-    # The note now lives on the section's x-axis label rather than in fig.texts.
-    said = " ".join(t.get_text() for t in fig.texts) + " " + fig.axes[0].get_xlabel()
-    assert "the base reservoir is not drawn" in said
+    fig, ax = figures.fig_a1_area_depth(area_depth, ts=ts, current_entry=ENTRY,
+                                        current_exit=EXIT)
+    # No base curve and no shaded wedges -- the figure simply shows A(z).
+    assert not any("Base" in str(l.get_label()) for l in ax.get_lines())
 
 
 def test_the_map_twin_is_plan_view_with_equal_aspect(area_depth):

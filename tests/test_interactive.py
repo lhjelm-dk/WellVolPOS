@@ -171,13 +171,22 @@ def test_a3_draws_both_chances_in_blue_separated_by_dash(sweep):
     assert p_well.line.dash != r_trace.line.dash
 
 
-def test_a5_maps_the_four_series_onto_the_four_canonical_roles(reduced, groups, vc):
-    fig = I.pfig_a5_exceedance(reduced, groups, vc)
-    assert _line_colour(fig, "Prospect (all trials)") == colour("prospect")
-    assert _line_colour(fig, "Discovery case") == colour("discovery")
-    assert _line_colour(fig, "Proven at well") == colour("proven")
-    assert _line_colour(fig, "Attic | dry hole") == colour("attic")
+def test_a5_draws_the_prospect_only_in_both_readings(reduced, groups, vc):
+    """A5 is the *Prospect* tab's figure and now carries only the prospect (Lars,
+    2026-08-11). The other three series say again what C2 draws and what tab 3's
+    table tabulates, and three places for one set of numbers is three places to
+    disagree -- their populations were verified identical before they were removed.
 
+    Both readings stay: solid conditional from 100 %, dashed unconditional from
+    POS_prospect.
+    """
+    fig = I.pfig_a5_exceedance(reduced, groups, vc, mefs=14.0,
+                               pos_prospect=POS, p_well=0.4576)
+    curves = [t for t in fig.data if t.mode == "lines" and t.name]
+    assert len(curves) == 2
+    assert all(t.line.color == colour("prospect") for t in curves)
+    tops = sorted(float(np.nanmax(np.asarray(t.y, dtype=float))) for t in curves)
+    assert tops == pytest.approx([POS * 100.0, 100.0], abs=0.5)
 
 def test_b1_uses_the_class_colours(vsweep):
     fig = I.pfig_b1_volume_split(vsweep)
@@ -492,26 +501,29 @@ def concepts(full):
     g = group_trials(full, ENTRY, EXIT)
     vcl = split_trials(full, ad, g, ENTRY, EXIT)
     ch = p_well_fn(full, ENTRY, POS)
-    c1 = I.pfig_c1_section(ad, full, z_entry=ENTRY, z_exit=EXIT)
+    c1 = I.pfig_a1_area_depth(ad, ts=full, current_entry=ENTRY, current_exit=EXIT)
     c2 = I.pfig_c2_exceedance(full, g, vcl, pos_prospect=POS, p_well=ch.p_well, mefs=14.0)
     return c1, c2, ch
 
 
-def test_concepts_draws_the_reservoir_band_from_a_real_thickness(concepts):
-    """Top reservoir is A(z); base is the same curve shifted down by the mean
-    sampled thickness. Both are real quantities -- an earlier version used
-    sqrt(area) as a pretend lateral width, which is not in the data at all."""
-    fig, _c2, _ = concepts
-    said = " ".join(a.text or "" for a in fig.layout.annotations)
-    assert "Top reservoir" in said
-    assert "Base reservoir" in said
-    assert "Reservoir entry" in said and "Reservoir exit" in said
-    # The thickness note moved off the figure title and onto the section panel's
-    # own x-axis label, where it belongs and where it stopped colliding with the
-    # first subplot heading.
-    assert "back-calculated from pay" in fig.layout.xaxis.title.text
-    assert "area" in fig.layout.xaxis.title.text.lower()
+def test_a1_draws_the_reservoir_band_from_a_real_thickness(concepts):
+    """Top reservoir is A(z); the base is the same curve shifted down by the
+    thickness recovered from pay -- drawn four times, P90/P50/mean/P10, because that
+    thickness is a distribution and one base line implied a surface the trials do
+    not support.
 
+    Both are real quantities. An earlier version used sqrt(area) as a pretend
+    lateral width, which is not in the data at all. The band lives on **A1** now:
+    it and C1 drew the same A(z), so C1 kept only the unlabelled thumbnail.
+    """
+    fig, _c2, _ = concepts
+    named = " ".join(str(t.name or "") for t in fig.data)
+    assert "Top reservoir" in named
+    for q in ("Base P90", "Base P50", "Base mean", "Base P10"):
+        assert q in named, q
+    assert "thickness from pay" in fig.layout.title.text
+    # The three volume classes, shaded between top and base.
+    assert sum(1 for t in fig.data if t.fillcolor) >= 3
 
 def test_concepts_draws_the_base_on_the_seven_column_paste_too(reduced, groups, vc, area_depth):
     """The payoff from back-calculating thickness instead of reading a column.
@@ -522,13 +534,13 @@ def test_concepts_draws_the_base_on_the_seven_column_paste_too(reduced, groups, 
     of which that export does carry.
     """
     assert not reduced.has("thickness")
-    fig = I.pfig_c1_section(area_depth, reduced, z_entry=ENTRY, z_exit=EXIT)
-    said = " ".join(a.text or "" for a in fig.layout.annotations)
-    assert "Base reservoir" in said
+    fig = I.pfig_a1_area_depth(area_depth, ts=reduced, current_entry=ENTRY, current_exit=EXIT)
+    said = " ".join(str(t.name or "") for t in fig.data)
+    assert "Base P50" in said and "Top reservoir" in said
     # The thickness note moved off the figure title and onto the section panel's
     # own x-axis label, where it belongs and where it stopped colliding with the
     # first subplot heading.
-    assert "back-calculated from pay" in fig.layout.xaxis.title.text
+    assert "thickness from pay" in fig.layout.title.text
     assert sum(1 for d in fig.data if d.fillcolor) >= 3      # all three wedges
 
 
@@ -691,8 +703,8 @@ def test_an_unknown_scale_falls_back_on_both_the_label_and_the_data(area_depth, 
 def test_the_concepts_section_honours_the_area_scale_too(reduced, area_depth, groups, vc):
     """A1 and the concepts figure draw the same A(z); they must not be readable
     against different axes in the same session."""
-    sq = I.pfig_c1_section(area_depth, reduced, z_entry=ENTRY, z_exit=EXIT,
-                           area_scale="area²")
+    sq = I.pfig_a1_area_depth(area_depth, ts=reduced, current_entry=ENTRY,
+                              current_exit=EXIT, area_scale="area²")
     assert "km⁴" in sq.layout.xaxis.title.text
 
 
@@ -844,9 +856,12 @@ def test_the_gap_between_the_two_curve_starts_is_the_location_penalty(
 def test_exceedance_marks_are_labelled_by_value_and_sit_on_the_curve(reduced, groups, vc):
     """Lars asked for a marker at P90/P50/mean/P10 carrying the *value*, not the
     percentile name -- the percentile is already the axis."""
-    fig = I.pfig_a5_exceedance(reduced, groups, vc, mefs=14.0)
+    fig = I.pfig_a5_exceedance(reduced, groups, vc, mefs=14.0,
+                               pos_prospect=POS, p_well=0.4576)
     marks = [t for t in fig.data if t.mode and "markers" in t.mode]
-    assert len(marks) == 16                                  # four statistics on four curves
+    # Four statistics on each of the prospect's two readings, since A5 is
+    # prospect-only now.
+    assert len(marks) == 8
     for t in marks:
         assert t.text is not None and t.text[0].strip().replace(",", "").replace(".", "").isdigit()
         # The label is the volume, and the statistic's name is in the hover.

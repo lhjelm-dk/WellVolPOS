@@ -148,6 +148,10 @@ CHANCE_HELP = {
 #: with nothing.
 C2_HEIGHT = 620
 
+#: C1 is a thumbnail above C2 -- there to be recognised, not read -- so it gets a
+#: fraction of a panel's height rather than the shared one.
+C1_THUMB_HEIGHT = 250
+
 
 # Dark mode was built and then dropped, on Lars's instruction (2026-08-10). The
 # app draws in the light palette only. ``viz/theme.py`` keeps its dark palette and
@@ -655,42 +659,41 @@ with tabs[1]:
             (float(succ_contact.min()), float(succ_contact.max())),
             pad_frac=0.02,
         )
-        # A4's two renderings of one dataset. It was briefly two figures — A4's blue
-        # log-density and a separate A7 grid — which showed the same trials twice
-        # under two numbers; merged on Lars's instruction (2026-08-11).
-        _auto_r, _auto_z = suggest_grid(res_all[res_all > 0.0], succ_contact)
-        ac1, ac2, ac3 = st.columns([2, 1, 1])
-        a4_render = ac1.radio(
-            "A4 rendering", ["grid", "hexbin"], horizontal=True, key="w_a4_render",
-            format_func=lambda k: {"grid": "Trial-count grid (workbook, inferno)",
-                                   "hexbin": "Log-density hexbin"}[k],
-        )
-        a4_nx = ac2.number_input("Resource bins", 10, 120, _auto_r, 2, key="w_grid_res",
-                                 disabled=a4_render != "grid")
-        a4_ny = ac3.number_input("Depth bins", 10, 120, _auto_z, 2, key="w_grid_z",
-                                 disabled=a4_render != "grid")
-        st.caption(
-            f"Grid default **{_auto_r} × {_auto_z}** from the Freedman–Diaconis rule on each "
-            f"axis — bin width 2·IQR/n^⅓, which adapts to spread *and* sample size and survives "
-            f"the long right tail a resource distribution always has. The workbook's own "
-            f"`resource grid` sheet is a fixed 100 × 100, which on 10 000 trials leaves most "
-            f"cells empty. Counts are on a **log** scale either way: the modal cell holds two "
-            f"orders of magnitude more trials than the tails, and the tails are where a location "
-            f"question lives."
-        )
-
+        # A1 first and A4 second, each in its own column with A4's controls above its
+        # own figure (Lars, 2026-08-11) -- the controls used to sit above the whole
+        # row, where they read as belonging to both.
         c1, c2 = st.columns(2)
         with c1:
             _chart(pfig_a1_area_depth(
-                    ad, ts=ts, current_entry=entry, current_exit=exit_, zlim=zrow_prospect,
+                    ad, ts=ts, current_entry=entry, current_exit=exit_,
+                    zlim=zrow_prospect, area_scale=area_scale,
                 ), key="a1")
         with c2:
+            _auto_r, _auto_z = suggest_grid(res_all[res_all > 0.0], succ_contact)
+            ac1, ac2, ac3 = st.columns([2, 1, 1])
+            a4_render = ac1.radio(
+                "A4 rendering", ["grid", "hexbin"], horizontal=True, key="w_a4_render",
+                format_func=lambda k: {"grid": "Trial-count grid",
+                                       "hexbin": "Log-density hexbin"}[k],
+            )
+            a4_nx = ac2.number_input("Resource bins", 10, 120, _auto_r, 2, key="w_grid_res",
+                                     disabled=a4_render != "grid")
+            a4_ny = ac3.number_input("Depth bins", 10, 120, _auto_z, 2, key="w_grid_z",
+                                     disabled=a4_render != "grid")
             _chart(pfig_a4_resource_vs_depth(
                     ts, current_entry=entry, current_exit=exit_, mefs=mefs,
                     render=a4_render, n_resource=int(a4_nx), n_depth=int(a4_ny),
                     zlim=zrow_prospect, show_depth_labels=False,
                 ), key="a4")
         st.caption(
+            f"**A1** now carries the reservoir too: top reservoir is A(z), and the base is that "
+            f"curve shifted down by the thickness back-calculated from pay — drawn four times, "
+            f"P90/P50/mean/P10, because that thickness is a distribution and one base line "
+            f"implied a surface the trials do not support. The three shaded classes are the same "
+            f"colours C2 uses below. **A4**'s grid default is "
+            f"{_auto_r} × {_auto_z} from Freedman–Diaconis per axis; counts are on a log scale "
+            f"either way, because the modal cell holds two orders of magnitude more trials than "
+            f"the tails and the tails are where a location question lives.\n\n"
             f"A1 and A4 share one depth range ({zrow_prospect[0]:.0f}–{zrow_prospect[1]:.0f} m TVDSS) "
             f"so the row reads straight across. Both draw the mean thick and the P90/P50/P10 family "
             f"thin and grey — the mean is the number that gets quoted, and on a skewed distribution "
@@ -983,9 +986,12 @@ with tabs[2]:
         # Two figures, one above the other (Lars, 2026-08-11). They were one stacked
         # composite; split, each renders at its own natural height and either can be
         # exported and placed on its own.
+        # C1 is a small recognition panel, not a panel in a row, so it does not take
+        # the shared height. A1 on tab ② carries the full version.
         _chart(pfig_c1_section(
                 ad, ts, z_entry=entry, z_exit=exit_, area_scale=area_scale,
-            ), key="c1")
+                height=C1_THUMB_HEIGHT,
+            ), key="c1", height=C1_THUMB_HEIGHT)
         _chart(pfig_c2_exceedance(
                 ts, groups, vc, pos_prospect=chance.pos_prospect,
                 p_well=chance.p_well, mefs=mefs,
@@ -1013,7 +1019,7 @@ with tabs[2]:
         st.divider()
         c1, c2 = st.columns(2)
         with c1:
-            _chart(pfig_a6_overlap(vc, groups, mefs=mefs), key="a6")
+            _chart(pfig_a6_overlap(vc, groups, ts=ts, mefs=mefs), key="a6")
         with c2:
             # A6 has no depth axis, so this row has only one depth-carrying
             # panel and nothing to align it against; the section keeps its own

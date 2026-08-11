@@ -136,11 +136,73 @@ def _vline(fig, x: float, colour_: str, dash: str = "dot", label: str | None = N
 
 
 # ------------------------------------------------------------------- A1
+
+def _reservoir_band(fig, ad, ts, *, z_entry, z_exit, dark, transform, labels=True):
+    """Top and base reservoir with the three volume classes shaded between them.
+
+    Returns a one-line note about the thickness for the caller's subtitle, or "".
+
+    The base reservoir is drawn **four times** -- P90, P50, mean and P10 of the
+    thickness recovered from pay -- because that thickness is a distribution and a
+    single base line implied a surface the trials do not support. The P50 keeps the
+    weight; the rest are thin, the same convention A1's area family already uses.
+
+    The shaded wedges are clipped to the well's depth windows, so up-dip, tested and
+    possible-below-exit appear where they physically are. Extracted from what used
+    to be C1 so A1 and C1 cannot draw it differently.
+    """
+    p = palette(dark)
+    tfp = thickness_from_pay(ts, ad)
+    stats = tfp.summary()
+    if not tfp.n_resolved:
+        return ("<br><sub>no reservoir thickness recoverable from pay, so no base "
+                "reservoir is drawn</sub>")
+
+    a, top = transform(ad.a), ad.z
+    fig.add_scatter(
+        x=a, y=top, mode="lines", name="Top reservoir", showlegend=labels,
+        line=dict(color=p["text"], width=2),
+        hovertemplate="top reservoir at " + DEPTH_HOVER + "<extra></extra>",
+    )
+    for key, name, width, dash in (("p90", "Base P90", 1.0, "dot"),
+                                   ("p50", "Base P50", 1.8, "dash"),
+                                   ("mean", "Base mean", 1.4, "solid"),
+                                   ("p10", "Base P10", 1.0, "dot")):
+        fig.add_scatter(
+            x=a, y=top + stats[key], mode="lines", name=name, showlegend=labels,
+            line=dict(color=p["muted"] if key != "p50" else p["text"],
+                      width=width, dash=dash),
+            hovertemplate=f"base reservoir, {name.split()[1]} thickness "
+                          f"({stats[key]:.0f} m)<extra></extra>",
+        )
+
+    base = top + stats["p50"]
+    for lo, hi, role, label in ((-np.inf, z_entry, "up_dip", "up-dip"),
+                                (z_entry, z_exit, "tested", "tested"),
+                                (z_exit, np.inf, "possible", "possible")):
+        upper, lower = np.clip(top, lo, hi), np.clip(base, lo, hi)
+        m = lower > upper + 1e-9
+        if m.sum() < 2:
+            continue
+        fig.add_scatter(
+            x=np.concatenate([a[m], a[m][::-1]]),
+            y=np.concatenate([upper[m], lower[m][::-1]]),
+            fill="toself", fillcolor=rgba(role, 0.55, dark), mode="lines",
+            line=dict(width=0), showlegend=False, hoverinfo="skip",
+        )
+        if labels:
+            mid = int(np.flatnonzero(m)[m.sum() // 2])
+            fig.add_annotation(x=a[mid], y=0.5 * (upper[mid] + lower[mid]), text=label,
+                               showarrow=False, font=dict(size=9, color=p["text"]))
+    return (f"<br><sub>base reservoir = top + thickness from pay: P90 {stats['p90']:.0f} · "
+            f"P50 {stats['p50']:.0f} · mean {stats['mean']:.0f} · P10 {stats['p10']:.0f} m</sub>")
+
+
 def pfig_a1_area_depth(
-    ad: AreaDepth, *, ts: TrialSet | None = None,
-    current_entry: float | None = None, current_exit: float | None = None,
-    n_bins: int = 40, zlim: tuple[float, float] | None = None,
-    show_depth_labels: bool = True, area_scale: str = "area",
+    ad: AreaDepth, *, ts: TrialSet | None = None, current_entry: float | None = None,
+    current_exit: float | None = None, n_bins: int = 40,
+    zlim: tuple[float, float] | None = None, show_depth_labels: bool = True,
+    area_scale: str = "area", show_reservoir: bool = True,
     dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
     """A1 -- the area-depth curve recovered from the trials, entry/exit marked.
@@ -195,13 +257,31 @@ def pfig_a1_area_depth(
             hovertemplate="%{x:.3f} km² at " + DEPTH_HOVER + "<extra></extra>",
         )
 
+    # **C1's reservoir section, merged in** (Lars, 2026-08-11). A1 and C1 drew the
+    # same A(z) on the same axes; the only thing C1 added was the base reservoir and
+    # the three shaded volume classes, and two figures of one curve is how a reader
+    # comes to think they are two curves. C1 survives as a small unlabelled
+    # thumbnail beside C2, for recognition.
+    #
+    # The base reservoir now carries its own **P90 / P50 / mean / P10**, because the
+    # thickness recovered from pay is a distribution and drawing one base line
+    # implied a surface the data does not support.
+    reservoir_note = ""
+    if show_reservoir and ts is not None and current_entry is not None:
+        reservoir_note = _reservoir_band(
+            fig, ad, ts, z_entry=current_entry,
+            z_exit=current_exit if current_exit is not None else current_entry,
+            dark=dark, transform=transform,
+        )
+
     if current_entry is not None:
         _hline(fig, current_entry, p["well"], "dash", "well entry")
     if current_exit is not None and current_exit != current_entry:
         _hline(fig, current_exit, p["well"], "dot", "well exit")
 
     fig.update_layout(
-        title=f"A1 · Area–depth curve (isotonic R² = {ad.r2:.6f}){subtitle}",
+        title=f"A1 · Area–depth curve and reservoir (isotonic R² = {ad.r2:.6f})"
+              f"{subtitle}{reservoir_note}",
         xaxis_title=axis_label,
         showlegend=with_area,
     )
@@ -664,22 +744,16 @@ def pfig_a5_exceedance(
     res = ts.col("resource")
     p = palette(dark)
     fig = go.Figure()
-    # **Both readings**, on Lars's instruction (2026-08-11): solid conditional and
-    # dashed unconditional, the same convention as C2 and B8. Each series is
-    # conditional on a *different* event, so each unconditional twin uses its own
-    # chance -- which is the thing worth seeing, because those four chances are not
-    # the same number and the conditional curves hide that completely.
+    # **The prospect only** (Lars, 2026-08-11). A5 sits on the *Prospect* tab, whose
+    # subject is the un-cut model, and the other three series were saying again what
+    # C2 draws and what tab ③'s table tabulates -- three places for one set of
+    # numbers is three places to disagree. Verified identical before removing them:
+    # A5's populations and the tab ③ table's were the same trials to the last
+    # decimal, so nothing is lost by keeping them in one place.
     #
-    # The chances arrive as arguments and are never taken from the trial file's own
-    # zero count. Passing them is what lets A5 agree with tab ③'s table.
-    p_updip = (max(pos_prospect - p_well, 0.0)
-               if (pos_prospect is not None and p_well is not None) else None)
-    series = [
-        ("Prospect (all trials)", res[res > 0], pos_prospect, "prospect"),
-        ("Discovery case", res[groups.discovery], p_well, "discovery"),
-        ("Proven at well", vc.proven[groups.discovery], p_well, "proven"),
-        ("Attic | dry hole", res[groups.dry_with_attic], p_updip, "attic"),
-    ]
+    # Both readings, as everywhere: solid conditional from 100 %, dashed
+    # unconditional from POS_prospect.
+    series = [("Prospect recoverable resource", res[res > 0], pos_prospect, "prospect")]
     for name, values, chance_of, role in series:
         readings = [("conditional", 1.0)]
         if chance_of is not None:
@@ -693,22 +767,19 @@ def pfig_a5_exceedance(
                 name=name if reading == "conditional" else f"{name} — risked",
                 legendgroup=name,
                 line=dict(color=colour(role, dark),
-                          width=2.5 if reading == "conditional" else 1.8,
+                          width=2.8 if reading == "conditional" else 2.0,
                           dash=READING_DASH[reading]),
                 hovertemplate=(
                     f"{name} — {READING_LABELS[reading]}"
                     "<br>%{y:.1f}% chance of exceeding %{x:.2f} MMboe<extra></extra>"
                 ),
             )
-            # Labelled values on the conditional markers only; the risked twins get
-            # markers without text, or eight numbers per series would collide.
-            _mark_exceedance(fig, values, role, dark, chance=chance_used,
-                             show_text=reading == "conditional")
+            _mark_exceedance(fig, values, role, dark, chance=chance_used, show_text=True)
     if mefs is not None:
         _vline(fig, mefs, p["muted"], "dot", "MEFS")
 
     fig.update_layout(
-        title="A5 · Exceedance curves — solid conditional, dashed unconditional (risked)",
+        title="A5 · Prospect resource — solid conditional, dashed unconditional (risked)",
         xaxis_title="Recoverable resource (MMboe)",
         yaxis_title="Probability of exceedance (%)",
     )
@@ -720,41 +791,50 @@ def pfig_a5_exceedance(
 
 # ------------------------------------------------------------------- A6
 def pfig_a6_overlap(
-    vc: VolumeClasses, groups: Groups, *, mefs: float | None = None, bins: int = 40,
+    vc: VolumeClasses, groups: Groups, *, ts: TrialSet | None = None,
+    mefs: float | None = None, bins: int = 40,
     dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
-    """A6 -- Schneider et al.'s "surprising overlap", proven against attic.
+    """A6 -- Schneider et al.'s "surprising overlap", now against all four classes.
 
-    Densities, not counts: the two groups have different n (4 576 against
-    3 029 here) and the figure is about the shape overlap.
+    Densities, not counts: the groups have different n and the figure is about the
+    *shape* overlap, which counts would distort by group size.
+
+    Attic and proven are the pair Schneider names -- what a dry hole leaves against
+    what a discovery proves -- and the surprise is how far they overlap. Well
+    associated and prospect are drawn behind them (Lars, 2026-08-11) so the pair is
+    seen in the context of the two larger distributions they are carved out of.
+
+    Opacity is lower with four series than it was with two: at 0.6 the fourth
+    histogram hid the first, and the whole content of this figure is what shows
+    through what.
     """
-    proven = vc.proven[groups.discovery]
-    attic = vc.attic[groups.dry_with_attic]
     p = palette(dark)
-    hi = max(float(proven.max()) if proven.size else 0.0,
-             float(attic.max()) if attic.size else 0.0, 1.0)
+    series = [
+        ("Prospect resource potential", ts.col("resource")[ts.col("resource") > 0]
+         if ts is not None else np.array([]), "prospect"),
+        ("Well associated | discovery", vc.discovery_total[groups.discovery], "well_associated"),
+        ("Attic | dry hole", vc.attic[groups.dry_with_attic], "attic"),
+        ("Proven | discovery", vc.proven[groups.discovery], "proven"),
+    ]
+    hi = max([float(v.max()) for _n, v, _r in series if v.size] + [1.0])
     size = hi / bins
 
     fig = go.Figure()
-    if attic.size:
+    for name, values, role in series:
+        if not values.size:
+            continue
         fig.add_histogram(
-            x=attic, name=f"Attic | dry hole (n={attic.size:,})", histnorm="probability density",
-            marker_color=colour("attic", dark), opacity=0.6,
+            x=values, name=f"{name} (n={values.size:,})", histnorm="probability density",
+            marker_color=colour(role, dark), opacity=0.45,
             xbins=dict(start=0.0, end=hi, size=size),
-            hovertemplate="attic %{x:.1f} MMboe<br>density %{y:.4f}<extra></extra>",
-        )
-    if proven.size:
-        fig.add_histogram(
-            x=proven, name=f"Proven | discovery (n={proven.size:,})", histnorm="probability density",
-            marker_color=colour("proven", dark), opacity=0.6,
-            xbins=dict(start=0.0, end=hi, size=size),
-            hovertemplate="proven %{x:.1f} MMboe<br>density %{y:.4f}<extra></extra>",
+            hovertemplate=name + " %{x:.1f} MMboe<br>density %{y:.4f}<extra></extra>",
         )
     if mefs is not None:
         _vline(fig, mefs, p["muted"], "dot", "MEFS")
 
     fig.update_layout(
-        title="A6 · Attic vs proven — the overlap", barmode="overlay",
+        title="A6 · Where the four volume classes overlap", barmode="overlay",
         xaxis_title="Recoverable resource (MMboe)", yaxis_title="Density",
     )
     apply_plotly(fig, dark, height)
@@ -1724,35 +1804,35 @@ def pfig_b8_commercial_chance(
 # ----------------------------------------------------- the concepts figure
 def pfig_c1_section(
     ad: AreaDepth, ts: TrialSet, *, z_entry: float, z_exit: float,
-    area_scale: str = "area", dark: bool = False, height: int | None = PANEL_HEIGHT,
+    area_scale: str = "area", dark: bool = False, height: int | None = 260,
 ):
-    """C1 -- where each volume sits in the structure.
+    """C1 -- the structure, as a small recognition panel above C2.
 
-    Split out of the old composite (Lars, 2026-08-11). It was one figure of two
-    stacked panels; two figures render at their own natural heights, can be exported
-    and dropped into a deck separately, and neither has to compromise for the other.
-    C2 is the matching exceedance figure and they are read together.
+    A1 now carries the full version of this: the same A(z), the same base reservoir
+    and the same three shaded classes, with axes, labels and the thickness family
+    (Lars, 2026-08-11). What is left here is deliberately **small and unlabelled** --
+    no axis titles, no tick labels, no legend -- because its job beside C2 is not to
+    be read but to be *recognised*: this shape, these three colours, and then the
+    same three colours as curves below.
 
-    x is **area**, not a lateral distance, and that is the point -- see
-    :func:`_reservoir_section` for why a physical cross-section cannot honestly be
-    drawn from A(z).
+    Stripping the labels is the point rather than a saving. A reader who tries to
+    take a number off this panel is using the wrong figure, and A1 is one tab away.
     """
+    p = palette(dark)
+    _, transform = AREA_SCALES.get(area_scale, AREA_SCALES["area"])
     fig = go.Figure()
-    _reservoir_section(fig, ad, ts, z_entry=z_entry, z_exit=z_exit, dark=dark,
-                       area_scale=area_scale)
-    tfp = thickness_from_pay(ts, ad)
-    ss = tfp.summary()
-    note = (
-        f"   ·   base reservoir = top + thickness back-calculated from pay: "
-        f"P50 {ss['p50']:.0f} m, P90–P10 {ss['p90']:.0f}–{ss['p10']:.0f} m (dotted)"
-        if tfp.n_resolved else
-        "   ·   no reservoir thickness recoverable from pay, so no base reservoir is drawn"
-    )
-    fig.update_layout(title="C1 · Where each volume sits in the structure", showlegend=False)
-    fig.update_xaxes(title_text=AREA_SCALES.get(area_scale, AREA_SCALES["area"])[0] + note,
-                     title_font=dict(size=9), rangemode="tozero")
+    _reservoir_band(fig, ad, ts, z_entry=z_entry, z_exit=z_exit, dark=dark,
+                    transform=transform, labels=False)
+    for depth, dash in ((z_entry, "dash"), (z_exit, "dot")):
+        fig.add_hline(y=depth, line=dict(color=p["well"], width=1.2, dash=dash))
+
+    fig.update_layout(title="C1 · the structure", showlegend=False)
     apply_plotly(fig, dark, height)
-    depth_axis_plotly(fig, (ad.shallowest, ad.deepest))
+    # Everything off: this panel is for recognition, not for reading.
+    fig.update_xaxes(title_text=None, showticklabels=False, showgrid=False, zeroline=False)
+    fig.update_yaxes(title_text=None, showticklabels=False, showgrid=False, zeroline=False,
+                     autorange="reversed")
+    fig.update_layout(margin=dict(l=10, r=10, t=34, b=10))
     return fig
 
 
