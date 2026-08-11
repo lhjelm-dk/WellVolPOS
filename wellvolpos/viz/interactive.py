@@ -90,6 +90,7 @@ __all__ = [
     "pfig_b7_frontier",
     "pfig_b8_commercial_chance",
     "pfig_b9_chance_weighted",
+    "pfig_b10_contact_spread",
     "pfig_a8_contact_distribution",
     "pfig_a9_prospect_density",
     "suggest_grid",
@@ -1264,14 +1265,38 @@ def pfig_b6_inverse(
 ):
     """B6 -- the inverse: volume to prove against the entry depth it demands.
 
-    The workbook's H38-H40 block as a curve, and the fourth question the tool
-    exists to answer. Depth on y and inverted like every other depth axis, so
-    demanding more volume moves the answer visibly *down* the structure.
+    **One question, one answer.** *"I must prove this much to sanction. How deep does
+    the well have to enter, and what does that cost me in chance?"* x is the volume
+    you want, y is the shallowest entry depth that delivers it, and the marker colour
+    is ``P_well`` there. Read left to right: wanting more pushes you down-dip, and
+    the markers pale as chance drains away.
 
-    ``P_well`` is the colour of the curve rather than a second y-axis -- dual
-    y-axes are forbidden, and the trade is the point: the marker darkens where
-    the requirement is cheap in chance and pales where it is expensive. Hover
-    gives all three numbers at once, which is what this figure is for.
+    The workbook's H38-H40 block as a curve, and the fourth question the tool exists
+    to answer. Depth on y and inverted like every other depth axis, so demanding more
+    volume moves the answer visibly *down* the structure.
+
+    ``P_well`` is the colour of the curve rather than a second y-axis -- dual y-axes
+    are forbidden, and the trade is the point: the marker darkens where the
+    requirement is cheap in chance and pales where it is expensive. Hover gives all
+    three numbers at once, which is what this figure is for.
+
+    **It answers a guarantee, not a first touch**, and the y-axis title says so.
+    :func:`wellvolpos.core.sweep._required_depth` takes a running minimum from the
+    deep end, so the depth returned is the shallowest one from which the proven mean
+    stays at or above the target *all the way down*. A sampled proven-mean curve
+    wobbles wherever the discovery group is thin; inverting its first crossing
+    returns depths that deeper locations contradict, which is no basis for a well
+    proposal.
+
+    **The contact-depth spread used to be drawn here and is now B10** (Lars,
+    2026-08-11, who reported he could not tell what the curves meant). Both
+    quantities are sound and they were sharing axes that can only be labelled for
+    one: x was the *mean proven volume over the discovery group* for this curve and
+    the *per-trial total resource* for those lines -- 33.9-277.7 against 2.2-482.1
+    MMboe on prospect B -- while y was *required entry depth* here and *contact
+    depth* there. So they crossed, and read as a band this curve wandered in and out
+    of. Two quantities under one axis label is the same mistake as an unrisked number
+    under a risked label; see B10 for where the spread went.
     """
     p = palette(dark)
     targets, z_req, p_at = volume_target_curve(vsweep, n=n_targets, ts=ts)
@@ -1298,28 +1323,6 @@ def pfig_b6_inverse(
             )
 
     ok = np.isfinite(z_req)
-    # The workbook's BB-BE block: the *spread of contact depths* among the trials
-    # that actually hold each target volume. A different question from the required
-    # depth this figure inverts -- that one answers a guarantee from the proven-mean
-    # curve, this one a spread read straight off the trials -- so it is drawn as thin
-    # lines rather than a second filled band, which would read as more sampling
-    # error. Rose's Figure 4 is why the spread is worth showing at all: "The EUR of
-    # 9.4 MMBO is associated with productive areas from 200 to 1500 acres."
-    if ts is not None:
-        pct_band = entry_depth_percentiles(ts, targets)
-        for q, dash in ((99, "dot"), (90, "dash"), (50, "solid"), (10, "dash")):
-            depths = pct_band[q]
-            good = np.isfinite(depths)
-            if good.sum() < 2:
-                continue
-            fig.add_scatter(
-                x=targets[good], y=depths[good], mode="lines",
-                line=dict(color=p["muted"], width=1.0, dash=dash),
-                name=f"P{q} contact depth of trials holding it",
-                hovertemplate=(f"P{q} of the contacts that hold %{{x:.1f}} MMboe"
-                               "<br>" + DEPTH_HOVER + "<extra></extra>"),
-            )
-
     fig.add_scatter(
         x=targets[ok], y=z_req[ok], mode="lines+markers",
         line=dict(color=p["text_secondary"], width=1.2),
@@ -1339,23 +1342,132 @@ def pfig_b6_inverse(
     if target is not None:
         res = invert_volume_target(vsweep, float(target), ts=ts)
         if res.achievable:
-            _vline(fig, float(target), p["muted"], "dot", f"{target:.1f} MMboe")
+            # A right-angle leader: up the target volume, across to the depth. The
+            # figure demonstrating its own reading, because "which axis do I start
+            # on" is the first thing anyone has to guess at on an inverse plot and
+            # a vertical rule alone answers only half of it.
+            x0 = float(np.nanmin(targets))
+            fig.add_scatter(
+                x=[target, target, x0], y=[float(np.nanmax(z_req)), res.z_required,
+                                           res.z_required],
+                mode="lines", line=dict(color=p["text"], width=1.4, dash="dot"),
+                showlegend=False, hoverinfo="skip",
+            )
+            fig.add_annotation(
+                x=target, y=float(np.nanmax(z_req)), text=f"want {target:.0f} MMboe ",
+                showarrow=False, xanchor="right", yanchor="bottom",
+                font=dict(size=10, color=p["text"]),
+            )
             fig.add_scatter(
                 x=[target], y=[res.z_required], mode="markers+text",
                 marker=dict(size=11, color=p["text"], symbol="circle-open", line=dict(width=2.5)),
-                text=[f" {res.z_required:.0f} m · P<sub>well</sub> {res.p_well_at:.1%}"],
+                text=[f" enter at {res.z_required:.0f} m · P<sub>well</sub> "
+                      f"{res.p_well_at:.1%}"],
                 textposition="middle right", textfont=dict(size=10, color=p["text"]),
                 showlegend=False, hoverinfo="skip",
             )
 
     fig.update_layout(
-        title="B6 · Inverse — where the well must go",
+        title="B6 · Inverse — how deep must the well go to prove a volume?",
         xaxis_title="Volume to prove — mean proven (MMboe)",
     )
     apply_plotly(fig, dark, height)
     depth_axis_plotly(
         fig, zlim or (float(np.nanmin(z_req)), float(np.nanmax(z_req))),
-        title="Required entry depth (m TVDSS)", show_ticklabels=show_depth_labels,
+        # "and deeper" is the whole content of the guarantee: the running minimum
+        # means the proven mean stays at or above the target from here down, not
+        # that it first reaches it here.
+        title="Enter at this depth or deeper (m TVDSS)", show_ticklabels=show_depth_labels,
+    )
+    return fig
+
+
+# ------------------------------------------------------------------- B10
+def pfig_b10_contact_spread(
+    ts: TrialSet, *, targets: np.ndarray | None = None, n_targets: int = 40,
+    mefs: float | None = None, zlim: tuple[float, float] | None = None,
+    show_depth_labels: bool = True, dark: bool = False, height: int | None = PANEL_HEIGHT,
+):
+    """B10 -- the contact depths consistent with holding a given volume.
+
+    The 2018 macro workbook's ``BB``-``BE`` block. **Split out of B6 on 2026-08-11**,
+    after Lars reported he could not tell what B6's curves meant, and the reason he
+    could not is that they were two different quantities sharing axes that can only
+    be labelled for one of them:
+
+    ================  ================================  ==========================
+    axis              B6's curve                        these lines
+    ================  ================================  ==========================
+    x                 mean proven volume, over the      per-trial total resource
+                      discovery group                   held by one trial
+    y                 required *entry* depth            sampled *contact* depth
+    ================  ================================  ==========================
+
+    On prospect B that is 33.9-277.7 MMboe against 2.2-482.1, so the two families
+    crossed -- at a 33.9 MMboe target B6's curve sat above all four of these lines,
+    by 133.5 it sat between the P99 and the P50 -- and the crossing read as a band
+    the answer wandered in and out of. Here both axes mean one thing.
+
+    **What it says.** Pick a volume on x. These four lines are the P99 / P90 / P50 /
+    P10 hydrocarbon-water contact among the trials that actually hold at least that
+    much. The vertical spread at any x is the honest width of the answer, and it is
+    wide -- which is the point, and is Rose's Figure 4: *"The EUR of 9.4 MMBO is
+    associated with productive areas from 200 to 1500 acres."* The workbook's own
+    ``BA`` column averages those contacts into a single number and calls it a
+    required depth; averaging over that range is not a required depth.
+
+    So B6 gives the requirement and this gives the range around it. Neither is the
+    other, and drawn apart neither can be mistaken for the other.
+
+    Percentiles are in the petroleum orientation, as everywhere in this codebase:
+    **P99 is the shallow end**, exceeded by 99 % of the qualifying contacts.
+    """
+    p = palette(dark)
+    if targets is None:
+        res = np.asarray(ts.col("resource"), dtype=float)
+        res = res[res > 0]
+        targets = np.linspace(float(np.percentile(res, 5)),
+                              float(np.percentile(res, 95)), int(n_targets))
+    targets = np.asarray(targets, dtype=float)
+    band = entry_depth_percentiles(ts, targets)
+
+    fig = go.Figure()
+    lo, hi = band[99], band[10]
+    inner = np.isfinite(lo) & np.isfinite(hi)
+    if inner.any():
+        fig.add_scatter(
+            x=np.concatenate([targets[inner], targets[inner][::-1]]),
+            y=np.concatenate([lo[inner], hi[inner][::-1]]),
+            fill="toself", fillcolor=rgba("prospect", 0.12, dark), mode="lines",
+            line=dict(width=0), name="P99–P10 of the contacts", hoverinfo="skip",
+        )
+    for q, width, dash in ((99, 1.0, "dot"), (90, 1.4, "dash"),
+                           (50, 2.6, "solid"), (10, 1.0, "dot")):
+        depths = band[q]
+        good = np.isfinite(depths)
+        if good.sum() < 2:
+            continue
+        fig.add_scatter(
+            x=targets[good], y=depths[good], mode="lines",
+            line=dict(color=colour("prospect", dark), width=width, dash=dash),
+            name=f"P{q} contact",
+            hovertemplate=(f"P{q} of the contacts that hold %{{x:.1f}} MMboe or more"
+                           "<br>" + DEPTH_HOVER + "<extra></extra>"),
+        )
+    if mefs is not None:
+        _vline(fig, float(mefs), p["muted"], "dot", "MEFS")
+
+    fig.update_layout(
+        title="B10 · Where the contact sits, among trials that hold a given volume",
+        xaxis_title="Volume held by one trial (MMboe)",
+    )
+    fig.update_xaxes(rangemode="tozero")
+    apply_plotly(fig, dark, height)
+    finite = np.concatenate([band[q][np.isfinite(band[q])] for q in band]) \
+        if any(np.isfinite(band[q]).any() for q in band) else np.asarray([0.0, 1.0])
+    depth_axis_plotly(
+        fig, zlim or (float(finite.min()), float(finite.max())),
+        title="Hydrocarbon–water contact (m TVDSS)", show_ticklabels=show_depth_labels,
     )
     return fig
 

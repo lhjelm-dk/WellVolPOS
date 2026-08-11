@@ -98,6 +98,7 @@ from wellvolpos.viz import (
     pfig_b7_frontier,
     pfig_b8_commercial_chance,
     pfig_b9_chance_weighted,
+    pfig_b10_contact_spread,
     pfig_c1_section,
     pfig_c2_exceedance,
     pfig_map_view,
@@ -1391,7 +1392,14 @@ def _inverse_section(vsweep, ts):
         st.warning("No proven-volume curve to invert on this sweep.")
         return
     lo_t, hi_t = float(targets[0]), float(targets[-1])
-    default_t = float(np.clip(15.76, lo_t, hi_t))
+    # Default to **MEFS**, because that is the volume a well actually has to prove
+    # and it is already on screen in the sidebar. The default used to be a hardcoded
+    # 15.76 — prospect A's proven mean — which on prospect B clipped straight to the
+    # shallow end of the supported range, so the worked reading under B6 came out as
+    # "43.2 % against 43.2 %" and taught nothing (Lars, 2026-08-11). Where MEFS falls
+    # outside the supported range the midpoint is used instead of clipping to an
+    # endpoint, for the same reason: an endpoint gives a degenerate answer.
+    default_t = float(mefs) if lo_t <= float(mefs) <= hi_t else 0.5 * (lo_t + hi_t)
     target = st.slider(
         "Volume to prove — mean proven (MMboe)",
         lo_t, hi_t, default_t, max((hi_t - lo_t) / 100.0, 0.01),
@@ -1410,23 +1418,49 @@ def _inverse_section(vsweep, ts):
             f"{MIN_SUPPORT}-trial floor — treat the requirement as indicative, not surveyed."
         )
     _chart(pfig_b6_inverse(vsweep, target=target, ts=ts), key="b6")
+    # The worked sentence first, in the app's live numbers, because "how do I read
+    # this" is the question B6 kept failing to answer (Lars, 2026-08-11).
+    _worked = ""
+    if inv.achievable:
+        _crest_p = float(vsweep.p_well[0]) if vsweep.p_well.size else float("nan")
+        _worked = (
+            f"**Reading it:** start at your target on the bottom axis — **{target:.0f} MMboe** — "
+            f"go up to the curve, then across to the depth. It says **enter at "
+            f"{inv.z_required:.0f} m or deeper**, and that costs you: P_well there is "
+            f"**{inv.p_well_at:.1%}**, against **{_crest_p:.1%}** at the shallowest location "
+            f"the sweep covers.\n\n"
+        )
     st.caption(
-        "The workbook's H38–H40 block as a curve. Marker colour is P_well at that depth — the "
+        _worked
+        + "The workbook's H38–H40 block as a curve. Marker colour is P_well at that depth — the "
         "cost side of the trade — because a second y-axis is not allowed and the trade is the "
         "point. The shaded band is the bootstrap interval on the proven mean, inverted through "
         "the same curve, so it widens down-dip where the discovery group thins. The level is "
         "nominal: a percentile bootstrap under-covers on small skewed samples.\n\n"
-        "**The four thin grey lines are the workbook's BB–BE block**, added 2026-08-11: for each "
-        "target volume, the P99 / P90 / P50 / P10 **contact depth among the trials that actually "
-        "hold that much**. It answers a different question from the curve, and the two are easy "
-        "to conflate. The curve gives one depth per target — how deep the well must go for the "
-        "*mean proven volume* to reach it, a guarantee. These lines give the *spread* of contacts "
-        "consistent with the volume, read straight off the trials. So the grey band is geological "
-        "range and the shaded band is sampling error; neither should be read as the other.\n\n"
-        "Rose's Figure 4 is why the spread is worth drawing rather than averaged: *“The EUR of "
-        "9.4 MMBO is associated with productive areas from 200 to 1500 acres.”* The workbook's "
-        "own `BA` column averages those contacts into a single number, and an average over that "
-        "range is not a required depth."
+        "**It answers a guarantee, not a first touch**, which is why the axis says *or deeper*. "
+        "The depth returned is the shallowest one from which the proven mean stays at or above "
+        "your target all the way down. A sampled proven-mean curve wobbles wherever the discovery "
+        "group is thin, and inverting its first crossing gives depths that deeper locations "
+        "contradict — no basis for a well proposal.\n\n"
+        "**The contact-depth spread that used to sit on this figure is now B10, below.** Both are "
+        "sound and they were sharing axes that could only be labelled for one of them: x here is "
+        "the *mean proven volume over the discovery group*, x there is the *total resource held "
+        "by one trial*; y here is a *required entry depth*, y there is a *sampled contact*. So "
+        "they crossed, and read as one fuzzy answer."
+    )
+
+    st.divider()
+    _chart(pfig_b10_contact_spread(ts, mefs=mefs), key="b10")
+    st.caption(
+        "**B10 — the range around the requirement.** Pick a volume on the bottom axis; the lines "
+        "are the P99 / P90 / P50 / P10 **hydrocarbon–water contact among the trials that actually "
+        "hold at least that much**. B6 gives you one depth, a requirement. This gives the spread "
+        "of contacts consistent with the same volume, read straight off the trials — and it is "
+        "wide, which is the point.\n\n"
+        "Rose's Figure 4 is why it is drawn rather than averaged: *“The EUR of 9.4 MMBO is "
+        "associated with productive areas from 200 to 1500 acres.”* The workbook's own `BA` column "
+        "averages those contacts into a single number and calls it a required depth; an average "
+        "over that range is not one."
     )
 
 

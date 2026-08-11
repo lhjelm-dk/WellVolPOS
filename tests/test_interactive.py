@@ -1050,3 +1050,43 @@ def test_c1_draws_the_well_as_a_vertical_track_on_the_structure(reduced, area_de
     # Its foot is inside the closure, which is the geometric check that the anchor
     # is the shallow one: the closure is wider at the exit than at the entry.
     assert float(area_depth.area_at(EXIT)) > xs[0]
+
+
+def test_b6_no_longer_mixes_two_volume_concepts_on_one_axis(reduced, vsweep):
+    """B6 draws the required-depth answer alone; the contact spread is B10.
+
+    They were on one pair of axes, and the axes could only be labelled for one of
+    them -- x was the *mean proven volume over the discovery group* for the curve
+    and the *per-trial total resource* for the spread lines, y was a *required entry
+    depth* against a *sampled contact*. Lars reported the figure as unreadable, and
+    that is why: two quantities under one label, the same mistake as an unrisked
+    number under a risked label.
+
+    So the assertion is an absence -- no trace on B6 whose y is a contact depth.
+    """
+    fig = I.pfig_b6_inverse(vsweep, target=14.0, ts=reduced)
+    names = [getattr(t, "name", "") or "" for t in fig.data]
+    assert not any("contact" in n.lower() for n in names), names
+    assert any("Required entry" == n for n in names)
+    # And the guarantee is stated on the axis, not left to the docstring.
+    assert "deeper" in fig.layout.yaxis.title.text
+
+
+def test_b10_puts_one_meaning_on_each_axis(reduced):
+    """B10 is the spread B6 gave up: volume held by *one trial* against that trial's
+    *contact*. Both axis titles have to say so, because saying so is the entire
+    reason the figure was split out."""
+    fig = I.pfig_b10_contact_spread(reduced, n_targets=20)
+    assert "one trial" in fig.layout.xaxis.title.text
+    assert "contact" in fig.layout.yaxis.title.text.lower()
+    lo, hi = fig.layout.yaxis.range
+    assert lo > hi                                       # depth still inverted
+
+    # P99 is the shallow end, in the petroleum orientation this codebase uses
+    # everywhere. Getting this backwards would invert the geological reading while
+    # leaving the figure looking perfectly reasonable.
+    series = {t.name: t for t in fig.data}
+    p99, p10 = series["P99 contact"], series["P10 contact"]
+    both = np.isfinite(np.asarray(p99.y, float)) & np.isfinite(np.asarray(p10.y, float))
+    assert both.any()
+    assert np.all(np.asarray(p99.y, float)[both] <= np.asarray(p10.y, float)[both])

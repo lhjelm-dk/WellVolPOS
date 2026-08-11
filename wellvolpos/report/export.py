@@ -392,7 +392,12 @@ def _draw_export_figures(b: Bundle, *, dark: bool = False) -> dict[str, object]:
             b.vsweep, current_z=c.entry, dark=dark)[0]
         figs["B2_chance_vs_regret"] = F.fig_b2_chance_vs_regret(
             b.vsweep, current_z=c.entry, dark=dark)[0]
-        figs["B6_inverse"] = F.fig_b6_inverse(b.vsweep, ts=b.ts, dark=dark)[0]
+        figs["B6_inverse"] = F.fig_b6_inverse(
+            b.vsweep, target=c.mefs, ts=b.ts, dark=dark)[0]
+        # B10 travels with B6 or the exported set answers the requirement without
+        # the range around it -- which is the reading B6 was split up to prevent.
+        figs["B10_contact_spread"] = F.fig_b10_contact_spread(
+            b.ts, mefs=c.mefs, dark=dark)[0]
         figs["B7_frontier"] = F.fig_b7_frontier(b.vsweep, current_z=c.entry, dark=dark)[0]
         figs["B8_commercial_chance"] = F.fig_b8_commercial_chance(
             b.vsweep, current_z=c.entry, dark=dark)[0]

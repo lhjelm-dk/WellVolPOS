@@ -68,6 +68,7 @@ __all__ = [
     "fig_b7_frontier",
     "fig_b8_commercial_chance",
     "fig_b9_chance_weighted",
+    "fig_b10_contact_spread",
     "fig_a8_contact_distribution",
     "fig_a9_prospect_density",
     "exceedance_marks",
@@ -749,17 +750,6 @@ def fig_b6_inverse(
                 label=f"nominal {100 * (1 - vsweep.alpha):.0f}% band",
             )
 
-    # The workbook's BB-BE block; see the plotly twin for why it is thin lines and
-    # not a second band.
-    if ts is not None:
-        pct_band = entry_depth_percentiles(ts, targets)
-        for q, ls in ((99, ":"), (90, "--"), (50, "-"), (10, "--")):
-            depths = pct_band[q]
-            good = np.isfinite(depths)
-            if good.sum() >= 2:
-                ax.plot(targets[good], depths[good], color=p["muted"], lw=0.9, ls=ls,
-                        label=f"P{q} contact depth" if q in (99, 10) else None)
-
     sc = ax.scatter(targets[ok], z_req[ok], c=p_at[ok] * 100.0, cmap=SEQUENTIAL_CMAP,
                     vmin=0, vmax=100, s=22, zorder=4)
     ax.plot(targets[ok], z_req[ok], color=p["text_secondary"], lw=1.0, zorder=3)
@@ -769,23 +759,90 @@ def fig_b6_inverse(
     if target is not None:
         res = invert_volume_target(vsweep, float(target), ts=ts)
         if res.achievable:
-            ax.axvline(target, color=p["muted"], ls=":", lw=1.0)
+            # A right-angle leader, like the plotly twin: up the target volume,
+            # across to the depth, so the figure shows how to read itself.
+            ax.plot([target, target, float(np.nanmin(targets))],
+                    [float(np.nanmax(z_req)), res.z_required, res.z_required],
+                    color=p["text"], lw=1.1, ls=":", zorder=5)
+            ax.annotate(f"want {target:.0f} MMboe", (target, float(np.nanmax(z_req))),
+                        xytext=(-4, 2), textcoords="offset points", ha="right",
+                        fontsize=8, color=p["text"])
             ax.plot([target], [res.z_required], "o", color=p["text"], zorder=6)
             ax.annotate(
-                f"{res.z_required:.0f} m\n$P_{{well}}$ {res.p_well_at:.1%}",
+                f"enter at {res.z_required:.0f} m\n$P_{{well}}$ {res.p_well_at:.1%}",
                 (target, res.z_required), xytext=(6, 6), textcoords="offset points",
                 fontsize=8, color=p["text"],
             )
 
-    depth_axis(ax, ylabel="Required entry depth (m TVDSS)")
+    # "or deeper" is the guarantee: a running minimum from the deep end, so the
+    # proven mean stays at or above the target from here down rather than merely
+    # first reaching it here.
+    depth_axis(ax, ylabel="Enter at this depth or deeper (m TVDSS)")
     ax.set_xlabel("Volume to prove — mean proven (MMboe)")
-    ax.set_title("B6 · Inverse — where the well must go")
+    ax.set_title("B6 · Inverse — how deep must the well go to prove a volume?")
     if ax.get_legend_handles_labels()[1]:
         ax.legend(loc="lower right", fontsize=7.5)
     fig.tight_layout()
     return fig, ax
 
 
+
+
+def fig_b10_contact_spread(
+    ts: TrialSet, *, targets: np.ndarray | None = None, n_targets: int = 40,
+    mefs: float | None = None, dark: bool = False,
+):
+    """B10 -- the contact depths consistent with holding a given volume.
+
+    The 2018 macro workbook's ``BB``-``BE`` block, split out of B6 on 2026-08-11.
+    See the plotly twin for the full argument; the short form is that these lines
+    and B6's curve were sharing axes that meant two different things -- x was mean
+    proven volume there and per-trial total resource here, y was required *entry*
+    depth there and sampled *contact* depth here -- so they crossed and read as one
+    fuzzy answer.
+
+    Rose's Figure 4 is why the spread is drawn rather than averaged: *"The EUR of
+    9.4 MMBO is associated with productive areas from 200 to 1500 acres."*
+    """
+    p = palette(dark)
+    if targets is None:
+        res = np.asarray(ts.col("resource"), dtype=float)
+        res = res[res > 0]
+        targets = np.linspace(float(np.percentile(res, 5)),
+                              float(np.percentile(res, 95)), int(n_targets))
+    targets = np.asarray(targets, dtype=float)
+    band = entry_depth_percentiles(ts, targets)
+
+    fig, ax = new_figure(figsize=(6, 5), dark=dark)
+    c = colour("prospect", dark)
+    lo, hi = band[99], band[10]
+    inner = np.isfinite(lo) & np.isfinite(hi)
+    if inner.any():
+        ax.fill_between(targets[inner], lo[inner], hi[inner], color=c, alpha=0.12, lw=0,
+                        label="P99–P10 of the contacts")
+    for q, lw, ls in ((99, 0.9, ":"), (90, 1.2, "--"), (50, 2.2, "-"), (10, 0.9, ":")):
+        depths = band[q]
+        good = np.isfinite(depths)
+        if good.sum() >= 2:
+            ax.plot(targets[good], depths[good], color=c, lw=lw, ls=ls, label=f"P{q} contact")
+    if mefs is not None:
+        ax.axvline(float(mefs), color=p["muted"], ls=":", lw=1.0)
+        ax.annotate("MEFS", (float(mefs), 0.01), xycoords=("data", "axes fraction"),
+                    fontsize=7.5, color=p["text_secondary"], ha="left")
+
+    ax.set_xlim(left=0)
+    ax.set_xlabel("Volume held by one trial (MMboe)")
+    finite = [band[q][np.isfinite(band[q])] for q in band]
+    finite = np.concatenate([a for a in finite if a.size]) if any(a.size for a in finite) \
+        else np.asarray([0.0, 1.0])
+    depth_axis(ax, ylabel="Hydrocarbon–water contact (m TVDSS)",
+               zlim=(float(finite.min()), float(finite.max())))
+    ax.set_title("B10 · Where the contact sits, among trials that hold a given volume")
+    ax.grid(True, lw=0.6, alpha=0.7)
+    if ax.get_legend_handles_labels()[1]:
+        ax.legend(loc="lower right", fontsize=7.5)
+    fig.tight_layout()
+    return fig, ax
 
 
 def fig_b3_uncertainty_reduction(sweep: Sweep, *, current_z: float | None = None, dark: bool = False):
