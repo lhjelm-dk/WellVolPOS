@@ -666,8 +666,17 @@ def pfig_a4_resource_vs_depth(
     fig.add_heatmap(
         x=0.5 * (xedges[:-1] + xedges[1:]), y=0.5 * (yedges[:-1] + yedges[1:]),
         z=dens, colorscale=colourscale, showscale=True, customdata=shown,
-        colorbar=dict(title=dict(text="trials<br>(log₁₀)", side="right"),
-                      thickness=12, len=0.6),
+        # Inside the axes, for the reason given on B6's colourbar: the depth-row
+        # rule fixes the margins with autoexpand off, so plotly's default position
+        # outside the plot area on the right is clipped away and the scale silently
+        # disappears. A4 is a *count* grid -- without a scale the colour says only
+        # "more or less", which is not what a trial count is for. Bottom-right is the
+        # empty corner here: deep contacts hold large volumes, so the mass runs
+        # top-left to bottom-right and the cells past it are empty.
+        colorbar=dict(title=dict(text="trials (log₁₀)", side="top"),
+                      orientation="h", x=0.98, xanchor="right", y=0.04,
+                      yanchor="bottom", len=0.3, thickness=10,
+                      tickfont=dict(size=9)),
         hovertemplate=("%{customdata:.0f} trials<br>%{x:.1f} MMboe at "
                        + DEPTH_HOVER + "<extra></extra>"),
     )
@@ -1288,36 +1297,34 @@ def pfig_b6_inverse(
     returns depths that deeper locations contradict, which is no basis for a well
     proposal.
 
-    **Two panels, one depth axis** (Lars, 2026-08-11). The right panel is the contact
-    spread that briefly lived as its own figure, B10: for each volume, the P99 / P90 /
-    P50 / P10 / P1 hydrocarbon-water contact among the trials that actually hold at
-    least that much. It is back beside the requirement because the two belong in one
-    glance -- the left panel gives you a depth, the right shows how wide the honest
-    answer around it is.
+    **The contact spread is drawn on the same axes** (Lars, 2026-08-11, who asked for
+    it side by side, then on one graph): for each volume, the P99 / P90 / P50 / P10 /
+    P1 hydrocarbon-water contact among the trials that actually hold at least that
+    much. The requirement gives a depth; this shows how wide the honest answer around
+    it is. Rose's Figure 4 is the point of it -- *"The EUR of 9.4 MMBO is associated
+    with productive areas from 200 to 1500 acres"* -- against the workbook's ``BA``
+    column, which averages those contacts into one number and calls it a required
+    depth.
 
-    **What may and may not be shared, and why this is not the overlay again.** The
-    overlay drew both on *one* pair of axes, and neither axis could be labelled for
-    both: x was the mean proven volume over the discovery group on the left and the
-    total resource held by one trial on the right (33.9-277.7 against 2.2-482.1 MMboe
-    on prospect B), while y was a required *entry* depth against a sampled *contact*.
-    They crossed, and read as a band the answer wandered in and out of.
+    **The two families do not measure the same thing, and both axes say so.** x is a
+    *target mean proven volume, over the discovery group* for the curve and a *total
+    resource held by one trial* for the grey lines -- 33.9-277.7 against 2.2-482.1
+    MMboe on prospect B. y is a *required entry depth* against a *sampled contact*.
+    They therefore **cross**, and a crossing here means nothing: it is not one family
+    passing through another, it is two different questions plotted on borrowed axes.
 
-    So each panel keeps its **own x-axis, labelled for what it is**, and the only
-    thing shared is the **structural level on y** -- which is precisely what
-    CLAUDE.md's non-negotiable 2 asks a row of panels to share, and it is legitimate
-    here because entry depth and contact depth are both depths on the same structure.
-    A ruler laid across the row is meaningful; a single x would not have been.
-
-    Rose's Figure 4 is what the right panel is for: *"The EUR of 9.4 MMBO is
-    associated with productive areas from 200 to 1500 acres."* The workbook's own
-    ``BA`` column averages those contacts into one number and calls it a required
-    depth; averaging over that range is not one.
+    That is why the axis titles name both readings and the two families are separated
+    by weight and hue -- the requirement carries the ``P_well`` colour scale, the
+    spread is neutral muted grey drawn underneath it. Unlabelled, this is precisely
+    the figure Lars reported as unreadable, so the labels are the mechanism rather
+    than the decoration. If a later change shortens them to one quantity, the figure
+    goes back to claiming a comparison it cannot support.
     """
     p = palette(dark)
     targets, z_req, p_at = volume_target_curve(vsweep, n=n_targets, ts=ts)
+    fig = go.Figure()
 
     if targets.size == 0 or not np.isfinite(z_req).any():
-        fig = go.Figure()
         fig.add_annotation(x=0.5, y=0.5, xref="paper", yref="paper", showarrow=False,
                            text="No proven-volume curve to invert",
                            font=dict(size=13, color=p["text"]))
@@ -1325,12 +1332,7 @@ def pfig_b6_inverse(
         apply_plotly(fig, dark, height)
         return fig
 
-    fig = make_subplots(
-        rows=1, cols=2, shared_yaxes=True, horizontal_spacing=0.05,
-        subplot_titles=("the requirement", "the range around it"),
-    )
-
-    # ------------------------------------------------ left: the requirement
+    # -------------------------------------------------------- the requirement
     if vsweep.alpha is not None:
         z_lo, z_hi = volume_target_band(vsweep, targets)
         band = np.isfinite(z_lo) & np.isfinite(z_hi)
@@ -1340,57 +1342,14 @@ def pfig_b6_inverse(
                 x=np.concatenate([targets[band], targets[band][::-1]]),
                 y=np.concatenate([z_lo[band], z_hi[band][::-1]]),
                 fill="toself", fillcolor=rgba("p_well", 0.15, dark), mode="lines",
-                line=dict(width=0), name=f"nominal {level:.0f}% band", hoverinfo="skip",
-                row=1, col=1,
+                line=dict(width=0), name=f"nominal {level:.0f}% band \u2014 sampling error",
+                hoverinfo="skip",
             )
 
-    ok = np.isfinite(z_req)
-    fig.add_scatter(
-        x=targets[ok], y=z_req[ok], mode="lines+markers",
-        line=dict(color=p["text_secondary"], width=1.2),
-        marker=dict(
-            size=9, color=p_at[ok] * 100.0, colorscale=SEQUENTIAL_CMAP, cmin=0, cmax=100,
-            colorbar=dict(title=dict(text="P<sub>well</sub> (%)", side="right"),
-                          thickness=12, len=0.55, x=1.02),
-        ),
-        name="Required entry",
-        customdata=p_at[ok] * 100.0,
-        hovertemplate=(
-            "to prove %{x:.2f} MMboe<br>enter at " + DEPTH_HOVER
-            + "<br>P<sub>well</sub> %{customdata:.1f}%<extra></extra>"
-        ),
-        row=1, col=1,
-    )
-
-    if target is not None:
-        res = invert_volume_target(vsweep, float(target), ts=ts)
-        if res.achievable:
-            # A right-angle leader: up the target volume, across to the depth. The
-            # figure demonstrating its own reading, because "which axis do I start
-            # on" is the first thing anyone has to guess at on an inverse plot and
-            # a vertical rule alone answers only half of it.
-            fig.add_scatter(
-                x=[target, target, float(np.nanmin(targets))],
-                y=[float(np.nanmax(z_req)), res.z_required, res.z_required],
-                mode="lines", line=dict(color=p["text"], width=1.4, dash="dot"),
-                showlegend=False, hoverinfo="skip", row=1, col=1,
-            )
-            fig.add_annotation(
-                x=target, y=float(np.nanmax(z_req)), text=f"want {target:.0f} MMboe ",
-                showarrow=False, xanchor="right", yanchor="bottom",
-                font=dict(size=10, color=p["text"]), row=1, col=1,
-            )
-            fig.add_scatter(
-                x=[target], y=[res.z_required], mode="markers+text",
-                marker=dict(size=11, color=p["text"], symbol="circle-open",
-                            line=dict(width=2.5)),
-                text=[f" enter at {res.z_required:.0f} m \u00b7 P<sub>well</sub> "
-                      f"{res.p_well_at:.1%}"],
-                textposition="middle right", textfont=dict(size=10, color=p["text"]),
-                showlegend=False, hoverinfo="skip", row=1, col=1,
-            )
-
-    # ------------------------------------------- right: the contact spread
+    # --------------------------------------------------- the contact spread
+    # Drawn *before* the requirement so the coloured markers sit on top of the
+    # grey. In an overlay the two families separate by weight and hue rather than
+    # by position, so which is drawn last is not a detail.
     spread_depths: list[np.ndarray] = []
     if ts is not None:
         res_all = np.asarray(ts.col("resource"), dtype=float)
@@ -1404,11 +1363,11 @@ def pfig_b6_inverse(
             fig.add_scatter(
                 x=np.concatenate([held[inner], held[inner][::-1]]),
                 y=np.concatenate([lo[inner], hi[inner][::-1]]),
-                fill="toself", fillcolor=rgba("prospect", 0.12, dark), mode="lines",
-                line=dict(width=0), name="P99\u2013P1 of the contacts", hoverinfo="skip",
-                row=1, col=2,
+                fill="toself", fillcolor=rgba("muted", 0.10, dark), mode="lines",
+                line=dict(width=0), name="P99\u2013P1 contact spread \u2014 geological range",
+                hoverinfo="skip",
             )
-        for q, width, dash in ((99, 1.0, "dot"), (90, 1.4, "dash"), (50, 2.6, "solid"),
+        for q, width, dash in ((99, 1.0, "dot"), (90, 1.4, "dash"), (50, 2.2, "solid"),
                                (10, 1.4, "dash"), (1, 1.0, "dot")):
             depths = band_pct[q]
             good = np.isfinite(depths)
@@ -1417,36 +1376,88 @@ def pfig_b6_inverse(
             spread_depths.append(depths[good])
             fig.add_scatter(
                 x=held[good], y=depths[good], mode="lines",
-                line=dict(color=colour("prospect", dark), width=width, dash=dash),
-                name=f"P{q} contact",
-                hovertemplate=(f"P{q} of the contacts that hold %{{x:.1f}} MMboe or more"
-                               "<br>" + DEPTH_HOVER + "<extra></extra>"),
-                row=1, col=2,
+                line=dict(color=p["muted"], width=width, dash=dash),
+                name=f"P{q} contact \u2014 of trials holding this volume",
+                hovertemplate=(f"P{q} of the contacts among trials holding "
+                               "%{x:.1f} MMboe or more<br>" + DEPTH_HOVER
+                               + "<extra></extra>"),
             )
         if mefs is not None:
-            fig.add_vline(x=float(mefs), line=dict(color=p["muted"], width=1, dash="dot"),
-                          row=1, col=2)
+            _vline(fig, float(mefs), p["muted"], "dot", "MEFS")
+
+    ok = np.isfinite(z_req)
+    fig.add_scatter(
+        x=targets[ok], y=z_req[ok], mode="lines+markers",
+        line=dict(color=p["text_secondary"], width=1.6),
+        marker=dict(
+            size=9, color=p_at[ok] * 100.0, colorscale=SEQUENTIAL_CMAP, cmin=0, cmax=100,
+            # **Inside the axes.** The depth-row rule pins margin.r at 25 with
+            # autoexpand off, so a colourbar in plotly's default position -- outside
+            # the plot area on the right -- is simply clipped away, which is what had
+            # been happening here unnoticed. Since P_well *is* the cost side of the
+            # trade this figure exists to show, an invisible scale makes the colour
+            # decorative. Horizontal in the bottom-left corner, which the curve never
+            # reaches: the requirement runs top-left to bottom-right.
+            colorbar=dict(
+                title=dict(text="P<sub>well</sub> (%)", side="top"),
+                orientation="h", x=0.02, xanchor="left", y=0.13, yanchor="bottom",
+                len=0.28, thickness=10, tickfont=dict(size=9),
+            ),
+        ),
+        name="Required entry \u2014 for a target MEAN PROVEN volume",
+        customdata=p_at[ok] * 100.0,
+        hovertemplate=(
+            "to prove %{x:.2f} MMboe of mean proven volume<br>enter at " + DEPTH_HOVER
+            + "<br>P<sub>well</sub> %{customdata:.1f}%<extra></extra>"
+        ),
+    )
+
+    if target is not None:
+        res = invert_volume_target(vsweep, float(target), ts=ts)
+        if res.achievable:
+            # A right-angle leader: up the target volume, across to the depth. The
+            # figure demonstrating its own reading, because "which axis do I start
+            # on" is the first thing anyone has to guess at on an inverse plot and
+            # a vertical rule alone answers only half of it.
+            fig.add_scatter(
+                x=[target, target, float(np.nanmin(targets))],
+                y=[float(np.nanmax(z_req)), res.z_required, res.z_required],
+                mode="lines", line=dict(color=p["text"], width=1.4, dash="dot"),
+                showlegend=False, hoverinfo="skip",
+            )
+            fig.add_annotation(
+                x=target, y=float(np.nanmax(z_req)), text=f"want {target:.0f} MMboe ",
+                showarrow=False, xanchor="right", yanchor="bottom",
+                font=dict(size=10, color=p["text"]),
+            )
+            fig.add_scatter(
+                x=[target], y=[res.z_required], mode="markers+text",
+                marker=dict(size=11, color=p["text"], symbol="circle-open",
+                            line=dict(width=2.5)),
+                text=[f" enter at {res.z_required:.0f} m \u00b7 P<sub>well</sub> "
+                      f"{res.p_well_at:.1%}"],
+                textposition="middle right", textfont=dict(size=10, color=p["text"]),
+                showlegend=False, hoverinfo="skip",
+            )
 
     fig.update_layout(
         title="B6 \u00b7 Inverse \u2014 how deep must the well go, and how wide is the answer?",
+        # Both readings named on the axis itself. One pair of axes carrying two
+        # definitions of volume and two kinds of depth is only honest if the axis
+        # says so -- unlabelled, this is the figure Lars could not read.
+        xaxis_title=("Volume (MMboe) \u2014 <i>target mean proven</i> (curve) \u00b7 "
+                     "<i>held by one trial</i> (grey)"),
     )
-    fig.update_xaxes(title_text="Volume to prove \u2014 mean proven (MMboe)",
-                     rangemode="tozero", row=1, col=1)
-    fig.update_xaxes(title_text="Volume held by one trial (MMboe)",
-                     rangemode="tozero", row=1, col=2)
+    fig.update_xaxes(rangemode="tozero")
     apply_plotly(fig, dark, height)
-
-    # One depth range across the row, which is what makes the merge honest: the two
-    # panels carry different depths (a required *entry* against a sampled *contact*)
-    # and different volumes on x, so the only thing they may share is the structural
-    # level -- and sharing it is exactly what lets a reader lay a ruler across at
-    # constant depth. Non-negotiable 2, applied rather than worked around.
-    all_z = [z_req[np.isfinite(z_req)], *spread_depths]
+    all_z = [z_req[ok], *spread_depths]
     all_z = np.concatenate([a for a in all_z if a.size])
-    row = zlim or (float(all_z.min()), float(all_z.max()))
-    depth_axis_plotly(fig, row, title="Depth (m TVDSS) \u2014 enter at this depth or deeper",
-                      show_ticklabels=show_depth_labels, row=1, col=1)
-    depth_axis_plotly(fig, row, title=None, show_ticklabels=False, row=1, col=2)
+    depth_axis_plotly(
+        fig, zlim or (float(all_z.min()), float(all_z.max())),
+        title=("Depth (m TVDSS) \u2014 <i>required entry, or deeper</i> (curve) \u00b7 "
+               "<i>contact</i> (grey)"),
+        show_ticklabels=show_depth_labels,
+    )
     return fig
 
 

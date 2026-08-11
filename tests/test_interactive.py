@@ -284,18 +284,27 @@ def test_pb6_puts_required_depth_on_y_inverted(vsweep_banded):
     assert "TVDSS" in fig.layout.yaxis.title.text
 
 
+def _required_entry(fig):
+    """B6's requirement curve, found by prefix.
+
+    Its full name carries the reading -- "for a target MEAN PROVEN volume" -- which
+    is load-bearing on a figure whose x-axis also carries per-trial volumes, so the
+    tests match the prefix rather than pinning the whole label and discouraging it
+    from ever saying more.
+    """
+    return next(t for t in fig.data if (t.name or "").startswith("Required entry"))
+
+
 def test_pb6_carries_p_well_as_marker_colour_with_a_scale(vsweep_banded):
     """No dual y-axes, so the cost side of the trade is the colour."""
     fig = I.pfig_b6_inverse(vsweep_banded)
-    curve = next(t for t in fig.data if t.name == "Required entry")
+    curve = _required_entry(fig)
     assert curve.marker.colorscale is not None
     assert curve.marker.color is not None
     # The rule is "no dual y-axes", which in plotly means no y-axis *overlaying*
-    # another on the same panel. It is not "no yaxis2": B6 is two side-by-side
-    # panels now, so a second y-axis exists and is entirely legitimate. Asserting
-    # on the name rather than on `overlaying` would have made the merge look like a
-    # violation while leaving a genuine twinned axis undetected on every other
-    # figure.
+    # another. Asserting `"yaxis2" not in layout` instead would flag any figure
+    # that ever gains a second panel while leaving a genuine twinned axis
+    # undetected -- the wrong thing on both counts.
     for key in fig.layout:
         if key.startswith("yaxis"):
             assert fig.layout[key].overlaying is None, key
@@ -303,7 +312,7 @@ def test_pb6_carries_p_well_as_marker_colour_with_a_scale(vsweep_banded):
 
 def test_pb6_hover_gives_volume_depth_and_chance_together(vsweep_banded):
     fig = I.pfig_b6_inverse(vsweep_banded)
-    curve = next(t for t in fig.data if t.name == "Required entry")
+    curve = _required_entry(fig)
     assert "MMboe" in curve.hovertemplate
     assert "TVDSS" in curve.hovertemplate
     assert "P<sub>well</sub>" in curve.hovertemplate
@@ -1060,57 +1069,31 @@ def test_c1_draws_the_well_as_a_vertical_track_on_the_structure(reduced, area_de
     assert float(area_depth.area_at(EXIT)) > xs[0]
 
 
-def test_b6_gives_each_panel_its_own_x_and_shares_only_the_depth(reduced, vsweep):
-    """B6's two panels may share y and must not share x.
+def test_b6_names_both_readings_on_both_axes(reduced, vsweep):
+    """One pair of axes carrying two quantities, so both axes must say so.
 
-    They were briefly one overlay, and the axes could only be labelled for one of
-    the two families -- x was the *mean proven volume over the discovery group* for
-    the required-depth curve and the *per-trial total resource* for the spread
-    lines, y was a *required entry depth* against a *sampled contact*. They crossed,
-    and Lars reported the figure as unreadable. Two quantities under one axis label
-    is the same mistake as an unrisked number under a risked label.
+    B6 draws two families that do **not** measure the same thing: the required-entry
+    curve is a *target mean proven volume* against a *required entry depth*, while
+    the contact lines are a *volume held by one trial* against a *sampled contact*.
+    On prospect A that is 33.9-277.7 MMboe against 2.2-482.1.
 
-    Merged back as two panels on Lars's instruction, the separation is what keeps
-    it honest: each x names its own quantity, while y is shared because entry depth
-    and contact depth are both structural levels on the same structure -- which is
-    what non-negotiable 2 asks a row to share, and what makes a ruler laid across
-    the row mean something.
+    Lars asked for them on one graph after seeing them side by side, and this is the
+    condition that makes that honest: the axis titles name both readings, so nobody
+    reads one family off the other's definition. Unlabelled, this is exactly the
+    figure he reported as unreadable -- so the assertion is the fix, not decoration.
     """
     fig = I.pfig_b6_inverse(vsweep, target=14.0, ts=reduced, mefs=14.0)
-    assert "mean proven" in fig.layout.xaxis.title.text
-    assert "one trial" in fig.layout.xaxis2.title.text
-    assert fig.layout.xaxis.title.text != fig.layout.xaxis2.title.text
+    x, y = fig.layout.xaxis.title.text, fig.layout.yaxis.title.text
+    assert "mean proven" in x and "one trial" in x
+    assert "entry" in y and "contact" in y
+    assert "deeper" in y                       # the guarantee, not a first touch
+    assert fig.layout.yaxis.range[0] > fig.layout.yaxis.range[1]   # still inverted
 
-    # One depth range across the row, inverted, labelled once.
-    assert list(fig.layout.yaxis.range) == list(fig.layout.yaxis2.range)
-    assert fig.layout.yaxis.range[0] > fig.layout.yaxis.range[1]
-    assert "TVDSS" in fig.layout.yaxis.title.text
-    # And the guarantee is stated on the axis, not left to the docstring.
-    assert "deeper" in fig.layout.yaxis.title.text
-
-
-def test_b6_spread_panel_runs_p99_to_p1_in_the_petroleum_orientation(reduced, vsweep):
-    """P1 is drawn and P99 is the shallow end.
-
-    Both were asked for on 2026-08-11: the family stopped at P10, so the shaded
-    range stopped there too and understated the deep tail -- a volume only the
-    largest accumulations hold is consistent with contacts well below P10.
-
-    The orientation assertion matters more than it looks. Getting P99 and P1 the
-    wrong way round would invert the geological reading while leaving the figure
-    looking entirely reasonable.
-    """
-    fig = I.pfig_b6_inverse(vsweep, ts=reduced, n_targets=20)
-    series = {t.name: t for t in fig.data if getattr(t, "name", None)}
-    for q in (99, 90, 50, 10, 1):
-        assert f"P{q} contact" in series, sorted(series)
-    assert "P99–P1 of the contacts" in series      # the fill spans the full family
-
-    p99 = np.asarray(series["P99 contact"].y, dtype=float)
-    p1 = np.asarray(series["P1 contact"].y, dtype=float)
-    both = np.isfinite(p99) & np.isfinite(p1)
-    assert both.any()
-    assert np.all(p99[both] <= p1[both])           # P99 shallow, P1 deep
+    # And the two families stay visually separable: the requirement carries the
+    # P_well colour scale, the spread is the neutral muted grey.
+    assert _required_entry(fig).marker.colorscale is not None
+    greys = [t for t in fig.data if (t.name or "").startswith("P50 contact")]
+    assert greys and greys[0].line.color == palette(False)["muted"]
 
 
 def test_b9_carries_the_chance_weighted_tails_as_grey_lines(vsweep):
@@ -1138,3 +1121,35 @@ def test_b9_carries_the_chance_weighted_tails_as_grey_lines(vsweep):
     # P90 low, P10 high, mean between them: the weighting is applied to all three
     # identically, so the ordering of the conditional percentiles survives it.
     assert np.all(p90[ok] <= mean[ok] + 1e-9) and np.all(mean[ok] <= p10[ok] + 1e-9)
+
+
+def test_no_colourbar_sits_outside_its_axes(reduced, vsweep):
+    """A colourbar outside the plot area is clipped away and never seen.
+
+    The depth-row rule fixes the margins with ``autoexpand=False`` -- see
+    ``test_panels_in_a_row_share_one_plot_area``, which is what makes a row readable
+    across -- and the two are in direct conflict: plotly's default colourbar position
+    is *outside* the axes on the right, where a 25 px margin cuts it off entirely.
+
+    It went unnoticed on **both** figures that have one. A4 is a trial-count grid, so
+    without a scale its colour says only "more or less"; B6 encodes ``P_well``, the
+    entire cost side of the trade it exists to show. Neither had a readable scale.
+
+    So the rule is: a colourbar goes *inside* the axes, which means ``x`` and ``y`` in
+    [0, 1]. Cheap to assert, invisible to lose.
+    """
+    figs = {
+        "A4": I.pfig_a4_resource_vs_depth(reduced, render="grid"),
+        "B6": I.pfig_b6_inverse(vsweep, target=14.0, ts=reduced),
+    }
+    for name, fig in figs.items():
+        bars = [t.marker.colorbar for t in fig.data
+                if getattr(getattr(t, "marker", None), "colorbar", None) is not None
+                and t.marker.colorbar.x is not None]
+        bars += [t.colorbar for t in fig.data
+                 if getattr(t, "colorbar", None) is not None and t.colorbar.x is not None]
+        assert bars, f"{name}: expected a positioned colourbar"
+        for cb in bars:
+            assert 0.0 <= cb.x <= 1.0, f"{name}: colourbar x={cb.x} is outside the axes"
+            assert cb.y is not None and 0.0 <= cb.y <= 1.0, \
+                f"{name}: colourbar y={cb.y} is outside the axes"

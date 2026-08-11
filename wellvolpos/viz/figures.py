@@ -715,32 +715,22 @@ def fig_b6_inverse(
     ts: TrialSet | None = None, mefs: float | None = None,
     zlim: tuple[float, float] | None = None, dark: bool = False,
 ):
-    """B6 -- the inverse, in two panels sharing one depth axis.
+    """B6 -- the inverse, on one pair of axes.
 
     The export twin of :func:`wellvolpos.viz.interactive.pfig_b6_inverse`; that
-    docstring carries the argument. The short form: the left panel gives the
-    required depth for a volume, the right the spread of contacts consistent with
-    the same volume, and they may share **y** (both are structural levels on the
-    same structure) but never **x** -- mean proven volume over the discovery group
-    against total resource held by one trial are different quantities, and one
-    x-axis labelled for both is what made the earlier overlay unreadable.
-
-    Returns ``(fig, axes)``, axes being the two panels left to right.
+    docstring carries the argument for why both axis titles name *two* quantities.
+    Returns ``(fig, ax)``.
     """
     targets, z_req, p_at = volume_target_curve(vsweep, n=n_targets, ts=ts)
+    fig, ax = new_figure(figsize=(7.0, 5.0), dark=dark)
     p = palette(dark)
 
     if targets.size == 0 or not np.isfinite(z_req).any():
-        fig, ax = new_figure(figsize=(6, 5), dark=dark)
         ax.text(0.5, 0.5, "No proven-volume curve to invert", transform=ax.transAxes,
                 ha="center", va="center", fontsize=9, color=p["text"])
         ax.set_title("B6 \u00b7 Inverse \u2014 volume to prove")
         fig.tight_layout()
         return fig, ax
-
-    fig, axes = new_figure(1, 2, figsize=(10.5, 4.6), dark=dark, sharey=True)
-    axes = np.atleast_1d(axes)
-    ax, ax2 = axes[0], axes[1]
 
     ok = np.isfinite(z_req)
     if vsweep.alpha is not None:
@@ -750,13 +740,39 @@ def fig_b6_inverse(
             ax.fill_between(
                 targets[band], z_lo[band], z_hi[band],
                 color=colour("p_well", dark), alpha=0.15, lw=0,
-                label=f"nominal {100 * (1 - vsweep.alpha):.0f}% band",
+                label=f"nominal {100 * (1 - vsweep.alpha):.0f}% band \u2014 sampling error",
             )
+
+    # The contact spread first, so the coloured markers sit on top of the grey.
+    spread_depths = []
+    if ts is not None:
+        res_all = np.asarray(ts.col("resource"), dtype=float)
+        res_all = res_all[res_all > 0]
+        held = np.linspace(float(np.percentile(res_all, 5)),
+                           float(np.percentile(res_all, 95)), int(n_targets))
+        band_pct = entry_depth_percentiles(ts, held)
+        lo, hi = band_pct[99], band_pct[1]
+        inner = np.isfinite(lo) & np.isfinite(hi)
+        if inner.any():
+            ax.fill_between(held[inner], lo[inner], hi[inner], color=p["muted"],
+                            alpha=0.10, lw=0,
+                            label="P99\u2013P1 contact spread \u2014 geological range")
+        for q, lw, ls in ((99, 0.9, ":"), (90, 1.2, "--"), (50, 1.8, "-"),
+                          (10, 1.2, "--"), (1, 0.9, ":")):
+            depths = band_pct[q]
+            good = np.isfinite(depths)
+            if good.sum() >= 2:
+                spread_depths.append(depths[good])
+                ax.plot(held[good], depths[good], color=p["muted"], lw=lw, ls=ls,
+                        label=f"P{q} contact")
+        if mefs is not None:
+            ax.axvline(float(mefs), color=p["muted"], ls=":", lw=1.0)
 
     sc = ax.scatter(targets[ok], z_req[ok], c=p_at[ok] * 100.0, cmap=SEQUENTIAL_CMAP,
                     vmin=0, vmax=100, s=22, zorder=4)
-    ax.plot(targets[ok], z_req[ok], color=p["text_secondary"], lw=1.0, zorder=3)
-    cb = fig.colorbar(sc, ax=axes.tolist(), pad=0.02)
+    ax.plot(targets[ok], z_req[ok], color=p["text_secondary"], lw=1.4, zorder=3,
+            label="Required entry \u2014 for a target mean proven volume")
+    cb = fig.colorbar(sc, ax=ax, pad=0.02)
     cb.set_label(r"$P_{well}$ at that depth (%)", fontsize=8)
 
     if target is not None:
@@ -777,50 +793,20 @@ def fig_b6_inverse(
                 fontsize=8, color=p["text"],
             )
 
-    spread_depths = []
-    if ts is not None:
-        res_all = np.asarray(ts.col("resource"), dtype=float)
-        res_all = res_all[res_all > 0]
-        held = np.linspace(float(np.percentile(res_all, 5)),
-                           float(np.percentile(res_all, 95)), int(n_targets))
-        band_pct = entry_depth_percentiles(ts, held)
-        c = colour("prospect", dark)
-        lo, hi = band_pct[99], band_pct[1]
-        inner = np.isfinite(lo) & np.isfinite(hi)
-        if inner.any():
-            ax2.fill_between(held[inner], lo[inner], hi[inner], color=c, alpha=0.12, lw=0,
-                             label="P99\u2013P1 of the contacts")
-        for q, lw, ls in ((99, 0.9, ":"), (90, 1.2, "--"), (50, 2.2, "-"),
-                          (10, 1.2, "--"), (1, 0.9, ":")):
-            depths = band_pct[q]
-            good = np.isfinite(depths)
-            if good.sum() >= 2:
-                spread_depths.append(depths[good])
-                ax2.plot(held[good], depths[good], color=c, lw=lw, ls=ls,
-                         label=f"P{q} contact")
-        if mefs is not None:
-            ax2.axvline(float(mefs), color=p["muted"], ls=":", lw=1.0)
-
-    # One depth range across the row -- non-negotiable 2 applied, and the only axis
-    # the two panels are allowed to share.
     all_z = [z_req[ok], *spread_depths]
     all_z = np.concatenate([a for a in all_z if a.size])
-    row = zlim or (float(all_z.min()), float(all_z.max()))
-    depth_axis(ax, ylabel="Depth (m TVDSS) \u2014 enter at this depth or deeper", zlim=row)
-    depth_axis(ax2, ylabel=None, zlim=row)
+    # Both readings named on each axis: one pair of axes carrying two definitions
+    # of volume and two kinds of depth is only honest if the axis says so.
+    depth_axis(ax, ylabel="Depth (m TVDSS) \u2014 required entry (curve) / contact (grey)",
+               zlim=zlim or (float(all_z.min()), float(all_z.max())))
     ax.set_xlim(left=0)
-    ax2.set_xlim(left=0)
-    ax.set_xlabel("Volume to prove \u2014 mean proven (MMboe)")
-    ax2.set_xlabel("Volume held by one trial (MMboe)")
-    ax.set_title("the requirement", fontsize=9)
-    ax2.set_title("the range around it", fontsize=9)
-    for a in (ax, ax2):
-        a.grid(True, lw=0.6, alpha=0.7)
-        if a.get_legend_handles_labels()[1]:
-            a.legend(loc="lower right", fontsize=7)
-    fig.suptitle("B6 \u00b7 Inverse \u2014 how deep must the well go, and how wide is the answer?",
-                 fontsize=9.5, fontweight="bold", color=p["text"])
-    return fig, axes
+    ax.set_xlabel("Volume (MMboe) \u2014 target mean proven (curve) / held by one trial (grey)")
+    ax.set_title("B6 \u00b7 Inverse \u2014 how deep must the well go, and how wide is the answer?")
+    ax.grid(True, lw=0.6, alpha=0.7)
+    if ax.get_legend_handles_labels()[1]:
+        ax.legend(loc="lower right", fontsize=6.5)
+    fig.tight_layout()
+    return fig, ax
 
 
 def fig_b3_uncertainty_reduction(sweep: Sweep, *, current_z: float | None = None, dark: bool = False):
