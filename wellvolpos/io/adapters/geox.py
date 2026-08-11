@@ -241,10 +241,8 @@ class GeoXAdapter:
         sep = "\t" if lines and lines[0].count("\t") >= lines[0].count(",") else ","
         decimal, thousands = _sniff_decimal(lines[1:60], sep)
         df = pd.read_csv(src.buffer(), sep=sep, decimal=decimal, thousands=thousands)
-        # a units row written as the first data row (all non-numeric) is metadata
-        units: dict[str, str] = {}
-        if len(df) and df.iloc[0].apply(lambda v: not _is_number(v)).all():
-            units = {c: str(df.iloc[0][c]) for c in df.columns}
+        units: dict[str, str] = _units_row(df)
+        if units:
             df = df.iloc[1:].reset_index(drop=True)
         return df, units
 
@@ -259,6 +257,24 @@ class GeoXAdapter:
                     mapping[canon] = hit
                     break
         return mapping
+
+
+def _units_row(df: pd.DataFrame) -> dict[str, str]:
+    """The units row, if the first data row is one.
+
+    A units row is a first row that carries **no numbers**, allowing for blanks:
+    ``TrialNumber`` has no unit, so its cell is empty. Requiring every cell to be
+    non-numeric missed that, and prospect B -- a real export with a units row and
+    a blank first cell -- imported with no units at all, which then meant the unit
+    check had nothing to check. Found by extracting that file, not by reading this.
+    """
+    if not len(df):
+        return {}
+    first = df.iloc[0]
+    filled = [v for v in first if str(v).strip() not in ("", "nan", "None")]
+    if not filled or any(_is_number(v) for v in filled):
+        return {}
+    return {c: str(first[c]) for c in df.columns if str(first[c]).strip() not in ("", "nan", "None")}
 
 
 def _is_number(v) -> bool:

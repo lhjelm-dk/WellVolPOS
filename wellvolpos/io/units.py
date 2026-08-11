@@ -56,12 +56,19 @@ ALIASES: dict[str, tuple[str, ...]] = {
     "m": ("m", "metre", "metres", "meter", "meters"),
     "MMboe": (
         "mmboe", "mm boe", "mmboe (mmboe)", "10^6 boe", "1e6 boe", "million boe",
-        "mboe" ,  # SLB writes MMboe as Mboe in some locales; same quantity here
+        "mboe",              # SLB writes MMboe as Mboe in some locales
+        # GeoX's own string for total resources, seen in prospect B's export. A
+        # stock-tank barrel of oil equivalent *is* a boe, so 1e6 STB OE is MMboe
+        # under another name -- and it must not be confused with "1e6 STB", which
+        # is oil only and appears in the same file two columns away.
+        "1e6 stb oe", "10^6 stb oe", "mmstb oe", "mmboe oe", "1e6 stboe",
     ),
     "km2": ("km2", "km^2", "km²", "sq km", "square km", "square kilometre", "km2 (km2)"),
     "1e6 m3": (
         "1e6 m3", "10^6 m3", "10^6 m³", "mm3", "million m3", "e6m3", "1e6m3", "m3*10^6",
     ),
+    # GeoX writes fractions as "decimal"; already covered below but listed here so
+    # the two real exports in data/ are both fully recognised.
     "fraction": ("fraction", "frac", "-", "ratio", "v/v", "dec", "decimal"),
 }
 

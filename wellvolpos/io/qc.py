@@ -165,11 +165,21 @@ def run_qc(ts: TrialSet, *, min_trials_warn: int = 10_000) -> QCReport:
                 col = ts.col("thickness")[tfp.resolved]
                 rec = tfp.thickness[tfp.resolved]
                 bias = float(np.mean(rec - col))
-                r = float(np.corrcoef(rec, col)[0, 1]) if rec.size > 2 else float("nan")
+                # A *deterministic* thickness has no variance to correlate against,
+                # and prospect B is exactly that -- 50 m in every trial. Asking
+                # numpy for a correlation there divides by zero, warns, and returns
+                # NaN, so the agreement rests on the mean difference alone and the
+                # message says which test was available rather than printing "nan".
+                varies = float(np.ptp(col)) > 1e-9 and float(np.ptp(rec)) > 1e-9
+                r = float(np.corrcoef(rec, col)[0, 1]) if (varies and rec.size > 2) else float("nan")
                 agrees = abs(bias) < 1.0 and (not np.isfinite(r) or r > 0.99)
+                how = (
+                    f"mean difference {bias:+.2f} m, r = {r:.4f}" if np.isfinite(r) else
+                    f"mean difference {bias:+.2f} m (the column is a constant "
+                    f"{float(np.mean(col)):.1f} m, so there is no correlation to take)"
+                )
                 msg += (
-                    f" Against the export's own reservoir-thickness column: mean difference "
-                    f"{bias:+.2f} m, r = {r:.4f}"
+                    f" Against the export's own reservoir-thickness column: {how}"
                     + (" — the wedge inversion and the simulator agree."
                        if agrees else
                        " — they DISAGREE, so the wedge geometry assumed here is not GeoX's.")

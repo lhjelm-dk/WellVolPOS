@@ -87,7 +87,17 @@ from wellvolpos.viz import (
 )
 
 DATA = Path(__file__).parent / "data"
+# Prospect B first, so it is the default (Lars, 2026-08-10). It comes from the 2018
+# macro workbook and is the better demo in almost every way: 43 clean columns with
+# no duplicate names, a units row that the unit check can actually verify, and both
+# `Reservoir thickness` and `Spill point depth`. It is also **success-case only**,
+# with no chance failures at all, so opening on it exercises the risking branch that
+# no real file previously reached — POS comes from the chance table and the footer
+# says so. Prospect A stays: it is what the parity suite is locked to, and its
+# duplicate-header trap is the one the reader most needs to keep passing.
 DEMOS = {
+    "Prospect B — full export, 43 columns (default)": DATA / "demo_prospectB_full.csv",
+    "Prospect B — reduced (7 columns)": DATA / "demo_prospectB_reduced.csv",
     "Prospect A — reduced (7 columns)": DATA / "demo_prospectA_reduced.csv",
     "Prospect A — full GeoX export (60 columns)": DATA / "demo_prospectA_full.csv",
 }
@@ -352,11 +362,29 @@ with tabs[0]:
     _case_save_slot = cc2
 
 st.sidebar.subheader("Well")
+# Defaults derived from the data, not hardcoded. They used to be 3500/3550 m -- the
+# reference well of prospect A's workbook -- which put prospect B's entry at its
+# deepest contact of 2400 m and then collapsed the exit slider's range to a single
+# point. The parity suite still pins 3500/3550; those live in tests/conftest.py,
+# where they belong, because they are a property of that workbook and not of the UI.
+_succ = ts.col("contact")[ts.col("resource") > 0]
+_default_entry = float(np.round(np.median(_succ) / 5.0) * 5.0) if _succ.size else zmin
+_default_entry = float(np.clip(_default_entry, zmin, zmax))
 entry = st.sidebar.slider("Reservoir entry depth (m TVDSS)", zmin, zmax,
-                          min(max(3500.0, zmin), zmax), 5.0, key="w_entry")
-exit_ = st.sidebar.slider("Reservoir exit depth (m TVDSS)", entry, zmax,
-                          min(entry + 50.0, zmax), 5.0, key="w_exit")
-mefs = st.sidebar.number_input("MEFS (MMboe)", min_value=0.0, value=14.0, step=0.5, key="w_mefs")
+                          _default_entry, 5.0, key="w_entry")
+# ``max_value`` cannot equal ``min_value``, and an exit at or below the deepest
+# contact is meaningful -- it says the well passes through the whole reservoir -- so
+# the range is widened rather than clamped.
+exit_ = st.sidebar.slider("Reservoir exit depth (m TVDSS)", entry, max(zmax, entry + 5.0),
+                          min(entry + 50.0, max(zmax, entry + 5.0)), 5.0, key="w_exit")
+# MEFS scales with the prospect: 14 MMboe is a sensible threshold against prospect
+# A's 16 MMboe discovery mean and a rounding error against prospect B's 121.
+_default_mefs = float(np.round(np.mean(ts.col("resource")[ts.col("resource") > 0]) * 0.85))
+mefs = st.sidebar.number_input("MEFS (MMboe)", min_value=0.0, value=_default_mefs, step=0.5,
+                               key="w_mefs",
+                               help="Minimum economic field size — Rose's MCFS under another "
+                                    "name. Drawn as a reference line and never applied to the "
+                                    "distributions.")
 
 st.sidebar.divider()
 st.sidebar.subheader("Conventions")

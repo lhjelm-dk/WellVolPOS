@@ -123,7 +123,17 @@ def check_area_pay_correlation(ts: TrialSet) -> tuple[str, str, float]:
     still valid. The correct behaviour is to disqualify the extension loudly and
     let the reference engine be read, which is what the message says to do. The
     synthetic correlated file in :mod:`wellvolpos.io.synthetic` is what made this
-    visible; no real export in ``data/`` triggers it.
+    visible, and prospect B triggers it for real -- see below.
+
+    **The message also reports the partial correlation controlling for contact
+    depth**, because the two readings call for different words and prospect B is
+    the case that showed it. There, raw r = +0.87 but partial r = +0.04: area and
+    pay are correlated only because both grow with fill depth, since the reservoir
+    is a deterministic 50 m and the pay is therefore a wedge. That still
+    disqualifies apportioning by area -- the deep part of the closure genuinely
+    holds more pay per unit area than the rim -- but it is a *geometric* fact about
+    a wedge, not a rock-property correlation, and a reader deserves to be told
+    which. On prospect A both are ~0.
     """
     if not (ts.has("area") and ts.has("gross_pay")):
         return "warn", "Cannot check area/net-pay correlation: area or gross pay not exported.", float("nan")
@@ -134,13 +144,54 @@ def check_area_pay_correlation(ts: TrialSet) -> tuple[str, str, float]:
     r = float(np.corrcoef(a[m], g[m])[0, 1])
     if abs(r) < 0.2:
         return "pass", f"Area and gross pay are effectively independent (r = {r:+.3f}); the uniform-yield split is sound.", r
+
+    why = _explain_correlation(ts, m, r)
     if abs(r) < 0.5:
-        return "warn", f"Area and gross pay are moderately correlated (r = {r:+.3f}); the split understates the depth dependence of pay.", r
+        return "warn", (
+            f"Area and gross pay are moderately correlated (r = {r:+.3f}); the split understates "
+            f"the depth dependence of pay. {why}"
+        ), r
     return (
         "warn",
         f"Area and gross pay are strongly correlated (r = {r:+.3f}); apportioning resource by "
         f"area alone is not defensible on this data. **Read the reference grouping engine and "
         f"disregard the proven/possible split** — the reference engine groups whole trials and "
-        f"apportions nothing, so it does not rest on this assumption.",
+        f"apportions nothing, so it does not rest on this assumption. {why}",
         r,
+    )
+
+
+def _explain_correlation(ts: TrialSet, m: np.ndarray, r: float) -> str:
+    """Say whether the correlation survives controlling for contact depth.
+
+    A one-line linear partialling-out, not a model: both quantities are regressed
+    on the contact and the residuals correlated. Enough to separate "pay grows as
+    the closure fills" from "thicker pay happens to come with bigger area", which
+    are the two stories a reader might otherwise have to guess between.
+    """
+    if not ts.has("contact"):
+        return ""
+    a, g, c = (np.asarray(ts.col(k), dtype=float)[m] for k in ("area", "gross_pay", "contact"))
+    if np.ptp(c) <= 0:
+        return ""
+
+    def residual(y: np.ndarray) -> np.ndarray:
+        design = np.vstack([c, np.ones_like(c)]).T
+        coef, *_ = np.linalg.lstsq(design, y, rcond=None)
+        return y - design @ coef
+
+    ra, rg = residual(a), residual(g)
+    if not (np.std(ra) > 0 and np.std(rg) > 0):
+        return ""
+    partial = float(np.corrcoef(ra, rg)[0, 1])
+    if abs(partial) < 0.2:
+        return (
+            f"Controlling for contact depth it drops to r = {partial:+.3f}, so this is the "
+            f"*wedge*: both grow as the closure fills, rather than thicker pay happening to come "
+            f"with bigger area."
+        )
+    return (
+        f"It survives controlling for contact depth (r = {partial:+.3f}), so pay and area are "
+        f"related beyond their shared dependence on fill — a rock-property correlation, not just "
+        f"wedge geometry."
     )
