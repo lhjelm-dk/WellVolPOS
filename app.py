@@ -29,6 +29,8 @@ import streamlit as st
 
 from wellvolpos.core import (
     ELEMENTS,
+    SUMMARY_COLUMNS,
+    risk_summary,
     chance_from_counts,
     MIN_SUPPORT,
     SCHEME_LABELS,
@@ -86,7 +88,8 @@ from wellvolpos.viz import (
     pfig_b6_inverse,
     pfig_b7_frontier,
     pfig_b8_commercial_chance,
-    pfig_concepts,
+    pfig_c1_section,
+    pfig_c2_exceedance,
     pfig_map_view,
     row_zlim,
 )
@@ -127,11 +130,24 @@ CONVENTION_PROVENANCE = {
 
 st.set_page_config(page_title="WellVolPOS", layout="wide", page_icon="🛢")
 
-#: C1 is a stacked composite of two panels, so it needs roughly twice a panel's
-#: height. Left as its own constant rather than a multiple of PANEL_HEIGHT, because
-#: PANEL_HEIGHT means "the height a row of depth panels shares" and C1 is not in a
-#: row with anything.
-C1_HEIGHT = 940
+#: Chance-table defaults (Lars, 2026-08-11). They were 1.0 each, which made
+#: POS_prospect 1.0 and hid the whole conditional/unconditional distinction on the
+#: default demo -- every risked curve coincided with its conditional twin. These
+#: multiply to 0.432, so the app now opens with a POS worth reasoning about.
+CHANCE_DEFAULTS = {"charge": 0.90, "trap": 1.00, "reservoir": 0.60, "retention": 0.80}
+CHANCE_HELP = {
+    "charge": "Chance that hydrocarbons were generated and migrated into the trap.",
+    "trap": "Chance that a valid trap geometry and seal exist.",
+    "reservoir": "Chance of effective reservoir presence and quality. **Exempt from the "
+                 "location penalty**: a well that misses the column still saw the rock.",
+    "retention": "Chance the accumulation was retained rather than lost after charge.",
+}
+
+#: C2 carries the nesting braces below its zero line, so it needs more room than a
+#: panel in a row. Its own constant rather than a multiple of PANEL_HEIGHT, because
+#: PANEL_HEIGHT means "the height a row of depth panels shares" and C2 is in a row
+#: with nothing.
+C2_HEIGHT = 620
 
 
 # Dark mode was built and then dropped, on Lars's instruction (2026-08-10). The
@@ -411,9 +427,13 @@ ref = st.sidebar.radio(
     format_func=lambda r: {"crest": "Crest / apex (Milkov 2021)", "p90_area": "P90 area (Rose)"}[r.value],
     key="w_ref",
 )
+# Default to the equal-cube-root scheme, which is the one the source workbook uses
+# and the one Lars's risk summary is drawn against. Under "none" the location factor
+# is reported separately instead of being attributed to elements — still available,
+# but a poor default for a table whose third column is meant to show the penalty.
 scheme = st.sidebar.selectbox(
     "Risk-element allocation", SHIPPED_SCHEMES, format_func=lambda k: SCHEME_LABELS[k],
-    key="w_scheme",
+    index=list(SHIPPED_SCHEMES).index("equal_cube_root"), key="w_scheme",
 )
 # GeoX plots its area-depth curve against area squared, so that convention is
 # offered alongside ours. The transform is on the axis only — every number the
@@ -506,23 +526,34 @@ with tabs[0]:
 if qc.blocked:
     st.stop()
 
-# Entered here (tab ⑤) even though it is used immediately below, because
-# Streamlit executes every tab's body on every rerun regardless of which is
-# visually active -- entering the same `with tabs[4]:` block twice just
-# appends to that tab in order, so the input widgets can live before the
-# quantities they feed and still render at the top of the tab that owns them.
-with tabs[4]:
-    st.subheader("Chance table")
+# The chance table is an **input**, so it lives in tab ① with the data and the
+# risking convention (Lars, 2026-08-11). Charge, trap, reservoir and retention are
+# judgements about the prospect: made before anyone picks a location, and unchanged
+# by picking one. The location factor is *computed* from the trials and the well's
+# depth, so the summary that multiplies the two can only be assembled afterwards --
+# and that summary is in tab ⑤. Keeping the input and the summary apart is what
+# stops the third column of that summary being read as something a person entered.
+with tabs[0]:
+    st.divider()
+    st.subheader("Chance table — the geological risk elements")
     st.caption(
-        "Per-element chance of success. Multiplied together they define the prospect's "
-        "POS, unless the risking convention (tab ①) says the trials already carry it — "
-        "in which case this table is for the attribution figures below only."
+        "**Inputs, not results.** Per-element chance of success for the prospect, multiplied "
+        "together to give POS_prospect. Nothing here depends on where the well goes: the "
+        "location factor is computed from the trials, and the two are brought together in the "
+        "risk summary in tab ⑤. If the risking convention above says the trials already carry "
+        "the chance, this table drives the attribution figures only."
     )
     ec = st.columns(4)
     elements = {
-        el: ec[i].number_input(el.capitalize(), 0.01, 1.0, 1.0, 0.01, key=f"w_chance_{el}")
+        el: ec[i].number_input(
+            el.capitalize(), 0.01, 1.0, CHANCE_DEFAULTS[el], 0.01, key=f"w_chance_{el}",
+            help=CHANCE_HELP[el],
+        )
         for i, el in enumerate(ELEMENTS)
     }
+    st.caption(
+        f"POS_prospect from this table: **{float(np.prod(list(elements.values()))):.4f}**"
+    )
 
 pos_from_table = float(np.prod(list(elements.values())))
 risking_convention = st.session_state.get("risking_convention", "success_case_only")
@@ -621,6 +652,54 @@ with tabs[1]:
             "A5 — the exceedance curves at the current entry/exit, and the figure the whole tool "
             "builds towards: the well-associated (discovery-case) distribution against the "
             "prospect's own. No depth axis, so it sits below the row rather than in it."
+        )
+
+        # The numbers behind A5, in both readings (Lars, 2026-08-11). One row per
+        # case and statistic, long-form rather than a wide grid, so that every cell
+        # is labelled and nothing has to be inferred from a column header.
+        st.markdown("**The numbers behind A5**")
+        _p_updip = max(chance.pos_prospect - chance.p_well, 0.0)
+        _a5_cases = [
+            ("Prospect (all trials)", res_all[res_all > 0], chance.pos_prospect),
+            ("Discovery case", vc.discovery_total[groups.discovery], chance.p_well),
+            ("Proven at well", vc.proven[groups.discovery], chance.p_well),
+            ("Attic | dry hole", vc.attic[groups.dry_with_attic], _p_updip),
+        ]
+        _rows = []
+        for _name, _values, _ch in _a5_cases:
+            _s = class_percentiles(_values, _ch)
+            for _stat in ("P99", "P90", "P50", "Pmean", "P10", "P1"):
+                if _stat == "Pmean":
+                    _vol, _cond = _s["mean"], _s["mean_at"] / 100.0
+                else:
+                    _q = int(_stat[1:])
+                    _vol, _cond = _s[f"p{_q}"], _q / 100.0
+                _rows.append({
+                    "case": _name,
+                    "statistic": _stat,
+                    "volume (MMboe)": _vol,
+                    "probability — unrisked": _cond,
+                    "probability — risked": _cond * _ch,
+                })
+        st.dataframe(
+            pd.DataFrame(_rows), hide_index=True, width="stretch", height=330,
+            column_config={
+                "volume (MMboe)": st.column_config.NumberColumn(format="%.2f"),
+                "probability — unrisked": st.column_config.NumberColumn(format="percent"),
+                "probability — risked": st.column_config.NumberColumn(format="percent"),
+            },
+        )
+        st.caption(
+            "**Unrisked** is the conditional reading: the chance of exceeding that volume "
+            "*given the case happens*, which is why P90 reads 90 % and P50 reads 50 % — that is "
+            "the definition of a percentile, and it is the distribution the industry quotes. "
+            "**Risked** is the unconditional one: the same volume, multiplied by the chance the "
+            "case happens at all. Solid curves in A5 are the unrisked reading, dashed are the "
+            "risked one.\n\n"
+            "**Pmean is not a percentile.** It is the arithmetic mean, and its unrisked "
+            "probability is wherever it happens to fall on the curve — above P50 on a "
+            "right-skewed distribution. That is why it gets its own row rather than sitting "
+            "between P50 and P10 as if it were one of them."
         )
 
         st.divider()
@@ -837,11 +916,16 @@ with tabs[2]:
                 f"dashed curves and every figure use P_well; this column is the raw count."
             )
         st.divider()
-        _chart(pfig_concepts(
-                ad, ts, groups, vc, z_entry=entry, z_exit=exit_,
-                pos_prospect=chance.pos_prospect, p_well=chance.p_well, mefs=mefs,
-                area_scale=area_scale, height=C1_HEIGHT,
-            ), key="concepts", height=C1_HEIGHT)
+        # Two figures, one above the other (Lars, 2026-08-11). They were one stacked
+        # composite; split, each renders at its own natural height and either can be
+        # exported and placed on its own.
+        _chart(pfig_c1_section(
+                ad, ts, z_entry=entry, z_exit=exit_, area_scale=area_scale,
+            ), key="c1")
+        _chart(pfig_c2_exceedance(
+                ts, groups, vc, pos_prospect=chance.pos_prospect,
+                p_well=chance.p_well, mefs=mefs,
+            ), key="c2", height=C2_HEIGHT)
         st.caption(
             "**C1 — the concepts, in one picture.** Above: where each volume sits in the "
             "structure. Below: the same volumes as exceedance curves, **two per concept in one "
@@ -1135,11 +1219,57 @@ with tabs[4]:
             f"{pos:.4f} and the convention says the trials are authoritative. B4 therefore "
             f"carries a named reconciliation step; it is not a rounding error."
         )
-    # allocate()'s floor warnings are the design plan's §5.1 guard. Raised once
-    # here rather than inside each figure, because a warning drawn on a chart is
-    # a warning that can be cropped out of a screenshot.
-    _, alloc_warnings = allocate(elements, chance.r_location, scheme)
-    for w in alloc_warnings:
+    # ---- the risk summary: the entered table times the computed location factor
+    st.subheader("Risk summary — the chance table, at this well")
+    st.caption(
+        "**Why this is here and the chance table is in tab ①.** Charge, trap, reservoir and "
+        "retention are *inputs*: judgements about the prospect, made before anyone picks a "
+        "location and unchanged by picking one. The location factor `r_location` is *computed*, "
+        "from the trial file and this well's entry depth. Only once both exist can they be "
+        "multiplied — so the summary comes last, and the third column below is a **result**, not "
+        "something anyone typed."
+    )
+    _summary = risk_summary(elements, chance.r_location, scheme=scheme)
+    st.dataframe(
+        pd.DataFrame(_summary.as_records()),
+        hide_index=True, width="stretch",
+        column_config={
+            c: st.column_config.NumberColumn(format="percent") for c in SUMMARY_COLUMNS
+        } | {
+            "Carries the location penalty": st.column_config.CheckboxColumn(
+                help="Reservoir is exempt under every shipped scheme — a well that misses the "
+                     "column still saw the rock, so its reservoir risk is unchanged by where "
+                     "it was drilled."
+            )
+        },
+    )
+    rc1, rc2 = st.columns([2, 3])
+    with rc1:
+        st.dataframe(
+            pd.DataFrame(_summary.result_records()),
+            hide_index=True, width="stretch",
+            column_config={"value": st.column_config.NumberColumn(format="percent")},
+        )
+        st.metric("HC probability correction factor", f"{_summary.correction_factor:.3f}",
+                  help="What the location costs each element that carries it. Under the "
+                       "equal-cube-root scheme this is r^(1/3), because three of the four "
+                       "elements share the penalty and reservoir is exempt — which is why it is "
+                       "a cube root and not a fourth root.")
+    with rc2:
+        st.markdown(
+            f"**Read it across.** Each element starts at its entered chance "
+            f"(*{SUMMARY_COLUMNS[1]}*) and is reduced by the correction factor "
+            f"**{_summary.correction_factor:.3f}** where it carries the location penalty. "
+            f"Multiply the third column and you get **P_well = {_summary.well_pos:.4f}** — the same "
+            f"number as `POS_prospect × r_location` = {chance.pos_prospect:.4f} × "
+            f"{chance.r_location:.4f}, by construction rather than by coincidence.\n\n"
+            f"**Allocation is a convention, not a fact.** All three shipped schemes give the same "
+            f"P_well; only the split across elements differs, which is what B5 below shows. This "
+            f"table uses **{SCHEME_LABELS.get(scheme, scheme)}**, set in the sidebar.\n\n"
+            f"The *Play* column is 1.00 throughout: this tool assesses **one prospect segment** "
+            f"from one trial file (decision 10) and models no play level above it."
+        )
+    for w in _summary.warnings:
         st.warning(w)
     st.divider()
 

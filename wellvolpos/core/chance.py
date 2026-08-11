@@ -29,7 +29,7 @@ buried in the code.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 
 import numpy as np
@@ -267,3 +267,143 @@ def waterfall_steps(
         label = "Location (r)" if residual >= 1.0 - 1e-9 else f"Location (r^{residual:.2f})"
         steps.append((label, float(r ** residual), "location"))
     return steps
+
+
+# ---------------------------------------------------------- the risk summary
+#: The three columns of the risk summary, in the order a reader works through
+#: them. The names are Lars's, from the sheet this reproduces.
+SUMMARY_COLUMNS = ("Probability (Play)", "Probability (Prospect given Play)",
+                   "Probability (at well location)")
+
+
+@dataclass
+class RiskSummary:
+    """The chance table, the location factor, and the one multiplied through the
+    other -- as a table rather than a figure.
+
+    Reproduces the summary block Lars keeps in the workbook, and it exists because
+    **the two halves come from different places and at different times**:
+
+    * ``charge``, ``trap``, ``reservoir`` and ``retention`` are **inputs** --
+      judgements about the prospect, made before anyone picks a location and
+      unchanged by picking one. They belong with the data and the risking
+      convention, which is why the chance table lives in tab ①.
+    * ``r_location`` is **computed**, from the trial file and the well's entry
+      depth. It exists only once there is a well.
+
+    So a summary that multiplies the first by the second can only be assembled
+    after both, which is why it sits at the end, in tab ⑤. Putting the input and
+    the summary in one place would invite reading the third column as something a
+    person entered.
+
+    ``correction_factor`` is what the location costs each element that carries it:
+    ``r^(1/3)`` under the shipped equal-cube-root scheme, because three of the four
+    elements share the penalty and **reservoir is exempt** -- a well that misses
+    the column still saw the rock, so its reservoir risk is unchanged by where it
+    was drilled. That exemption is why the factor is a cube root and not a fourth
+    root, and it is the same arithmetic :func:`allocate` and B4 already use.
+    """
+
+    rows: list[dict[str, float | str]]
+    play_chance: float
+    conditional_prospect_chance: float
+    prospect_pos: float
+    well_pos: float
+    correction_factor: float
+    scheme: str
+    warnings: list[str] = field(default_factory=list)
+
+    def as_records(self) -> list[dict[str, object]]:
+        """The element rows, ready for a dataframe."""
+        return [dict(r) for r in self.rows]
+
+    def result_records(self) -> list[dict[str, object]]:
+        """The four result lines under the table, in the order they are read."""
+        return [
+            {"result": "Play chance", "value": self.play_chance},
+            {"result": "Cond. prospect chance", "value": self.conditional_prospect_chance},
+            {"result": "Final prospect POS", "value": self.prospect_pos},
+            {"result": "Well location POS", "value": self.well_pos},
+        ]
+
+
+def risk_summary(
+    elements: dict[str, float], r: float, *, scheme: str | dict[str, float] = "equal_cube_root",
+    play_chance: float = 1.0,
+) -> RiskSummary:
+    """Build the risk summary table.
+
+    The third column is :func:`allocate`'s output, so this function introduces no
+    arithmetic of its own -- which is deliberate. The product of the third column
+    is ``POS_prospect x r_location = P_well`` by construction, and
+    ``test_the_summary_multiplies_to_p_well`` checks it against
+    :func:`wellvolpos.core.chance.p_well` rather than against this table's own
+    numbers, for the reason CLAUDE.md gives after the B4 defect.
+
+    ``play_chance`` defaults to 1.0. This tool assesses **one prospect segment**
+    from one trial file (decision of record 10) and does not model a play level, so
+    the first column is 1.0 throughout unless a caller states otherwise; it is
+    carried because the summary is read alongside sheets that do have one.
+    """
+    at_well, warnings = allocate(elements, r, scheme)
+    conditional = float(np.prod([float(v) for v in elements.values()])) if elements else 1.0
+    prospect_pos = float(play_chance) * conditional
+    rows: list[dict[str, float | str]] = []
+    for name in elements:
+        given_play = float(elements[name])
+        rows.append({
+            "Chance element": name.capitalize(),
+            SUMMARY_COLUMNS[0]: float(play_chance),
+            SUMMARY_COLUMNS[1]: given_play,
+            SUMMARY_COLUMNS[2]: float(at_well[name]),
+            # Named so the exemption is visible in the table rather than only in
+            # prose: reservoir carries no location penalty under any shipped scheme.
+            "Carries the location penalty": not np.isclose(at_well[name], given_play),
+        })
+
+    # ``P_well`` is ``play x POS_prospect x r_location`` by definition, and it is
+    # computed that way here rather than as the product of the third column.
+    #
+    # Those two agree under a scheme that *allocates* the penalty to elements, but
+    # the "none" scheme deliberately does not -- it reports ``r`` separately -- so
+    # the third column then equals the second and multiplying it out gives
+    # POS_prospect. Reporting that as the well POS would be this codebase's
+    # recurring mistake for the fifth time: an unrisked number under a risked label.
+    # Under "none" the location factor gets its own row instead, so the column still
+    # multiplies to the number at the bottom of the table.
+    well_pos = prospect_pos * float(r)
+    allocated = float(np.prod([float(v) for v in at_well.values()])) * float(play_chance)
+    if not np.isclose(allocated, well_pos):
+        rows.append({
+            "Chance element": "Location factor r",
+            SUMMARY_COLUMNS[0]: float(play_chance),
+            SUMMARY_COLUMNS[1]: 1.0,
+            SUMMARY_COLUMNS[2]: float(r),
+            "Carries the location penalty": True,
+        })
+    factor = _correction_factor(elements, at_well)
+    return RiskSummary(
+        rows=rows, play_chance=float(play_chance),
+        conditional_prospect_chance=conditional, prospect_pos=prospect_pos,
+        well_pos=well_pos, correction_factor=factor,
+        scheme=scheme if isinstance(scheme, str) else "custom weights",
+        warnings=list(warnings),
+    )
+
+
+def _correction_factor(elements: dict[str, float], at_well: dict[str, float]) -> float:
+    """The per-element multiplier the location applies, where it applies at all.
+
+    Reported as one number because under the shipped schemes it *is* one number --
+    ``r^(1/3)`` shared by the three elements that carry it. Where a custom weighting
+    gives each element a different factor there is no single value to report, so
+    this returns NaN rather than an average that would look like one.
+    """
+    ratios = [
+        float(at_well[k]) / float(v)
+        for k, v in elements.items()
+        if float(v) > 0 and not np.isclose(at_well[k], float(v))
+    ]
+    if not ratios:
+        return 1.0
+    return float(ratios[0]) if np.allclose(ratios, ratios[0]) else float("nan")

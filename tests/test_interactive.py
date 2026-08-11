@@ -478,8 +478,13 @@ def test_a4_uses_the_same_percentile_convention_as_a1(reduced):
 # ------------------------------------------------- the concepts teaching figure
 @pytest.fixture(scope="module")
 def concepts(full):
-    """Built from the *full* export, because the left panel needs the reservoir
-    thickness column and the 7-column paste does not carry it."""
+    """(C1 section, C2 exceedance, chance) for the full export.
+
+    Built from the *full* export because C1 needs the reservoir thickness column
+    and the 7-column paste does not carry it. Returns both figures since the old
+    composite was split into two on 2026-08-11 -- tests that used to look for a
+    section trace and a curve trace in one figure now say which figure they mean.
+    """
     from wellvolpos.core import AreaDepth, group_trials, split_trials
     from wellvolpos.core import p_well as p_well_fn
 
@@ -487,17 +492,16 @@ def concepts(full):
     g = group_trials(full, ENTRY, EXIT)
     vcl = split_trials(full, ad, g, ENTRY, EXIT)
     ch = p_well_fn(full, ENTRY, POS)
-    return I.pfig_concepts(
-        ad, full, g, vcl, z_entry=ENTRY, z_exit=EXIT,
-        pos_prospect=POS, p_well=ch.p_well, mefs=14.0,
-    ), ch
+    c1 = I.pfig_c1_section(ad, full, z_entry=ENTRY, z_exit=EXIT)
+    c2 = I.pfig_c2_exceedance(full, g, vcl, pos_prospect=POS, p_well=ch.p_well, mefs=14.0)
+    return c1, c2, ch
 
 
 def test_concepts_draws_the_reservoir_band_from_a_real_thickness(concepts):
     """Top reservoir is A(z); base is the same curve shifted down by the mean
     sampled thickness. Both are real quantities -- an earlier version used
     sqrt(area) as a pretend lateral width, which is not in the data at all."""
-    fig, _ = concepts
+    fig, _c2, _ = concepts
     said = " ".join(a.text or "" for a in fig.layout.annotations)
     assert "Top reservoir" in said
     assert "Base reservoir" in said
@@ -517,12 +521,8 @@ def test_concepts_draws_the_base_on_the_seven_column_paste_too(reduced, groups, 
     default data set. Inverting the wedge needs only area, pay and contact, all
     of which that export does carry.
     """
-    from wellvolpos.core import p_well as p_well_fn
-
     assert not reduced.has("thickness")
-    ch = p_well_fn(reduced, ENTRY, POS)
-    fig = I.pfig_concepts(area_depth, reduced, groups, vc, z_entry=ENTRY, z_exit=EXIT,
-                          pos_prospect=POS, p_well=ch.p_well)
+    fig = I.pfig_c1_section(area_depth, reduced, z_entry=ENTRY, z_exit=EXIT)
     said = " ".join(a.text or "" for a in fig.layout.annotations)
     assert "Base reservoir" in said
     # The thickness note moved off the figure title and onto the section panel's
@@ -534,9 +534,9 @@ def test_concepts_draws_the_base_on_the_seven_column_paste_too(reduced, groups, 
 
 
 def _concept_curves(fig, concept):
-    """The (conditional, unconditional) traces for one concept in C1.
+    """The (conditional, unconditional) traces for one concept in C2.
 
-    C1 draws two curves per concept, named "<concept> - conditional" and
+    C2 draws two curves per concept, named "<concept> - conditional" and
     "- unconditional", so tests match on the prefix rather than an exact name.
     """
     out = {}
@@ -555,7 +555,7 @@ def test_concepts_risked_curves_start_at_their_own_chance(concepts):
     two POS values are then where the curves physically start, and the gap
     between them is the location penalty rather than a caption.
     """
-    fig, ch = concepts
+    _c1, fig, ch = concepts
     starts = {}
     for concept in ("Prospect resource potential", "Well associated resource potential",
                     "Up-dip volume"):
@@ -571,7 +571,7 @@ def test_concepts_risked_curves_start_at_their_own_chance(concepts):
 
 
 def test_concepts_marks_both_pos_values_where_the_curves_start(concepts):
-    fig, ch = concepts
+    _c1, fig, ch = concepts
     said = " ".join(a.text or "" for a in fig.layout.annotations)
     assert "Asso. Final Prospect POS" in said
     assert "Asso. Well POS" in said
@@ -582,7 +582,7 @@ def test_concepts_marks_both_pos_values_where_the_curves_start(concepts):
 def test_concepts_braces_nest_from_narrowest_to_widest(concepts):
     """up-dip inside tested inside well associated inside prospect. Drawn widest
     at the bottom, so the containment is visible rather than asserted."""
-    fig, _ = concepts
+    _c1, fig, _ = concepts
     order = ["Up-dip volume", "Resource tested by well",
              "Well associated resource potential", "Prospect resource potential"]
     # Each brace is a horizontal 2-point segment below the 0 % line.
@@ -600,7 +600,7 @@ def test_concepts_braces_nest_from_narrowest_to_widest(concepts):
 
 def test_concepts_uses_one_colour_per_concept_across_both_panels(concepts):
     """The pairing only teaches if the section and the curves agree on colour."""
-    fig, _ = concepts
+    c1, fig, _ = concepts
     for concept, role in (("Prospect resource potential", "prospect"),
                           ("Well associated resource potential", "well_associated"),
                           ("Resource tested by well", "tested"),
@@ -610,8 +610,8 @@ def test_concepts_uses_one_colour_per_concept_across_both_panels(concepts):
         # separates them (non-negotiable 3).
         assert cond.line.color == colour(role) == uncond.line.color, concept
         assert cond.line.dash == "solid" and uncond.line.dash == "dash"
-    # The section's bands carry the same roles, as translucent fills.
-    fills = [t.fillcolor for t in fig.data if t.fillcolor]
+    # The section's bands carry the same roles, as translucent fills -- in C1 now.
+    fills = [t.fillcolor for t in c1.data if t.fillcolor]
     for role in ("up_dip", "tested", "possible"):
         assert any(rgba_of(role) in (f or "") for f in fills), role
 
@@ -624,13 +624,15 @@ def rgba_of(role):
 
 def test_concepts_section_keeps_depth_on_y_inverted(concepts):
     """It is a section, so non-negotiable 2 applies to its left panel."""
-    fig, _ = concepts
+    fig, _c2, _ = concepts
     assert is_depth_axis_correct_plotly(fig, "yaxis")
 
 
 def test_concepts_probability_axis_leaves_room_for_the_braces(concepts):
-    fig, _ = concepts
-    lo, hi = fig.layout.yaxis2.range
+    _c1, fig, _ = concepts
+    # C2 is a standalone figure now, so its probability axis is `yaxis`, not the
+    # second axis of a subplot grid.
+    lo, hi = fig.layout.yaxis.range
     assert hi >= 100.0
     assert lo < 0.0, "the braces are drawn below the 0 % line"
 
@@ -689,8 +691,8 @@ def test_an_unknown_scale_falls_back_on_both_the_label_and_the_data(area_depth, 
 def test_the_concepts_section_honours_the_area_scale_too(reduced, area_depth, groups, vc):
     """A1 and the concepts figure draw the same A(z); they must not be readable
     against different axes in the same session."""
-    kw = dict(z_entry=ENTRY, z_exit=EXIT, pos_prospect=POS, p_well=0.4576, mefs=14.0)
-    sq = I.pfig_concepts(area_depth, reduced, groups, vc, area_scale="area²", **kw)
+    sq = I.pfig_c1_section(area_depth, reduced, z_entry=ENTRY, z_exit=EXIT,
+                           area_scale="area²")
     assert "km⁴" in sq.layout.xaxis.title.text
 
 
@@ -808,8 +810,7 @@ def test_the_concepts_curves_follow_the_entered_pos_not_the_trial_file(
     for pos in (0.7605, 0.40):
         r = r_location(reduced, ENTRY)[0]
         pw = pos * r
-        fig = I.pfig_concepts(area_depth, reduced, groups, vc, z_entry=ENTRY, z_exit=EXIT,
-                              pos_prospect=pos, p_well=pw, mefs=14.0)
+        fig = I.pfig_c2_exceedance(reduced, groups, vc, pos_prospect=pos, p_well=pw, mefs=14.0)
         heights = {}
         for concept in ("Prospect resource potential", "Well associated resource potential",
                         "Up-dip volume"):
@@ -830,8 +831,7 @@ def test_the_gap_between_the_two_curve_starts_is_the_location_penalty(
     curve starts is POS - P_well, the chance the prospect has something this well
     would miss."""
     pos, pw = 0.7605, 0.4576
-    fig = I.pfig_concepts(area_depth, reduced, groups, vc, z_entry=ENTRY, z_exit=EXIT,
-                          pos_prospect=pos, p_well=pw, mefs=14.0)
+    fig = I.pfig_c2_exceedance(reduced, groups, vc, pos_prospect=pos, p_well=pw, mefs=14.0)
     tops = {}
     for concept in ("Prospect resource potential", "Well associated resource potential"):
         _cond, uncond = _concept_curves(fig, concept)

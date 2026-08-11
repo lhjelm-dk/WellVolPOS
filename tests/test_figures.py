@@ -104,24 +104,40 @@ def test_b3_depth_axis_and_optimum_is_plotted_inside_the_swept_range(sweep):
     assert sweep.z.min() <= sweep.z_optimum <= sweep.z.max()
 
 
-def test_a5_draws_conditional_curves_only_and_says_so(reduced, groups, vc):
-    """A5 is now explicitly the **conditional (success case)** figure, so every
-    curve starts at 100 % -- including the prospect, whose chance-failure zeros are
-    excluded rather than left to drag the curve down to POS_trials.
+def test_a5_draws_both_readings_and_labels_which_is_which(reduced, groups, vc):
+    """A5 draws each case twice (Lars, 2026-08-11): solid conditional from 100 %,
+    dashed unconditional from that case's own chance.
 
-    That drop used to be here, and it was the figure being accidentally
-    unconditional in one series and conditional in the other three, which is
-    exactly the mixture this session set out to remove. The unconditional readings
-    live in C1 as dashed twins, and the chances are in tab 3's table.
+    It used to be accidentally *mixed* -- the prospect series carried the
+    chance-failure zeros and so ran down to POS_trials while the other three
+    started at 100 %, with nothing on the figure saying so. Now the mixture is
+    deliberate, labelled, and each dashed curve carries its own chance, which
+    matters because the four chances are different numbers.
     """
+    pos, pw = POS, 0.4576
+    fig, ax = figures.fig_a5_exceedance(reduced, groups, vc,
+                                        pos_prospect=pos, p_well=pw)
+    assert "conditional" in ax.get_title() and "risked" in ax.get_title()
+
+    solid = [l for l in ax.get_lines()
+             if l.get_linestyle() == "-" and not l.get_label().startswith("_")]
+    dashed = [l for l in ax.get_lines()
+              if l.get_linestyle() == "--" and len(l.get_xdata()) > 10]
+    assert len(solid) == 4 and len(dashed) == 4
+    for l in solid:
+        assert float(np.nanmax(l.get_ydata())) == pytest.approx(100.0, abs=1e-6), l.get_label()
+    # POS for the prospect, P_well twice, and POS - P_well for the attic.
+    assert sorted(round(float(np.nanmax(l.get_ydata())), 2) for l in dashed) == pytest.approx(
+        sorted([pos * 100, pw * 100, pw * 100, (pos - pw) * 100]), abs=0.6
+    )
+
+
+def test_a5_omits_the_risked_curves_when_no_chance_is_given(reduced, groups, vc):
+    """The chances are arguments, never taken from the trial file's own zero count.
+    Without them there is no honest unconditional curve to draw, so none is."""
     fig, ax = figures.fig_a5_exceedance(reduced, groups, vc)
-    assert "conditional (success case)" in ax.get_title()
-    lines = {line.get_label(): line for line in ax.get_lines()}
-    for label in ("Prospect (all trials)", "Discovery case", "Attic | dry hole"):
-        y = lines[label].get_ydata()
-        assert float(np.nanmax(y)) == pytest.approx(100.0, abs=1e-6), label
-    xs = lines["Prospect (all trials)"].get_xdata()
-    assert float(np.min(xs)) > 0.0
+    assert not [l for l in ax.get_lines()
+                if l.get_linestyle() == "--" and len(l.get_xdata()) > 10]
 
 
 # ------------------------------------------------------------------- A1
@@ -507,14 +523,13 @@ def test_every_plotly_figure_has_an_export_twin():
     assert plotly_names <= mpl_names, f"no export twin for {sorted(plotly_names - mpl_names)}"
 
 
-def test_the_concepts_twin_starts_its_curves_at_their_own_chance(reduced, area_depth, groups, vc):
+def test_the_c2_twin_starts_its_curves_at_their_own_chance(reduced, area_depth, groups, vc):
     """The teaching mechanism, on the export path. The curves are risked, so the
     prospect curve starts at POS_prospect and the well-associated curve at
     P_well -- and the gap between those two starts is the location penalty. If a
     curve started at 100 % the figure would be making the opposite argument."""
-    fig, (ax_sec, ax_exc) = figures.fig_concepts(
-        area_depth, reduced, groups, vc, z_entry=ENTRY, z_exit=EXIT,
-        pos_prospect=POS, p_well=0.4576, mefs=14.0,
+    fig, ax_exc = figures.fig_c2_exceedance(
+        reduced, groups, vc, pos_prospect=POS, p_well=0.4576, mefs=14.0,
     )
     # Each curve's *maximum* is its own chance -- not 100 %. The earlier version of
     # this test asserted 100 % for the first two curves, which contradicted its own
@@ -537,26 +552,24 @@ def test_the_concepts_twin_starts_its_curves_at_their_own_chance(reduced, area_d
     assert tops_dashed == pytest.approx(expected, abs=0.6)
 
 
-def test_the_concepts_twin_keeps_the_depth_rule_on_its_section(reduced, area_depth, groups, vc):
+def test_the_c1_twin_keeps_the_depth_rule_on_its_section(reduced, area_depth, groups, vc):
     """Non-negotiable 2 applies to the composite too: the left panel carries a
     depth, so it goes on y, inverted."""
-    fig, (ax_sec, _) = figures.fig_concepts(
-        area_depth, reduced, groups, vc, z_entry=ENTRY, z_exit=EXIT,
-        pos_prospect=POS, p_well=0.4576,
+    fig, ax_sec = figures.fig_c1_section(
+        area_depth, reduced, z_entry=ENTRY, z_exit=EXIT,
     )
     lo, hi = ax_sec.get_ylim()
     assert lo > hi                                       # inverted
     assert "TVDSS" in ax_sec.get_ylabel()
 
 
-def test_the_concepts_twin_colours_by_the_same_roles_as_its_plotly_original(
+def test_the_c2_twin_colours_by_the_same_roles_as_its_plotly_original(
     reduced, area_depth, groups, vc
 ):
     """One colour per concept, in both backends. Drift here is exactly the drift
     theme.py exists to prevent."""
-    fig, (_, ax_exc) = figures.fig_concepts(
-        area_depth, reduced, groups, vc, z_entry=ENTRY, z_exit=EXIT,
-        pos_prospect=POS, p_well=0.4576,
+    fig, ax_exc = figures.fig_c2_exceedance(
+        reduced, groups, vc, pos_prospect=POS, p_well=0.4576,
     )
     from matplotlib.colors import to_hex
 
@@ -566,7 +579,7 @@ def test_the_concepts_twin_colours_by_the_same_roles_as_its_plotly_original(
         assert colour(role, False).lower() in used
 
 
-def test_the_concepts_twin_degrades_rather_than_inventing_a_base_reservoir(
+def test_the_c1_twin_degrades_rather_than_inventing_a_base_reservoir(
     reduced, area_depth, groups, vc
 ):
     """No recoverable thickness means no base reservoir -- and the figure says so
@@ -575,8 +588,7 @@ def test_the_concepts_twin_degrades_rather_than_inventing_a_base_reservoir(
 
     ts = copy.deepcopy(reduced)
     ts.frame["hc_grv"] = ts.frame["hc_grv"] * 1000.0     # nothing can be inverted
-    fig, _ = figures.fig_concepts(area_depth, ts, groups, vc, z_entry=ENTRY, z_exit=EXIT,
-                            pos_prospect=POS, p_well=0.4576)
+    fig, _ax = figures.fig_c1_section(area_depth, ts, z_entry=ENTRY, z_exit=EXIT)
     # The note now lives on the section's x-axis label rather than in fig.texts.
     said = " ".join(t.get_text() for t in fig.texts) + " " + fig.axes[0].get_xlabel()
     assert "the base reservoir is not drawn" in said

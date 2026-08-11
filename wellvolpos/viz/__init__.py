@@ -24,6 +24,8 @@ from .figures import (
     fig_b6_inverse,
     fig_b7_frontier,
     fig_b8_commercial_chance,
+    fig_c1_section,
+    fig_c2_exceedance,
 )
 from .interactive import (
     AREA_SCALES,
@@ -43,8 +45,9 @@ from .interactive import (
     pfig_b7_frontier,
     pfig_b8_commercial_chance,
     CONCEPT_KEY,
+    pfig_c1_section,
+    pfig_c2_exceedance,
     pfig_colour_key,
-    pfig_concepts,
     pfig_map_view,
     row_zlim,
 )
@@ -66,11 +69,11 @@ __all__ = [
     "fig_a4_resource_vs_depth", "fig_a5_exceedance", "fig_a6_overlap",
     "fig_b0_section", "fig_b1_volume_split", "fig_b2_chance_vs_regret",
     "fig_b3_uncertainty_reduction", "fig_b4_chance_waterfall", "fig_b5_allocation_dumbbell",
-    "fig_b6_inverse", "fig_b7_frontier", "fig_b8_commercial_chance",
+    "fig_b6_inverse", "fig_b7_frontier", "fig_b8_commercial_chance", "fig_c1_section", "fig_c2_exceedance",
     # plotly / interactive
     "pfig_a1_area_depth", "pfig_a2_outcome_tree", "pfig_a3_chance_decomposition",
     "pfig_a4_resource_vs_depth", "pfig_a5_exceedance", "pfig_a6_overlap",
     "pfig_b0_section", "pfig_b1_volume_split", "pfig_b2_chance_vs_regret",
     "pfig_b3_uncertainty_reduction", "pfig_b4_chance_waterfall", "pfig_b5_allocation_dumbbell",
-    "pfig_b6_inverse", "pfig_b7_frontier", "pfig_b8_commercial_chance", "pfig_map_view", "pfig_concepts", "pfig_colour_key", "CONCEPT_KEY",
+    "pfig_b6_inverse", "pfig_b7_frontier", "pfig_b8_commercial_chance", "pfig_map_view", "pfig_c1_section", "pfig_c2_exceedance", "pfig_colour_key", "CONCEPT_KEY",
 ]

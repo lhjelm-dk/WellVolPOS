@@ -375,10 +375,12 @@ def build_figures(b: Bundle, *, dark: bool = False) -> dict[str, object]:
             b.ad, apex=float(b.ad.apex_estimate()), z_entry=c.entry, z_exit=c.exit,
             interval=c.map_interval, well_azimuth_deg=c.map_azimuth_deg, dark=dark)[0]
     if b.vc is not None and b.ad is not None:
-        figs["concepts"] = F.fig_concepts(
-            b.ad, b.ts, b.groups, b.vc, z_entry=c.entry, z_exit=c.exit,
-            pos_prospect=b.pos, p_well=ch.p_well, mefs=c.mefs,
+        figs["C1_section"] = F.fig_c1_section(
+            b.ad, b.ts, z_entry=c.entry, z_exit=c.exit,
             area_scale=c.area_scale, dark=dark)[0]
+        figs["C2_exceedance"] = F.fig_c2_exceedance(
+            b.ts, b.groups, b.vc, pos_prospect=b.pos, p_well=ch.p_well,
+            mefs=c.mefs, dark=dark)[0]
         figs["A5_exceedance"] = F.fig_a5_exceedance(b.ts, b.groups, b.vc, mefs=c.mefs, dark=dark)[0]
         figs["A6_overlap"] = F.fig_a6_overlap(b.vc, b.groups, mefs=c.mefs, dark=dark)[0]
         figs["B0_section"] = F.fig_b0_section(

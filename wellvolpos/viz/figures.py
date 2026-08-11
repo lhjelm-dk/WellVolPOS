@@ -68,7 +68,8 @@ __all__ = [
     "fig_b8_commercial_chance",
     "exceedance_marks",
     "fig_colour_key",
-    "fig_concepts",
+    "fig_c1_section",
+    "fig_c2_exceedance",
     "fig_map_view",
 ]
 
@@ -382,7 +383,8 @@ def fig_a4_resource_vs_depth(
 
 
 def fig_a5_exceedance(
-    ts: TrialSet, groups: Groups, vc: VolumeClasses, *, mefs: float | None = None, dark: bool = False,
+    ts: TrialSet, groups: Groups, vc: VolumeClasses, *, mefs: float | None = None,
+    pos_prospect: float | None = None, p_well: float | None = None, dark: bool = False,
 ):
     """Exceedance curves for prospect / discovery / proven / attic, at the chosen location.
 
@@ -393,20 +395,30 @@ def fig_a5_exceedance(
     fig, ax = new_figure(figsize=(6, 5), dark=dark)
     p = palette(dark)
 
-    # Conditional (success case) only -- see the plotly twin for why A5 does not
-    # also draw the unconditional curves.
+    # Both readings, like the plotly twin: solid conditional, dashed unconditional,
+    # each series risked by *its own* chance.
+    p_updip = (max(pos_prospect - p_well, 0.0)
+               if (pos_prospect is not None and p_well is not None) else None)
     series = [
-        ("Prospect (all trials)", res[res > 0], "prospect"),
-        ("Discovery case", res[groups.discovery], "discovery"),
-        ("Proven at well", vc.proven[groups.discovery], "proven"),
-        ("Attic | dry hole", res[groups.dry_with_attic], "attic"),
+        ("Prospect (all trials)", res[res > 0], pos_prospect, "prospect"),
+        ("Discovery case", res[groups.discovery], p_well, "discovery"),
+        ("Proven at well", vc.proven[groups.discovery], p_well, "proven"),
+        ("Attic | dry hole", res[groups.dry_with_attic], p_updip, "attic"),
     ]
-    for label, values, role in series:
-        v, pct = _exceedance(values)
-        if v.size == 0:
-            continue
-        ax.plot(v, pct, color=colour(role, dark), lw=1.8, label=label)
-        _mark_exceedance_mpl(ax, values, role, dark)
+    for label, values, chance_of, role in series:
+        readings = [("conditional", 1.0)]
+        if chance_of is not None:
+            readings.append(("unconditional", float(chance_of)))
+        for reading, chance_used in readings:
+            v, pct = risked_exceedance(values, chance_used)
+            if v.size == 0:
+                continue
+            ax.plot(v, pct, color=colour(role, dark),
+                    lw=1.8 if reading == "conditional" else 1.3,
+                    ls="-" if reading == "conditional" else "--",
+                    label=label if reading == "conditional" else None)
+            _mark_exceedance_mpl(ax, values, role, dark, chance=chance_used,
+                                 show_text=reading == "conditional")
 
     if mefs is not None:
         ax.axvline(mefs, color=p["muted"], ls=":", lw=1.0)
@@ -416,7 +428,7 @@ def fig_a5_exceedance(
     ax.set_ylim(0, 105)
     ax.set_xlabel("Recoverable resource (MMboe)")
     ax.set_ylabel("Probability of exceedance (%)")
-    ax.set_title("A5 · Exceedance curves — conditional (success case)")
+    ax.set_title("A5 · Exceedance curves — solid conditional, dashed risked")
     ax.grid(True, lw=0.6, alpha=0.7)
     ax.legend(loc="upper right", fontsize=7.5)
     fig.tight_layout()
@@ -782,7 +794,12 @@ def fig_b4_chance_waterfall(
     for xi, (b, v) in enumerate(zip(bottoms, values)):
         ax.text(xi, b, f"×{v:.3f}", ha="center", va="bottom", fontsize=7.5, color=p["text_secondary"])
 
+    # Ceiling pinned at 1.2, like the plotly twin: a chance cannot exceed 1, and
+    # autoscaling gave a different top on every chance table so two waterfalls could
+    # not be compared by eye. The headroom is for the "x1.000" labels.
     ax.set_yscale("log")
+    _floor = float(np.nanmin([v for v in tops if v > 0] or [0.1]))
+    ax.set_ylim(max(_floor * 0.6, 1e-4), 1.2)
     ax.set_xticks(x)
     ax.set_xticklabels(labels, rotation=25, ha="right", fontsize=7.5)
     ax.axhline(total, color=p["muted"], ls=":", lw=1.0)
@@ -1149,45 +1166,54 @@ def _reservoir_section_mpl(ax, ad, ts, *, z_entry, z_exit, dark, area_scale="are
     return thickness
 
 
-def fig_concepts(
-    ad: AreaDepth, ts: TrialSet, groups: Groups, vc: VolumeClasses, *,
-    z_entry: float, z_exit: float, pos_prospect: float, p_well: float,
-    mefs: float | None = None, area_scale: str = "area", dark: bool = False,
+def fig_c1_section(
+    ad: AreaDepth, ts: TrialSet, *, z_entry: float, z_exit: float,
+    area_scale: str = "area", dark: bool = False,
 ):
-    """C1, for the export path. Twin of ``pfig_concepts``.
+    """C1 for the export path. Twin of ``pfig_c1_section``.
 
-    The same volumes twice: an area-depth section on top, the matching exceedance
-    curves below, one colour per concept across both, and braces showing how each
-    range nests inside the next. **Stacked**, not side by side, so both panels
-    share the volume dimension down the page (Lars, 2026-08-11).
-
-    Each concept gets **two** curves in its own colour: solid for the conditional
-    (success case) reading, which starts at 100 % and is where the percentiles are
-    defined, and dashed for the unconditional (risked) reading, which starts at the
-    chance of that case. The vertical gap between the prospect's and the well's
-    unconditional starts *is* the location penalty, and the two POS rules mark it.
-
-    Deliberately a composite, unlike every other figure in this module, because
-    the pairing is the content.
+    Where each volume sits in the structure, in area-depth space. Split from the old
+    composite on 2026-08-11 so the section and the exceedance curves are two figures
+    that can be exported and placed independently.
     """
     from .interactive import AREA_SCALES
 
     p = palette(dark)
-    res = ts.col("resource")
-    fig, (ax_sec, ax_exc) = new_figure(
-        2, 1, figsize=(9.5, 11.0), dark=dark, gridspec_kw={"height_ratios": [0.42, 0.58]}
-    )
-
-    _reservoir_section_mpl(ax_sec, ad, ts, z_entry=z_entry, z_exit=z_exit,
+    fig, ax = new_figure(figsize=(6.6, 5.6), dark=dark)
+    _reservoir_section_mpl(ax, ad, ts, z_entry=z_entry, z_exit=z_exit,
                            dark=dark, area_scale=area_scale)
-    depth_axis(ax_sec, zlim=(ad.shallowest, ad.deepest))
-    ax_sec.set_xlim(left=0)
-    ax_sec.set_xlabel(AREA_SCALES.get(area_scale, AREA_SCALES["area"])[0])
-    ax_sec.set_title("① Where each volume sits in the structure", fontsize=9.5)
+    depth_axis(ax, zlim=(ad.shallowest, ad.deepest))
+    ax.set_xlim(left=0)
 
-    # See the plotly twin: risked by the entered chance through
-    # ``core.classes.risked_exceedance``, never by zero-padding with the trial
-    # file's own masks.
+    tfp = thickness_from_pay(ts, ad)
+    ss = tfp.summary()
+    note = (
+        f"base reservoir = top + thickness back-calculated from pay: "
+        f"P50 {ss['p50']:.0f} m, P90–P10 {ss['p90']:.0f}–{ss['p10']:.0f} m (dotted)"
+        if tfp.n_resolved else
+        "no reservoir thickness recoverable from pay, so the base reservoir is not drawn"
+    )
+    ax.set_xlabel(AREA_SCALES.get(area_scale, AREA_SCALES["area"])[0] + "\n" + note, fontsize=8)
+    ax.set_title("C1 · Where each volume sits in the structure")
+    fig.tight_layout()
+    return fig, ax
+
+
+def fig_c2_exceedance(
+    ts: TrialSet, groups: Groups, vc: VolumeClasses, *,
+    pos_prospect: float, p_well: float, mefs: float | None = None, dark: bool = False,
+):
+    """C2 for the export path. Twin of ``pfig_c2_exceedance``.
+
+    Two curves per concept in one colour: **solid** conditional (success case),
+    starting at 100 % and carrying the percentiles, and **dashed** unconditional
+    (risked), starting at the chance of that case. The vertical gap between the
+    prospect's and the well's dashed starts is the location penalty.
+    """
+    p = palette(dark)
+    res = ts.col("resource")
+    fig, ax_exc = new_figure(figsize=(8.6, 6.2), dark=dark)
+
     disc, dry = groups.discovery, groups.dry_with_attic
     cases = [
         ("Prospect resource potential", res[res > 0], pos_prospect, "prospect"),
@@ -1224,12 +1250,8 @@ def fig_concepts(
                         color=colour(role, dark))
     if mefs is not None:
         ax_exc.axvline(mefs, color=colour("minimum", dark), lw=1.1, ls=":")
-        ax_exc.annotate("min. volume", (mefs, 100.0), xytext=(3, -8),
-                        textcoords="offset points", fontsize=7.5,
-                        color=colour("minimum", dark))
 
-    # The nesting braces, below the 0 % line and widest at the bottom, so the
-    # containment reads at a glance: each range sits inside the one under it.
+    # The nesting braces, below the 0 % line and widest at the bottom.
     order = ["Up-dip volume", "Resource tested by well",
              "Well associated resource potential", "Prospect resource potential"]
     step, base = 7.5, -9.0
@@ -1246,29 +1268,15 @@ def fig_concepts(
 
     ax_exc.set_xlim(left=0)
     ax_exc.set_ylim(base - len(order) * step - 3.0, 107.0)
+    # Ticks pinned to 0-100: the space below carries the braces, and a negative
+    # probability label is meaningless.
+    ax_exc.set_yticks(list(range(0, 101, 20)))
     ax_exc.set_xlabel("Recoverable resource (MMboe)")
     ax_exc.set_ylabel("Probability of exceedance (%)")
     ax_exc.set_title(
-        "② The same volumes as exceedance curves — solid conditional, dashed unconditional",
+        "C2 · The same volumes as exceedance curves — solid conditional, dashed unconditional",
         fontsize=9.5,
     )
-    # The braces live below zero, so the axis reaches there -- but a negative
-    # *probability* label is meaningless and was being read as one. Ticks are
-    # pinned to 0-100 and the space below simply carries the braces.
-    ax_exc.set_yticks(list(range(0, 101, 20)))
+    fig.tight_layout()
+    return fig, ax_exc
 
-    tfp = thickness_from_pay(ts, ad)
-    ss = tfp.summary()
-    sub = (
-        f"base reservoir = top + reservoir thickness back-calculated from pay: "
-        f"P50 {ss['p50']:.0f} m, P90–P10 {ss['p90']:.0f}–{ss['p10']:.0f} m (dotted)"
-        if tfp.n_resolved else
-        "could not recover a reservoir thickness from pay, so the base reservoir is not drawn"
-    )
-    # Same reasoning as the plotly twin: the thickness note is a footnote about the
-    # section, so it sits under the section's own x-axis rather than under the
-    # figure title where it collided with the first panel's heading.
-    ax_sec.set_xlabel(ax_sec.get_xlabel() + "\n" + sub, fontsize=7.5)
-    fig.suptitle("C1 · The concepts — one prospect, five volumes", y=0.995)
-    fig.tight_layout(rect=(0, 0, 1, 0.97))
-    return fig, (ax_sec, ax_exc)

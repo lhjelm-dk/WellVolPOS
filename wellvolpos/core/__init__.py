@@ -1,4 +1,7 @@
 from .chance import (
+    RiskSummary,
+    SUMMARY_COLUMNS,
+    risk_summary,
     ELEMENTS,
     SCHEME_LABELS,
     SCHEMES,
@@ -66,6 +69,7 @@ __all__ = [
     "conditional_exceedance",
     "chance_from_counts",
     "r_location", "p_well", "allocate", "cube_root_factor", "expected_volume", "ReferenceContour",
+    "risk_summary", "RiskSummary", "SUMMARY_COLUMNS",
     "ELEMENTS", "SCHEMES", "SCHEME_LABELS", "SHIPPED_SCHEMES", "normalised_weights",
     "waterfall_steps",
     "Sweep", "run_sweep", "VolumeSweep", "run_volume_sweep",
