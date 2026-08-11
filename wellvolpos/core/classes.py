@@ -28,11 +28,22 @@ Definitions, per the project's decision of record:
     entirely up-dip of the well. This is the volume left behind by a dry hole,
     and the number that gets quoted when somebody argues for a sidetrack.
 
-The split apportions a trial's resource by *area*, which assumes gross pay and
-recovery yield are uniform across the closure within a trial. On the reference
-dataset gross pay is independent of contact depth (r = -0.002), so the
-assumption holds there. Where area and net pay are correlated it does not, and
-:func:`check_area_pay_correlation` exists to say so out loud.
+The split apportions a trial's resource **on the wedge** (Lars, 2026-08-11):
+the hydrocarbon column stands at full reservoir thickness up-dip and pinches out
+to zero at the contact, so the fraction lying above the well's lowest known
+hydrocarbon comes from :func:`wellvolpos.core.reservoir.wedge_proven_fraction`.
+
+It used to apportion by *map area* -- ``A(lkh) / A(contact)`` -- which assumes
+gross pay and yield are uniform per unit area across the closure. That
+contradicted the geometry ``core/reservoir.py`` is built on and validated
+against GeoX, and it did so in a consistent direction: it **understated proven
+and overstated possible** by about six points of the accumulation on both demo
+prospects, moving prospect B's possible mean from 27.1 to 20.5 MMboe. Pass
+``apportionment="area"`` to get the old rule back for comparison.
+
+Uniform *yield* is still assumed, and so is uniform net-to-gross within the
+charged interval; :func:`check_area_pay_correlation` exists to say out loud when
+area and net pay are correlated, which the wedge does not fix.
 """
 
 from __future__ import annotations
@@ -43,6 +54,7 @@ import numpy as np
 
 from ..io.adapters.base import TrialSet
 from .groups import Groups
+from .reservoir import thickness_from_pay, wedge_proven_fraction
 from .structure import AreaDepth
 
 
@@ -53,11 +65,36 @@ class VolumeClasses:
     attic: np.ndarray
     discovery_total: np.ndarray
     lkh: np.ndarray          # lowest known hydrocarbon, per trial (NaN if dry)
+    #: Which apportionment produced ``proven`` -- "wedge" or "area". Carried so a
+    #: figure or an export can say which, rather than a reader having to know.
+    apportionment: str = "wedge"
+    #: Discovery trials whose reservoir thickness could not be recovered from pay
+    #: and were treated as **charged to base**. Exactly right for the trials the
+    #: thickness inversion flags as full-to-base, which is what they are on both
+    #: demo files; reported rather than assumed silently.
+    n_thickness_assumed: int = 0
+
+
+#: How a trial's resource is divided between proven and possible.
+APPORTIONMENTS = ("wedge", "area")
 
 
 def split_trials(
-    ts: TrialSet, ad: AreaDepth, groups: Groups, z_entry: float, z_exit: float
+    ts: TrialSet, ad: AreaDepth, groups: Groups, z_entry: float, z_exit: float,
+    *, apportionment: str = "wedge",
+    thickness: np.ndarray | None = None, apex: float | None = None,
 ) -> VolumeClasses:
+    """Split every discovery trial into proven and possible at the well.
+
+    ``thickness`` and ``apex`` are accepted so a caller sweeping many depths can
+    recover them **once** -- the thickness inversion loops over every success
+    trial, and re-running it at sixty depths would dominate the sweep while giving
+    the same answer each time. Neither depends on where the well goes.
+    """
+    if apportionment not in APPORTIONMENTS:
+        raise ValueError(
+            f"unknown apportionment {apportionment!r}; expected one of {APPORTIONMENTS}"
+        )
     if z_exit < z_entry:
         raise ValueError(
             f"reservoir exit ({z_exit} m) is shallower than entry ({z_entry} m); "
@@ -69,21 +106,56 @@ def split_trials(
     disc = groups.discovery
     lkh = np.where(disc, np.minimum(contact, z_exit), np.nan)
 
-    # Both areas come from the same fitted curve. Using the stored area for the
-    # denominator instead would leave a residual-sized error, so a well that
-    # logs the contact would report a sliver of "possible" volume below a depth
-    # it demonstrably reached.
-    a_lkh = np.where(disc, ad.area_at(np.where(disc, lkh, z_entry)), 0.0)
-    a_contact = np.where(disc, ad.area_at(contact), 1.0)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        frac = np.where(a_contact > 0, a_lkh / a_contact, 0.0)
-    frac = np.clip(np.nan_to_num(frac), 0.0, 1.0)
+    n_assumed = 0
+    frac = None
+    if apportionment == "wedge":
+        apex_v = float(ad.apex_estimate() if apex is None else apex)
+        if thickness is None:
+            try:
+                thickness = thickness_from_pay(ts, ad, apex=apex_v).thickness
+            except ValueError:
+                # No pay and no HC-GRV: the wedge cannot be built at all, so fall
+                # back to the area rule rather than refusing to split. Stated on
+                # the result, never silent.
+                thickness = None
+        if thickness is not None:
+            t = np.asarray(thickness, dtype=float)
+            # Where the thickness could not be recovered, treat the closure as
+            # charged to base -- T = the full column height above the contact.
+            # That is exactly right for the trials the inversion flags as
+            # full-to-base (the only unresolved category on both demo files) and
+            # is the most-charged reading otherwise. Counted, not hidden.
+            missing = disc & ~np.isfinite(t)
+            n_assumed = int(missing.sum())
+            t = np.where(missing, np.asarray(contact, dtype=float) - apex_v, t)
+            f = wedge_proven_fraction(
+                ad,
+                np.where(disc, lkh, z_entry),
+                np.where(disc, contact, z_entry + 1.0),
+                np.where(disc, t, 1.0),
+                apex_v,
+            )
+            frac = np.where(disc & np.isfinite(f), f, 0.0)
+        else:
+            apportionment = "area"
+
+    if frac is None:
+        # Both areas come from the same fitted curve. Using the stored area for
+        # the denominator instead would leave a residual-sized error, so a well
+        # that logs the contact would report a sliver of "possible" volume below
+        # a depth it demonstrably reached.
+        a_lkh = np.where(disc, ad.area_at(np.where(disc, lkh, z_entry)), 0.0)
+        a_contact = np.where(disc, ad.area_at(contact), 1.0)
+        with np.errstate(divide="ignore", invalid="ignore"):
+            frac = np.where(a_contact > 0, a_lkh / a_contact, 0.0)
+        frac = np.clip(np.nan_to_num(frac), 0.0, 1.0)
 
     proven = np.where(disc, res * frac, 0.0)
     possible = np.where(disc, res - proven, 0.0)
     attic = np.where(groups.dry_with_attic, res, 0.0)
     discovery_total = np.where(disc, res, 0.0)
-    return VolumeClasses(proven, possible, attic, discovery_total, lkh)
+    return VolumeClasses(proven, possible, attic, discovery_total, lkh,
+                         apportionment=apportionment, n_thickness_assumed=n_assumed)
 
 
 def class_summary(vc: VolumeClasses, groups: Groups) -> dict[str, dict[str, float]]:

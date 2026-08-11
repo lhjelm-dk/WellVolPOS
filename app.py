@@ -627,6 +627,22 @@ _split_level, _split_message, _split_r = check_area_pay_correlation(ts)
 def _split_caveat() -> None:
     if _split_level == "warn" and np.isfinite(_split_r) and abs(_split_r) >= 0.5:
         st.warning(f"**The proven/possible split is not defensible on this data.** {_split_message}")
+    # The apportionment changed on 2026-08-11 and moved the headline numbers by
+    # about 8 %, so it is stated wherever the split's own numbers are drawn rather
+    # than only in the footer.
+    if vc.apportionment == "area":
+        st.info(
+            "**Split apportioned by map area**, not on the wedge — this file carries no "
+            "gross pay and no HC gross rock volume, so the reservoir thickness cannot be "
+            "recovered and the wedge cannot be built. The area rule assumes uniform pay per "
+            "unit area, which understates proven and overstates possible."
+        )
+    elif vc.n_thickness_assumed:
+        st.caption(
+            f"{vc.n_thickness_assumed:,} discovery trials could not resolve a reservoir "
+            f"thickness from pay and were treated as **charged to base**, which is what the "
+            f"thickness inversion flags them as."
+        )
 
 with tabs[1]:
     # ------------------------------------------------ the risk that makes POS_prospect
@@ -1608,5 +1624,6 @@ st.caption(
     f"building that distribution is the HCWC Builder's job. "
     f"Risking: POS {pos:.4f} from the {pos_provenance} "
     f"(play {play_chance:.2f}). "
-    f"Reference contour: {ref.value}. Allocation: {scheme}."
+    f"Reference contour: {ref.value}. Allocation: {scheme}. "
+    f"Split apportioned on the {vc.apportionment}."
 )

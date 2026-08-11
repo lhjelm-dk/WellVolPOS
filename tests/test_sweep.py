@@ -198,15 +198,24 @@ def test_volume_sweep_holds_the_gap_past_the_deepest_contact(reduced, area_depth
 def test_volume_sweep_reproduces_the_locked_proven_mean_on_a_real_grid(reduced, area_depth):
     """The interior of the loop, not just a degenerate one-point grid.
 
-    15.76 MMboe at entry 3500 / exit 3550 is the design plan's headline KPI, so
-    a grid that straddles the reference well must reproduce it at that depth.
+    16.04 MMboe at entry 3500 / exit 3550 is the headline KPI, so a grid that
+    straddles the reference well must reproduce it at that depth.
+
+    It was 15.76 until 2026-08-11, when the split moved from apportioning by map
+    area to apportioning on the wedge -- see
+    ``test_classes.test_the_wedge_moves_volume_up_dip_against_the_old_area_rule``.
+    The attic mean beside it is **unchanged at 9.090**, and that is the useful
+    control: the attic is a whole-trial volume from the *reference* engine, which
+    apportions nothing, so an apportionment change must not touch it. If this
+    number ever moves with the split, the split has leaked into the reference
+    engine.
     """
     vsweep = run_volume_sweep(
         reduced, area_depth, POS, z_min=3400.0, z_max=3600.0, n=41, z_gap=EXIT - ENTRY,
     )
     i = int(np.argmin(np.abs(vsweep.z - ENTRY)))
     assert vsweep.z[i] == pytest.approx(ENTRY)
-    assert vsweep.proven_mean[i] == pytest.approx(15.756, abs=5e-3)
+    assert vsweep.proven_mean[i] == pytest.approx(16.040, abs=5e-3)
     assert vsweep.attic_mean[i] == pytest.approx(9.090, abs=5e-3)
 
 
@@ -275,15 +284,22 @@ def test_proven_mean_rises_with_depth_over_the_well_supported_range(reduced, are
 def test_inverting_the_locked_proven_mean_returns_the_reference_well(reduced, area_depth):
     """The round trip that ties B6 to the rest of the tool.
 
-    The design plan's headline KPI is a proven mean of 15.76 MMboe at entry
-    3500 / exit 3550. Asking the inverse for that volume must hand back that
-    entry depth, and the P_well there must be the locked 0.4576 -- otherwise
-    B6 is answering a different question from tab 4.
+    The headline KPI is a proven mean of 16.04 MMboe at entry 3500 / exit 3550
+    (15.76 before the split moved to the wedge on 2026-08-11). Asking the inverse
+    for that volume must hand back that entry depth, and the P_well there must be
+    the locked 0.4576 -- otherwise B6 is answering a different question from the
+    well tab.
+
+    The target is **read off the sweep** rather than hardcoded, so the round trip
+    is asserted as a round trip: change the apportionment again and this still
+    tests what it means to test, instead of failing on a stale constant. The value
+    itself is pinned in ``test_classes``, which is where a silent drift belongs.
     """
     vsweep = run_volume_sweep(
         reduced, area_depth, POS, z_min=3400.0, z_max=3600.0, n=201, z_gap=EXIT - ENTRY,
     )
-    res = invert_volume_target(vsweep, 15.756, ts=reduced)
+    i = int(np.argmin(np.abs(vsweep.z - ENTRY)))
+    res = invert_volume_target(vsweep, float(vsweep.proven_mean[i]), ts=reduced)
     assert res.achievable
     # Tolerances near the real error (~5e-4 m), not a whole grid step: at
     # abs=1.5 the test still passed with interpolation removed entirely.

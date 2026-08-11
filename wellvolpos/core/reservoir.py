@@ -195,3 +195,71 @@ def thickness_from_pay(
         thickness=thickness, resolved=resolved,
         n_full_to_base=n_full, n_inconsistent=n_bad, apex=apex_v,
     )
+
+
+def wedge_proven_fraction(
+    ad: AreaDepth,
+    z_lkh: np.ndarray,
+    z_contact: np.ndarray,
+    thickness: np.ndarray,
+    apex: float,
+) -> np.ndarray:
+    """Fraction of a trial's accumulation lying up-dip of ``z_lkh``, on the wedge.
+
+    The apportionment behind :func:`wellvolpos.core.classes.split_trials`, and the
+    reason it changed on 2026-08-11.
+
+    **The rule it replaced was ``A(z_lkh) / A(z_contact)``** -- a ratio of *map
+    areas*, which assumes hydrocarbon pay and yield are uniform per unit area
+    across the closure. That assumption contradicts the geometry this very module
+    is built on. The charged interval is a **wedge**: at a map point whose top
+    reservoir surface lies at depth ``t``, the hydrocarbon thickness is
+    ``min(T, z_contact - t)``. So the column stands at full reservoir thickness
+    up-dip and **pinches out to zero at the contact** -- volume is concentrated
+    further up-dip than a per-area rule allows.
+
+    The area rule therefore *understated* the proven volume and *overstated* the
+    "possible below exit" class, consistently, by about **6 points of the
+    accumulation** on both demo prospects: proven fraction 0.849 by area against
+    0.909 by wedge on prospect A, 0.785 against 0.849 on prospect B. On prospect B
+    that moved the possible mean from 27.1 to 20.5 MMboe. The direction follows
+    from the geometry rather than from the data, so it is not a tuning.
+
+    The closed form, for ``lkh`` at or below the top of the wedge::
+
+        above = (z_c - lkh) * A(lkh) + integral of A from (z_c - T) to lkh
+        total =                        integral of A from (z_c - T) to z_c
+
+    and above the wedge's top the region is full-thickness rock, so
+    ``above = T * A(lkh)``. Verified against direct numerical integration of
+    ``min(T, z_c - t) dA`` to 5e-5.
+
+    Both integrals come from :meth:`AreaDepth.volume_above`, which uses the
+    **tapered** area curve -- so the closure narrows to nothing at the apex
+    instead of keeping the shallowest sampled contact's area all the way up. With
+    the clipped curve the two forms disagree by exactly ``T x A(shallowest)``,
+    which is how the discrepancy was found.
+
+    ``thickness`` is NaN where the trial could not resolve one; those entries come
+    back NaN and the caller decides what to do rather than having a substitute
+    chosen for it here.
+    """
+    z_lkh = np.asarray(z_lkh, dtype=float)
+    z_c = np.asarray(z_contact, dtype=float)
+    T = np.asarray(thickness, dtype=float)
+    apex_v = float(apex)
+
+    lo = np.maximum(z_c - T, apex_v)                 # top of the charged wedge
+    total = ad.volume_above(z_c, apex_v) - ad.volume_above(lo, apex_v)
+    a_lkh = ad.area_at_tapered(z_lkh, apex_v)
+
+    # ``divide`` as well as ``invalid``: a dry trial's placeholder contact can put
+    # ``lo`` and ``z_c`` on the same depth, giving a zero-volume wedge. np.where
+    # evaluates both branches, so the division happens even where the mask discards
+    # it -- and the project runs with warnings as errors.
+    with np.errstate(invalid="ignore", divide="ignore"):
+        in_wedge = (z_c - z_lkh) * a_lkh + ad.volume_above(z_lkh, apex_v) \
+            - ad.volume_above(lo, apex_v)
+        above = np.where(z_lkh <= lo, T * a_lkh, in_wedge)
+        frac = np.where(total > 0.0, above / total, np.nan)
+    return np.clip(frac, 0.0, 1.0)

@@ -37,6 +37,7 @@ from .chance import ReferenceContour
 from .chance import p_well as _p_well
 from .classes import split_trials
 from .groups import group_trials
+from .reservoir import thickness_from_pay
 from .stats import MIN_SUPPORT, bootstrap_mean_ci, thin
 from .structure import AreaDepth
 
@@ -304,6 +305,16 @@ def run_volume_sweep(
     boot_lo = np.full(z.size, np.nan) if n_boot > 0 else None
     boot_hi = np.full(z.size, np.nan) if n_boot > 0 else None
 
+    # Recovered **once**, outside the loop. Neither the reservoir thickness nor the
+    # apex depends on where the well goes, and the thickness inversion loops over
+    # every success trial -- redoing it at each of sixty depths would dominate the
+    # sweep while returning the same array every time.
+    _apex = float(ad.apex_estimate())
+    try:
+        _thickness = thickness_from_pay(ts, ad, apex=_apex).thickness
+    except ValueError:
+        _thickness = None          # no pay column; split_trials falls back to area
+
     for i, zi in enumerate(z):
         zx = float(z_exit[i])
         chance = _p_well(
@@ -313,7 +324,8 @@ def run_volume_sweep(
         pw[i] = chance.p_well
 
         groups_i = group_trials(ts, float(zi), zx)
-        vc = split_trials(ts, ad, groups_i, float(zi), zx)
+        vc = split_trials(ts, ad, groups_i, float(zi), zx,
+                          thickness=_thickness, apex=_apex)
         n_disc[i] = int(groups_i.discovery.sum())
         n_dry[i] = int(groups_i.dry_with_attic.sum())
 

@@ -10,20 +10,76 @@ from .conftest import ENTRY, EXIT
 
 
 def test_headline_kpi_is_proven_mean(reduced, area_depth, groups):
+    """16.04 on the wedge, against 15.76 under the area rule it replaced.
+
+    The number moved on 2026-08-11 and the move is the point rather than drift --
+    see ``test_the_wedge_moves_volume_up_dip_against_the_old_area_rule`` for the
+    argument. Both are pinned so neither can change unnoticed.
+    """
     vc = split_trials(reduced, area_depth, groups, ENTRY, EXIT)
     s = class_summary(vc, groups)
-    assert s["proven"]["mean"] == pytest.approx(15.76, abs=0.02)
+    assert s["proven"]["mean"] == pytest.approx(16.04, abs=0.02)
     assert s["proven"]["n"] == 4576
 
 
 def test_possible_below_exit_is_separate_and_small_here(reduced, area_depth, groups):
     vc = split_trials(reduced, area_depth, groups, ENTRY, EXIT)
     s = class_summary(vc, groups)
-    assert s["possible"]["mean"] == pytest.approx(0.76, abs=0.02)
-    # proven + possible must reconstruct the discovery-case total exactly
+    assert s["possible"]["mean"] == pytest.approx(0.48, abs=0.02)
+    # proven + possible must reconstruct the discovery-case total exactly.
+    # This is the identity that has to survive *any* apportionment: the rule
+    # decides where the boundary falls, never how much there is in total.
     assert s["discovery"]["mean"] == pytest.approx(
         s["proven"]["mean"] + s["possible"]["mean"], abs=1e-9
     )
+
+
+def test_the_wedge_moves_volume_up_dip_against_the_old_area_rule(
+    reduced, area_depth, groups
+):
+    """The split apportions on the wedge, and that is not a tuning.
+
+    The rule until 2026-08-11 was ``A(lkh) / A(contact)`` -- a ratio of *map
+    areas*, i.e. uniform pay and yield per unit area. It contradicted the geometry
+    ``core/reservoir.py`` is built on and validated against GeoX to 0.01 m: the
+    charged interval is a **wedge**, full reservoir thickness up-dip, pinching out
+    to zero at the contact. Volume therefore sits further up-dip than a per-area
+    rule allows.
+
+    So the direction is a consequence of the geometry, not of this dataset, and
+    that is what is asserted: the wedge must move volume from *possible* into
+    *proven*, on every trial where the well left the reservoir still in
+    hydrocarbons. Lars asked for the switch after the bias was measured at about
+    six points of the accumulation on both demo prospects.
+    """
+    wedge = split_trials(reduced, area_depth, groups, ENTRY, EXIT)
+    area = split_trials(reduced, area_depth, groups, ENTRY, EXIT, apportionment="area")
+    d = groups.discovery
+
+    assert wedge.apportionment == "wedge" and area.apportionment == "area"
+    assert wedge.proven[d].mean() > area.proven[d].mean()
+    assert wedge.possible[d].mean() < area.possible[d].mean()
+    # ...and never the other way round on any single trial
+    assert np.all(wedge.proven[d] >= area.proven[d] - 1e-9)
+
+    # The total is untouched: an apportionment moves the boundary, it does not
+    # create or destroy resource.
+    assert np.allclose(wedge.proven[d] + wedge.possible[d],
+                       area.proven[d] + area.possible[d])
+
+    # Trials whose contact is *above* the exit have no possible volume under
+    # either rule -- the well logged the contact, so nothing is left untested.
+    seen = d & (np.asarray(reduced.col("contact"), dtype=float) <= EXIT)
+    assert seen.any()
+    assert np.allclose(wedge.possible[seen], 0.0)
+    assert np.allclose(area.possible[seen], 0.0)
+
+
+def test_an_unknown_apportionment_is_refused(reduced, area_depth, groups):
+    """Same rule as the risking convention and the target statistic: a silent
+    fallback answers a different question under the caller's label."""
+    with pytest.raises(ValueError, match="unknown apportionment"):
+        split_trials(reduced, area_depth, groups, ENTRY, EXIT, apportionment="areal")
 
 
 def test_attic_conditioned_on_charge(reduced, area_depth, groups):
