@@ -319,8 +319,12 @@ def test_pb6_hover_gives_volume_depth_and_chance_together(vsweep_banded):
 
 
 def test_pb6_band_only_appears_when_the_sweep_carried_one(reduced, area_depth, vsweep_banded):
+    # It is named "CI on the ..." rather than "band" now: B6 carries *two* shaded
+    # regions -- this bootstrap interval, which is sampling error on one estimate,
+    # and the P90-P10 contact spread, which is geological range. Calling both a
+    # "band" was how they came to be read as the same kind of thing.
     banded = I.pfig_b6_inverse(vsweep_banded)
-    assert any("band" in (t.name or "") for t in banded.data)
+    assert any("CI on the" in (t.name or "") for t in banded.data)
     plain = I.pfig_b6_inverse(run_volume_sweep(reduced, area_depth, POS, n=15, z_gap=50.0))
     assert not any("band" in (t.name or "") for t in plain.data)
 

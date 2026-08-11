@@ -445,15 +445,64 @@ def _required_depth(x: np.ndarray, y: np.ndarray, level: float) -> float | None:
     return float(xs[j - 1] + frac * (xs[j] - xs[j - 1]))
 
 
-def _supported_proven(vsweep: VolumeSweep, min_support: int) -> np.ndarray:
-    """The proven-mean curve with under-supported steps removed.
+#: What "the volume to prove" may be measured by. ``mean`` is the default and the
+#: only one the source workbook offers; the percentiles were added 2026-08-11 after
+#: Lars asked whether P50/P10/P90 could be used instead.
+#:
+#: They answer materially different questions, and the difference is not a nuance:
+#:
+#: * **mean** -- the average proven volume over the discovery group. Additive across
+#:   prospects, which is why portfolios run on it, but on a right-skewed resource
+#:   distribution it sits above the median and is pulled by a tail of large cases.
+#: * **P50** -- the median discovery. "Half the discoveries prove at least this."
+#:   The one most people picture when they say "a typical outcome".
+#: * **P90** -- the low case. Requiring a depth at which even a *poor* discovery
+#:   proves the target, so it demands a deeper well than the mean does.
+#: * **P10** -- the high case. Satisfied by a shallow well, because it only asks
+#:   that a *good* discovery would prove the target.
+#:
+#: So P90 is the conservative reading and P10 the optimistic one, and they can differ
+#: by a hundred metres or more of required entry. Naming which is on screen is the
+#: whole reason this is an explicit setting rather than a default buried in code
+#: (non-negotiable 5).
+TARGET_STATISTICS = ("mean", "p90", "p50", "p10")
+
+#: Labels for the four, so the app and both backends cannot word them differently.
+TARGET_STATISTIC_LABELS = {
+    "mean": "mean proven",
+    "p90": "P90 proven (low case)",
+    "p50": "P50 proven (median discovery)",
+    "p10": "P10 proven (high case)",
+}
+
+
+def _supported_proven(
+    vsweep: VolumeSweep, min_support: int, statistic: str = "mean"
+) -> np.ndarray:
+    """The proven-volume curve to invert, with under-supported steps removed.
 
     The inverse reads the same curve the figures draw. Inverting the raw curve
     instead let B6 answer at 3688 m from a mean of two trials, in a region B1
     and B2 decline to draw at all -- and gave sampling noise at the deep end
     the appearance of the structure running out of volume.
+
+    ``statistic`` selects which proven-volume curve is inverted; see
+    :data:`TARGET_STATISTICS`. A sweep run before the percentiles were carried has
+    them as ``None``, and asking for one then is an error rather than a silent
+    fallback to the mean -- a fallback would answer a different question under the
+    label the caller chose.
     """
-    return thin(vsweep.proven_mean, vsweep.n_discovery, min_support)
+    if statistic not in TARGET_STATISTICS:
+        raise ValueError(
+            f"unknown target statistic {statistic!r}; expected one of {TARGET_STATISTICS}"
+        )
+    curve = vsweep.proven_mean if statistic == "mean" else getattr(vsweep, f"proven_{statistic}")
+    if curve is None:
+        raise ValueError(
+            f"this sweep carries no proven_{statistic} curve, so the inverse cannot be "
+            f"taken on it; re-run run_volume_sweep"
+        )
+    return thin(curve, vsweep.n_discovery, min_support)
 
 
 def invert_volume_target(
@@ -463,6 +512,7 @@ def invert_volume_target(
     min_support: int = MIN_SUPPORT,
     ts: TrialSet | None = None,
     reference_percentile: float = 0.90,
+    statistic: str = "mean",
 ) -> InverseResult:
     """Given a volume to prove, where must the well go and what does it cost?
 
@@ -479,7 +529,7 @@ def invert_volume_target(
     which on a 60-step grid disagrees with tab 4's own figure by up to 0.2
     percentage points -- small, but a visible disagreement about one well.
     """
-    curve = _supported_proven(vsweep, min_support)
+    curve = _supported_proven(vsweep, min_support, statistic)
     z_req = _required_depth(vsweep.z, curve, float(target))
     if z_req is None:
         return InverseResult(target=float(target), achievable=False, z_required=None, p_well_at=None)
@@ -522,6 +572,7 @@ def volume_target_curve(
     *,
     min_support: int = MIN_SUPPORT,
     ts: TrialSet | None = None,
+    statistic: str = "mean",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """The whole inverse as a curve: (targets, required depth, P_well there).
 
@@ -532,7 +583,7 @@ def volume_target_curve(
     proven means only, so the curve never offers a volume the tool would refuse
     to draw elsewhere.
     """
-    curve = _supported_proven(vsweep, min_support)
+    curve = _supported_proven(vsweep, min_support, statistic)
     finite = curve[np.isfinite(curve)]
     if finite.size == 0:
         return np.array([]), np.array([]), np.array([])
@@ -549,7 +600,8 @@ def volume_target_curve(
     z_req = np.full(targets.size, np.nan)
     p_at = np.full(targets.size, np.nan)
     for i, t in enumerate(targets):
-        res = invert_volume_target(vsweep, float(t), min_support=min_support, ts=ts)
+        res = invert_volume_target(vsweep, float(t), min_support=min_support, ts=ts,
+                                   statistic=statistic)
         if res.achievable:
             z_req[i] = res.z_required
             p_at[i] = res.p_well_at

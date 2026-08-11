@@ -424,3 +424,50 @@ def test_it_answers_a_different_question_from_the_inverse(reduced, area_depth):
     if inverse.achievable:
         # The required depth is one number; the spread brackets a range around it.
         assert band[99][0] <= inverse.z_required + spread
+
+
+# ----------------------------------------------------- the target statistic
+def test_the_inverse_can_be_taken_on_a_percentile_not_only_the_mean(reduced, area_depth):
+    """P90 demands a deeper well than P10, and the mean sits between them.
+
+    Lars asked (2026-08-11) whether the "volume to prove" could be a percentile
+    rather than the mean. It can, and the four answers are materially different --
+    which is the reason it is an explicit setting rather than a quiet default.
+
+    The ordering is the assertion worth having, because it is geological rather
+    than arithmetic: requiring that even a *poor* discovery proves the target (P90,
+    the low case) forces the well down-dip, while requiring only that a *good* one
+    would (P10) is satisfied much shallower. If a later change silently swapped the
+    petroleum orientation, every required depth would still look plausible and every
+    one would be wrong.
+    """
+    from wellvolpos.core.sweep import (
+        TARGET_STATISTICS,
+        invert_volume_target,
+        run_volume_sweep,
+    )
+
+    vs = run_volume_sweep(reduced, area_depth, POS, n=30, mefs=14.0, z_gap=50.0)
+    for stat in TARGET_STATISTICS:
+        assert getattr(vs, "proven_mean" if stat == "mean" else f"proven_{stat}") is not None
+
+    target = 12.0
+    depths = {}
+    for stat in TARGET_STATISTICS:
+        res = invert_volume_target(vs, target, ts=reduced, statistic=stat)
+        if res.achievable:
+            depths[stat] = res.z_required
+    assert {"p90", "p50", "p10"} <= set(depths), depths
+    # P90 is the low case, so it needs the deepest entry; P10 the shallowest.
+    assert depths["p90"] > depths["p50"] > depths["p10"]
+
+
+def test_an_unknown_target_statistic_is_refused_rather_than_defaulted(reduced, area_depth):
+    """A silent fallback to the mean would answer a different question under the
+    label the caller chose -- the same failure mode as `Case.from_json` refusing an
+    unknown risking convention."""
+    from wellvolpos.core.sweep import invert_volume_target, run_volume_sweep
+
+    vs = run_volume_sweep(reduced, area_depth, POS, n=10, z_gap=50.0)
+    with pytest.raises(ValueError, match="unknown target statistic"):
+        invert_volume_target(vs, 12.0, statistic="p42")

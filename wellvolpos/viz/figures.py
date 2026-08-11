@@ -34,6 +34,7 @@ from ..core.stats import MIN_SUPPORT, thin
 from ..core.structure import AreaDepth
 from ..core.sweep import (
     entry_depth_percentiles,
+    TARGET_STATISTIC_LABELS,
     Sweep,
     VolumeSweep,
     find_crossing,
@@ -44,6 +45,7 @@ from ..core.sweep import (
 from ..io.adapters.base import TrialSet
 from .theme import (
     SEQUENTIAL_CMAP,
+    VALUE_CMAP,
     colour,
     depth_axis,
     new_figure,
@@ -712,7 +714,7 @@ def fig_b2_chance_vs_regret(
 
 def fig_b6_inverse(
     vsweep: VolumeSweep, *, target: float | None = None, n_targets: int = 40,
-    ts: TrialSet | None = None, mefs: float | None = None,
+    ts: TrialSet | None = None, mefs: float | None = None, statistic: str = "mean",
     zlim: tuple[float, float] | None = None, dark: bool = False,
 ):
     """B6 -- the inverse, on one pair of axes.
@@ -721,7 +723,9 @@ def fig_b6_inverse(
     docstring carries the argument for why both axis titles name *two* quantities.
     Returns ``(fig, ax)``.
     """
-    targets, z_req, p_at = volume_target_curve(vsweep, n=n_targets, ts=ts)
+    targets, z_req, p_at = volume_target_curve(vsweep, n=n_targets, ts=ts,
+                                               statistic=statistic)
+    stat_label = TARGET_STATISTIC_LABELS[statistic]
     fig, ax = new_figure(figsize=(7.0, 5.0), dark=dark)
     p = palette(dark)
 
@@ -740,7 +744,8 @@ def fig_b6_inverse(
             ax.fill_between(
                 targets[band], z_lo[band], z_hi[band],
                 color=colour("p_well", dark), alpha=0.15, lw=0,
-                label=f"nominal {100 * (1 - vsweep.alpha):.0f}% band \u2014 sampling error",
+                label=(f"nominal {100 * (1 - vsweep.alpha):.0f}% CI on the {stat_label}"
+                       " \u2014 sampling error"),
             )
 
     # The contact spread first, so the coloured markers sit on top of the grey.
@@ -751,12 +756,14 @@ def fig_b6_inverse(
         held = np.linspace(float(np.percentile(res_all, 5)),
                            float(np.percentile(res_all, 95)), int(n_targets))
         band_pct = entry_depth_percentiles(ts, held)
-        lo, hi = band_pct[99], band_pct[1]
+        # P90 to P10, not P99 to P1: the fill is the body of the distribution and
+        # the extremes stay as thin lines outside it (Lars, 2026-08-11).
+        lo, hi = band_pct[90], band_pct[10]
         inner = np.isfinite(lo) & np.isfinite(hi)
         if inner.any():
             ax.fill_between(held[inner], lo[inner], hi[inner], color=p["muted"],
-                            alpha=0.10, lw=0,
-                            label="P99\u2013P1 contact spread \u2014 geological range")
+                            alpha=0.14, lw=0,
+                            label="P90\u2013P10 contact spread \u2014 geological range")
         for q, lw, ls in ((99, 0.9, ":"), (90, 1.2, "--"), (50, 1.8, "-"),
                           (10, 1.2, "--"), (1, 0.9, ":")):
             depths = band_pct[q]
@@ -768,10 +775,12 @@ def fig_b6_inverse(
         if mefs is not None:
             ax.axvline(float(mefs), color=p["muted"], ls=":", lw=1.0)
 
-    sc = ax.scatter(targets[ok], z_req[ok], c=p_at[ok] * 100.0, cmap=SEQUENTIAL_CMAP,
-                    vmin=0, vmax=100, s=22, zorder=4)
-    ax.plot(targets[ok], z_req[ok], color=p["text_secondary"], lw=1.4, zorder=3,
-            label="Required entry \u2014 for a target mean proven volume")
+    # Inferno for the markers and the well's violet for the line joining them --
+    # see the plotly twin. The requirement and the contact family were two greys.
+    sc = ax.scatter(targets[ok], z_req[ok], c=p_at[ok] * 100.0, cmap=VALUE_CMAP.lower(),
+                    vmin=0, vmax=100, s=26, zorder=4, edgecolor=p["surface"], linewidth=0.4)
+    ax.plot(targets[ok], z_req[ok], color=colour("well", dark), lw=1.8, zorder=3,
+            label=f"Required entry \u2014 for a target {stat_label} volume")
     cb = fig.colorbar(sc, ax=ax, pad=0.02)
     cb.set_label(r"$P_{well}$ at that depth (%)", fontsize=8)
 
@@ -800,8 +809,8 @@ def fig_b6_inverse(
     depth_axis(ax, ylabel="Depth (m TVDSS) \u2014 required entry (curve) / contact (grey)",
                zlim=zlim or (float(all_z.min()), float(all_z.max())))
     ax.set_xlim(left=0)
-    ax.set_xlabel("Volume (MMboe) \u2014 target mean proven (curve) / held by one trial (grey)")
-    ax.set_title("B6 \u00b7 Inverse \u2014 how deep must the well go, and how wide is the answer?")
+    ax.set_xlabel(f"Volume (MMboe) \u2014 target {stat_label} (curve) / held by one trial (grey)")
+    ax.set_title(f"B6 \u00b7 Inverse \u2014 how deep must the well go to prove a {stat_label} volume?")
     ax.grid(True, lw=0.6, alpha=0.7)
     if ax.get_legend_handles_labels()[1]:
         ax.legend(loc="lower right", fontsize=6.5)

@@ -132,6 +132,22 @@ ROLES = {
 
 SEQUENTIAL_CMAP = "Blues"   # single hue, light -> dark; never a rainbow
 
+#: For colour that has to be read as a *value* rather than as "more or less":
+#: A4's trial counts per cell, B6's ``P_well`` per marker.
+#:
+#: ``SEQUENTIAL_CMAP`` remains the default and the rule -- one hue, light to dark,
+#: never a rainbow. But a single hue is genuinely hard to read as a quantity at
+#: small mark sizes, which is what Lars reported of B6's 9 px points on
+#: 2026-08-11, and it is why he asked for inferno on A4 before that. Inferno is
+#: **perceptually uniform and monotonic in lightness**, so it is not the rainbow
+#: the rule forbids: it survives greyscale printing and colour-vision deficiency
+#: for the same reason a single hue does, while spending far more perceptual
+#: distance over the range.
+#:
+#: Named here rather than written as a literal in each figure so the two cannot
+#: drift apart -- a legend the reader learns on A4 has to still be true on B6.
+VALUE_CMAP = "Inferno"
+
 
 def palette(dark: bool = False) -> dict[str, str]:
     return dict(DARK if dark else LIGHT)

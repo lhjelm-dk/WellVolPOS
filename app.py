@@ -57,6 +57,8 @@ from wellvolpos.core import (
     describe_support,
     group_summary,
     group_trials,
+    TARGET_STATISTICS,
+    TARGET_STATISTIC_LABELS,
     invert_volume_target,
     p_well,
     run_sweep,
@@ -753,36 +755,42 @@ with tabs[1]:
             (float(succ_contact.min()), float(succ_contact.max())),
             pad_frac=0.02,
         )
-        # A1 first and A4 second, each in its own column with A4's controls above its
-        # own figure (Lars, 2026-08-11) -- the controls used to sit above the whole
-        # row, where they read as belonging to both.
-        c1, c2 = st.columns(2)
-        with c1:
-            # No well on the prospect tab (Lars, 2026-08-11): A1 here is A(z) and the
-            # reservoir band, both properties of the prospect. The entry/exit rules
-            # and the three shaded volume classes are a *well* result and appear on
-            # tab ④, where the same figure is drawn again with them.
-            _chart(pfig_a1_area_depth(
-                    ad, ts=ts, zlim=zrow_prospect, area_scale=area_scale,
-                    show_classes=False,
-                ), key="a1")
-        with c2:
-            _auto_r, _auto_z = suggest_grid(res_all[res_all > 0.0], succ_contact)
-            ac1, ac2, ac3 = st.columns([2, 1, 1])
-            a4_render = ac1.radio(
-                "A4 rendering", ["grid", "hexbin"], horizontal=True, key="w_a4_render",
-                format_func=lambda k: {"grid": "Trial-count grid",
-                                       "hexbin": "Log-density hexbin"}[k],
-            )
-            a4_nx = ac2.number_input("Resource bins", 10, 120, _auto_r, 2, key="w_grid_res",
-                                     disabled=a4_render != "grid")
-            a4_ny = ac3.number_input("Depth bins", 10, 120, _auto_z, 2, key="w_grid_z",
-                                     disabled=a4_render != "grid")
-            _chart(pfig_a4_resource_vs_depth(
-                    ts, mefs=mefs,
-                    render=a4_render, n_resource=int(a4_nx), n_depth=int(a4_ny),
-                    zlim=zrow_prospect, show_depth_labels=False,
-                ), key="a4")
+        # A1 and A4 **stacked, full width** (Lars, 2026-08-11). They were side by side
+        # in two columns, which halved both: A1's four base-reservoir curves crowded
+        # into one another and A4's grid cells stopped being distinguishable. They
+        # still share one depth range, so the reading across still works -- it is now
+        # top-to-bottom at constant depth rather than left-to-right, which costs
+        # nothing because neither figure needs the other's x.
+        #
+        # No well on the prospect tab: A1 here is A(z) and the reservoir band, both
+        # properties of the prospect. The entry/exit rules and the three shaded
+        # volume classes are a *well* result and appear on tab ④, where the same
+        # figure is drawn again with them.
+        _chart(pfig_a1_area_depth(
+                ad, ts=ts, zlim=zrow_prospect, area_scale=area_scale,
+                show_classes=False,
+            ), key="a1")
+
+        st.divider()
+        _auto_r, _auto_z = suggest_grid(res_all[res_all > 0.0], succ_contact)
+        ac1, ac2, ac3 = st.columns([2, 1, 1])
+        a4_render = ac1.radio(
+            "A4 rendering", ["grid", "hexbin"], horizontal=True, key="w_a4_render",
+            format_func=lambda k: {"grid": "Trial-count grid",
+                                   "hexbin": "Log-density hexbin"}[k],
+        )
+        a4_nx = ac2.number_input("Resource bins", 10, 120, _auto_r, 2, key="w_grid_res",
+                                 disabled=a4_render != "grid")
+        a4_ny = ac3.number_input("Depth bins", 10, 120, _auto_z, 2, key="w_grid_z",
+                                 disabled=a4_render != "grid")
+        # Depth labels back on: stacked, A4 is no longer the second panel of a row
+        # borrowing the first's tick labels -- it is a figure in its own right and
+        # needs its own.
+        _chart(pfig_a4_resource_vs_depth(
+                ts, mefs=mefs,
+                render=a4_render, n_resource=int(a4_nx), n_depth=int(a4_ny),
+                zlim=zrow_prospect,
+            ), key="a4")
         st.caption(
             f"**A1** now carries the reservoir too: top reservoir is A(z), and the base is that "
             f"curve shifted down by the thickness back-calculated from pay — drawn four times, "
@@ -792,8 +800,11 @@ with tabs[1]:
             f"{_auto_r} × {_auto_z} from Freedman–Diaconis per axis; counts are on a log scale "
             f"either way, because the modal cell holds two orders of magnitude more trials than "
             f"the tails and the tails are where a location question lives.\n\n"
-            f"A1 and A4 share one depth range ({zrow_prospect[0]:.0f}–{zrow_prospect[1]:.0f} m TVDSS) "
-            f"so the row reads straight across. Both draw the mean thick and the P90/P50/P10 family "
+            f"A1 and A4 are stacked rather than side by side, and still share one depth range "
+            f"({zrow_prospect[0]:.0f}–{zrow_prospect[1]:.0f} m TVDSS) — so they read straight "
+            f"**down** at constant depth instead of across, which costs nothing because neither "
+            f"needs the other's x-axis and buys both of them full width. Both draw the mean thick "
+            f"and the P90/P50/P10 family "
             f"thin and grey — the mean is the number that gets quoted, and on a skewed distribution "
             f"it is not the P50. A4 uses success trials only: the chance-failure zeros belong to "
             f"POS, not to the shape of the resource distribution."
@@ -1386,7 +1397,23 @@ def _inverse_section(vsweep, ts):
     st.subheader("Inverse — given a volume to prove, where must the well go?")
     # The *supported* range: offering a target the tool would refuse to draw in
     # B1/B2 would be inviting a requirement it will not stand behind.
-    targets, _, _ = volume_target_curve(vsweep, n=2)
+    # **Which proven-volume statistic the target refers to** (Lars, 2026-08-11, who
+    # asked whether P50/P10/P90 could be used instead of the mean). They answer
+    # materially different questions -- P90 asks the well to prove the target even in
+    # a poor discovery and therefore demands a deeper location, P10 only asks that a
+    # good one would -- so this is an explicit setting, never a default buried in
+    # code (non-negotiable 5), and the figure titles and axis labels carry it.
+    stat = st.radio(
+        "Target refers to", list(TARGET_STATISTICS), horizontal=True, key="w_b6_stat",
+        format_func=lambda k: TARGET_STATISTIC_LABELS[k],
+        help=(
+            "Which statistic of the proven-volume distribution the target is measured "
+            "against. mean is additive across prospects, which is why portfolios use it, "
+            "but on a skewed distribution it sits above the median. P90 is the low case "
+            "and demands the deepest well; P10 is the high case and the shallowest."
+        ),
+    )
+    targets, _, _ = volume_target_curve(vsweep, n=2, statistic=stat)
     if targets.size == 0:
         st.warning("No proven-volume curve to invert on this sweep.")
         return
@@ -1400,16 +1427,17 @@ def _inverse_section(vsweep, ts):
     # endpoint, for the same reason: an endpoint gives a degenerate answer.
     default_t = float(mefs) if lo_t <= float(mefs) <= hi_t else 0.5 * (lo_t + hi_t)
     target = st.slider(
-        "Volume to prove — mean proven (MMboe)",
+        f"Volume to prove — {TARGET_STATISTIC_LABELS[stat]} (MMboe)",
         lo_t, hi_t, default_t, max((hi_t - lo_t) / 100.0, 0.01),
         help=(
-            "The mean proven volume the well must establish. B6 returns the shallowest entry "
-            "depth from which the proven mean stays at or above it all the way down — a "
-            "guarantee rather than a first touch, because the sampled curve dips where the "
-            "discovery group is small. The range covers only well-supported volumes."
+            "The proven volume the well must establish, measured by the statistic chosen "
+            "above. B6 returns the shallowest entry depth from which that statistic stays "
+            "at or above it all the way down — a guarantee rather than a first touch, "
+            "because the sampled curve dips where the discovery group is small. The range "
+            "covers only well-supported volumes."
         ),
     )
-    inv = invert_volume_target(vsweep, target, ts=ts)
+    inv = invert_volume_target(vsweep, target, ts=ts, statistic=stat)
     st.markdown(f"**{inv.message()}**")
     if inv.achievable and inv.n_discovery_at is not None and inv.n_discovery_at < MIN_SUPPORT:
         st.warning(
@@ -1419,7 +1447,8 @@ def _inverse_section(vsweep, ts):
     # Two panels, one depth axis. The spread was briefly its own figure (B10);
     # merged back on 2026-08-11 so the requirement and the range around it are one
     # glance, with each panel keeping its own honest x-axis.
-    _chart(pfig_b6_inverse(vsweep, target=target, ts=ts, mefs=mefs), key="b6")
+    _chart(pfig_b6_inverse(vsweep, target=target, ts=ts, mefs=mefs,
+                           statistic=stat), key="b6")
     # The worked sentence first, in the app's live numbers, because "how do I read
     # this" is the question B6 kept failing to answer (Lars, 2026-08-11).
     _worked = ""
@@ -1446,7 +1475,10 @@ def _inverse_section(vsweep, ts):
         "contradict — no basis for a well proposal.\n\n"
         "**The grey family is the range around that requirement**: for each volume, the "
         "P99 / P90 / P50 / P10 / P1 **hydrocarbon–water contact among the trials that actually "
-        "hold at least that much**. It is wide, and that is the content — Rose's Figure 4, "
+        "hold at least that much**. The shading spans **P90–P10 only** — the body of the "
+        "distribution — with P99 and P1 left as thin lines outside it, because a fill reads as "
+        "*equally likely everywhere inside it* and filling to the extremes claimed that of the "
+        "whole range. It is wide even so, and that is the content — Rose's Figure 4, "
         "*“The EUR of 9.4 MMBO is associated with productive areas from 200 to 1500 acres.”* The "
         "workbook's own `BA` column averages those contacts into one number and calls it a "
         "required depth; an average over that range is not one.\n\n"

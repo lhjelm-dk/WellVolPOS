@@ -42,6 +42,7 @@ from ..core.stats import MIN_SUPPORT, thin
 from ..core.structure import AreaDepth
 from ..core.sweep import (
     entry_depth_percentiles,
+    TARGET_STATISTIC_LABELS,
     Sweep,
     VolumeSweep,
     find_crossing,
@@ -60,6 +61,7 @@ from .figures import (
 from .theme import (
     PANEL_HEIGHT,
     SEQUENTIAL_CMAP,
+    VALUE_CMAP,
     apply_plotly,
     colour,
     depth_axis_plotly,
@@ -651,7 +653,7 @@ def pfig_a4_resource_vs_depth(
     if render == "grid":
         auto_r, auto_z = suggest_grid(x, y)
         nx, ny = int(n_resource or auto_r), int(n_depth or auto_z)
-        colourscale, label = "Inferno", f"{nx} × {ny} grid"
+        colourscale, label = VALUE_CMAP, f"{nx} × {ny} grid"
     else:
         nx = ny = int(gridsize)
         colourscale, label = "Blues", f"{gridsize} × {gridsize} log-density"
@@ -1268,7 +1270,7 @@ def pfig_b5_allocation_dumbbell(
 # ------------------------------------------------------------------- B6
 def pfig_b6_inverse(
     vsweep: VolumeSweep, *, target: float | None = None, n_targets: int = 40,
-    ts: TrialSet | None = None, mefs: float | None = None,
+    ts: TrialSet | None = None, mefs: float | None = None, statistic: str = "mean",
     zlim: tuple[float, float] | None = None,
     show_depth_labels: bool = True, dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
@@ -1321,7 +1323,9 @@ def pfig_b6_inverse(
     goes back to claiming a comparison it cannot support.
     """
     p = palette(dark)
-    targets, z_req, p_at = volume_target_curve(vsweep, n=n_targets, ts=ts)
+    targets, z_req, p_at = volume_target_curve(vsweep, n=n_targets, ts=ts,
+                                               statistic=statistic)
+    stat_label = TARGET_STATISTIC_LABELS[statistic]
     fig = go.Figure()
 
     if targets.size == 0 or not np.isfinite(z_req).any():
@@ -1342,7 +1346,7 @@ def pfig_b6_inverse(
                 x=np.concatenate([targets[band], targets[band][::-1]]),
                 y=np.concatenate([z_lo[band], z_hi[band][::-1]]),
                 fill="toself", fillcolor=rgba("p_well", 0.15, dark), mode="lines",
-                line=dict(width=0), name=f"nominal {level:.0f}% band \u2014 sampling error",
+                line=dict(width=0), name=f"nominal {level:.0f}% CI on the {stat_label} \u2014 sampling error",
                 hoverinfo="skip",
             )
 
@@ -1357,14 +1361,18 @@ def pfig_b6_inverse(
         held = np.linspace(float(np.percentile(res_all, 5)),
                            float(np.percentile(res_all, 95)), int(n_targets))
         band_pct = entry_depth_percentiles(ts, held)
-        lo, hi = band_pct[99], band_pct[1]
+        # **P90 to P10**, not P99 to P1 (Lars, 2026-08-11). The shaded region is
+        # the body of the contact distribution; P99 and P1 stay as thin lines
+        # outside it. Filling to the extremes made the grey swamp the figure and
+        # implied the whole range was equally likely, which is what a fill reads as.
+        lo, hi = band_pct[90], band_pct[10]
         inner = np.isfinite(lo) & np.isfinite(hi)
         if inner.any():
             fig.add_scatter(
                 x=np.concatenate([held[inner], held[inner][::-1]]),
                 y=np.concatenate([lo[inner], hi[inner][::-1]]),
-                fill="toself", fillcolor=rgba("muted", 0.10, dark), mode="lines",
-                line=dict(width=0), name="P99\u2013P1 contact spread \u2014 geological range",
+                fill="toself", fillcolor=rgba("muted", 0.14, dark), mode="lines",
+                line=dict(width=0), name="P90\u2013P10 contact spread \u2014 geological range",
                 hoverinfo="skip",
             )
         for q, width, dash in ((99, 1.0, "dot"), (90, 1.4, "dash"), (50, 2.2, "solid"),
@@ -1388,9 +1396,21 @@ def pfig_b6_inverse(
     ok = np.isfinite(z_req)
     fig.add_scatter(
         x=targets[ok], y=z_req[ok], mode="lines+markers",
-        line=dict(color=p["text_secondary"], width=1.6),
+        # **The well's own violet**, not a second grey (Lars, 2026-08-11). The
+        # requirement line and the contact lines were both greys, so the two
+        # families separated only by weight -- and on a figure whose whole risk is
+        # being read as one family, that was not enough. Violet is the palette's
+        # ``well`` role and this line is literally where the well must go.
+        line=dict(color=colour("well", dark), width=2.0),
         marker=dict(
-            size=9, color=p_at[ok] * 100.0, colorscale=SEQUENTIAL_CMAP, cmin=0, cmax=100,
+            # **Inferno**, not the single-hue blue ramp (Lars, 2026-08-11: the
+            # points were hard to tell apart). Blue light-to-dark is the project's
+            # sequential default and it is genuinely hard to read as a *value* at
+            # 9 px; inferno is still perceptually uniform and still not a rainbow,
+            # so it keeps the spirit of the rule while being legible. It is the same
+            # scale A4's trial-count grid uses, on Lars's earlier instruction.
+            size=10, color=p_at[ok] * 100.0, colorscale=VALUE_CMAP,
+            cmin=0, cmax=100, line=dict(width=0.6, color=p["surface"]),
             # **Inside the axes.** The depth-row rule pins margin.r at 25 with
             # autoexpand off, so a colourbar in plotly's default position -- outside
             # the plot area on the right -- is simply clipped away, which is what had
@@ -1441,11 +1461,11 @@ def pfig_b6_inverse(
             )
 
     fig.update_layout(
-        title="B6 \u00b7 Inverse \u2014 how deep must the well go, and how wide is the answer?",
+        title=f"B6 \u00b7 Inverse \u2014 how deep must the well go to prove a {stat_label} volume?",
         # Both readings named on the axis itself. One pair of axes carrying two
         # definitions of volume and two kinds of depth is only honest if the axis
         # says so -- unlabelled, this is the figure Lars could not read.
-        xaxis_title=("Volume (MMboe) \u2014 <i>target mean proven</i> (curve) \u00b7 "
+        xaxis_title=(f"Volume (MMboe) \u2014 <i>target {stat_label}</i> (curve) \u00b7 "
                      "<i>held by one trial</i> (grey)"),
     )
     fig.update_xaxes(rangemode="tozero")
