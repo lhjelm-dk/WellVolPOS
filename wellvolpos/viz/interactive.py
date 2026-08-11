@@ -91,6 +91,7 @@ __all__ = [
     "pfig_b8_commercial_chance",
     "pfig_b9_chance_weighted",
     "pfig_a8_contact_distribution",
+    "pfig_a9_prospect_density",
     "suggest_grid",
     "row_zlim",
 ]
@@ -137,7 +138,8 @@ def _vline(fig, x: float, colour_: str, dash: str = "dot", label: str | None = N
 
 # ------------------------------------------------------------------- A1
 
-def _reservoir_band(fig, ad, ts, *, z_entry, z_exit, dark, transform, labels=True):
+def _reservoir_band(fig, ad, ts, *, z_entry, z_exit, dark, transform, labels=True,
+                    show_classes=True):
     """Top and base reservoir with the three volume classes shaded between them.
 
     Returns a one-line note about the thickness for the caller's subtitle, or "".
@@ -176,6 +178,14 @@ def _reservoir_band(fig, ad, ts, *, z_entry, z_exit, dark, transform, labels=Tru
                           f"({stats[key]:.0f} m)<extra></extra>",
         )
 
+    # The three shaded classes are a *well* result -- they need an entry and an exit
+    # to exist at all -- so tab ② draws the band without them (Lars, 2026-08-11).
+    # The reservoir itself is a property of the prospect and stays.
+    if not show_classes:
+        return (f"<br><sub>base reservoir = top + thickness from pay: P90 {stats['p90']:.0f} · "
+                f"P50 {stats['p50']:.0f} · mean {stats['mean']:.0f} · "
+                f"P10 {stats['p10']:.0f} m</sub>")
+
     base = top + stats["p50"]
     for lo, hi, role, label in ((-np.inf, z_entry, "up_dip", "up-dip"),
                                 (z_entry, z_exit, "tested", "tested"),
@@ -202,7 +212,7 @@ def pfig_a1_area_depth(
     ad: AreaDepth, *, ts: TrialSet | None = None, current_entry: float | None = None,
     current_exit: float | None = None, n_bins: int = 40,
     zlim: tuple[float, float] | None = None, show_depth_labels: bool = True,
-    area_scale: str = "area", show_reservoir: bool = True,
+    area_scale: str = "area", show_reservoir: bool = True, show_classes: bool = True,
     dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
     """A1 -- the area-depth curve recovered from the trials, entry/exit marked.
@@ -267,11 +277,12 @@ def pfig_a1_area_depth(
     # thickness recovered from pay is a distribution and drawing one base line
     # implied a surface the data does not support.
     reservoir_note = ""
-    if show_reservoir and ts is not None and current_entry is not None:
+    if show_reservoir and ts is not None:
         reservoir_note = _reservoir_band(
-            fig, ad, ts, z_entry=current_entry,
-            z_exit=current_exit if current_exit is not None else current_entry,
-            dark=dark, transform=transform,
+            fig, ad, ts,
+            z_entry=current_entry if current_entry is not None else ad.shallowest,
+            z_exit=current_exit if current_exit is not None else ad.deepest,
+            dark=dark, transform=transform, show_classes=show_classes,
         )
 
     if current_entry is not None:
@@ -837,6 +848,65 @@ def pfig_a6_overlap(
         title="A6 · Where the four volume classes overlap", barmode="overlay",
         xaxis_title="Recoverable resource (MMboe)", yaxis_title="Density",
     )
+    apply_plotly(fig, dark, height)
+    return fig
+
+
+
+# ------------------------------------------------------------------- A9
+def pfig_a9_prospect_density(
+    ts: TrialSet, *, mefs: float | None = None, bins: int = 40,
+    dark: bool = False, height: int | None = PANEL_HEIGHT,
+):
+    """A9 -- the prospect's resource distribution, on its own.
+
+    A6 puts four classes against each other and is about the *overlap*; this is the
+    same rendering with one distribution and is about the **shape** -- where the mass
+    sits, how long the tail is, and how far the mean sits from the mode. It belongs
+    on the prospect tab because it is the only volume figure there that needs no
+    well at all (Lars, 2026-08-11).
+
+    The percentile family is drawn as rules rather than left to the eye, and the
+    **mean is drawn thicker than the P50** because on a right-skewed resource
+    distribution they are different numbers and the mean is the one that gets
+    quoted. Seeing the gap is most of the point of the figure.
+
+    Success trials only: the chance-failure zeros belong to POS, not to the shape.
+    """
+    p = palette(dark)
+    res = np.asarray(ts.col("resource"), dtype=float)
+    values = res[res > 0]
+    fig = go.Figure()
+    if not values.size:
+        fig.update_layout(title="A9 · Prospect resource — no successful trials")
+        apply_plotly(fig, dark, height)
+        return fig
+
+    fig.add_histogram(
+        x=values, histnorm="probability density", name=f"Prospect (n={values.size:,})",
+        marker=dict(color=rgba("prospect", 0.55, dark),
+                    line=dict(color=colour("prospect", dark), width=0.4)),
+        xbins=dict(start=0.0, end=float(values.max()), size=float(values.max()) / bins),
+        hovertemplate="%{x:.1f} MMboe<br>density %{y:.5f}<extra></extra>",
+    )
+    stats = {
+        "P90": float(np.percentile(values, 10.0)),
+        "P50": float(np.percentile(values, 50.0)),
+        "Mean": float(np.mean(values)),
+        "P10": float(np.percentile(values, 90.0)),
+    }
+    for name, value in stats.items():
+        _vline(fig, value, colour("prospect", dark) if name == "Mean" else p["muted"],
+               "solid" if name == "Mean" else "dash", f"{name} {value:,.1f}")
+    if mefs is not None:
+        _vline(fig, mefs, colour("minimum", dark), "dot", "MEFS")
+
+    fig.update_layout(
+        title="A9 · Prospect resource distribution (success case)",
+        xaxis_title="Recoverable resource (MMboe)", yaxis_title="Density",
+        showlegend=False,
+    )
+    fig.update_xaxes(rangemode="tozero")
     apply_plotly(fig, dark, height)
     return fig
 

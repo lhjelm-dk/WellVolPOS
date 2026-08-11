@@ -1,13 +1,24 @@
 """WellVolPOS — Streamlit entry point.
 
-Phases 0–5. Six tabs, all live. Tab ① carries the trial-data selector, the import
-summary, a preview of the trials themselves, the QC report and the risking
-question, and it gates the rest; the risking convention chosen there and the
-chance table entered in tab ⑤ together determine POS_prospect (see the "Entered
-here" comment below for why the chance-table widgets sit before the computation
-that uses them). Reference contour and allocation scheme are sidebar-level
-conventions, per CLAUDE.md's "never implicit" rule. Tab ⑤ ends in the export,
-which builds every artefact from one assembled bundle.
+Phases 0–5. Six tabs, ordered so a reader moves **explore, then evaluate**:
+
+    ① Data, QC and risk   what am I working with, and what risk am I bringing?
+    ② Prospect            what is this prospect, before any well?
+    ③ Where to drill      where should the well go? — every figure that sweeps depth
+    ④ At this well        what do I get at the depth I chose?
+    ⑤ Risk & report       attribution, the summary table, the export
+    ⑥ Theory & guide      what any of it means
+
+③ and ④ were the other way round until 2026-08-11, which put the answer for one
+depth in front of the material that informs choosing it.
+
+Tab ① gates the rest: it carries the trial-data selector, the import summary, a
+preview of the trials, the QC report, the risking convention and all eight chance
+inputs — four at play level and four conditional on the play. **Tab ② is well-free
+on purpose**: A1 and A4 are drawn there without the entry/exit rules and without
+A1's shaded volume classes, because those need a well and the same figures appear
+on ④ with them. Reference contour and allocation scheme are sidebar-level
+conventions, per CLAUDE.md's "never implicit" rule.
 
 Figures are the interactive (plotly) ones from ``wellvolpos.viz.interactive``;
 the matplotlib set in ``wellvolpos.viz.figures`` is the export path and both
@@ -75,6 +86,7 @@ from wellvolpos.viz import (
     pfig_a4_resource_vs_depth,
     pfig_a5_exceedance,
     pfig_a8_contact_distribution,
+    pfig_a9_prospect_density,
     pfig_a6_overlap,
     pfig_b0_section,
     pfig_b1_volume_split,
@@ -244,12 +256,17 @@ def _chart(fig, key: str, height: int = PANEL_HEIGHT):
 # changes repeatedly while looking at a figure.
 st.title("WellVolPOS")
 st.caption("Well POS and volume, from a stochastic prospect model")
+# Explore, then evaluate (Lars, 2026-08-11). The sweep tab and the well-result tab
+# were the other way round, which put the answer for one depth before the material
+# that informs choosing it. The order now follows the question a reader is asking:
+# what do I have, what is this prospect, where should the well go, what do I get
+# there, what is it worth, and what does any of it mean.
 tabs = st.tabs(
     [
-        "① Input data, QC and Risk",
+        "① Data, QC and risk",
         "② Prospect",
-        "③ Well location",
-        "④ Location sweep",
+        "③ Where to drill",
+        "④ At this well",
         "⑤ Risk & report",
         "⑥ Theory & guide",
     ]
@@ -677,9 +694,13 @@ with tabs[1]:
         # row, where they read as belonging to both.
         c1, c2 = st.columns(2)
         with c1:
+            # No well on the prospect tab (Lars, 2026-08-11): A1 here is A(z) and the
+            # reservoir band, both properties of the prospect. The entry/exit rules
+            # and the three shaded volume classes are a *well* result and appear on
+            # tab ④, where the same figure is drawn again with them.
             _chart(pfig_a1_area_depth(
-                    ad, ts=ts, current_entry=entry, current_exit=exit_,
-                    zlim=zrow_prospect, area_scale=area_scale,
+                    ad, ts=ts, zlim=zrow_prospect, area_scale=area_scale,
+                    show_classes=False,
                 ), key="a1")
         with c2:
             _auto_r, _auto_z = suggest_grid(res_all[res_all > 0.0], succ_contact)
@@ -694,7 +715,7 @@ with tabs[1]:
             a4_ny = ac3.number_input("Depth bins", 10, 120, _auto_z, 2, key="w_grid_z",
                                      disabled=a4_render != "grid")
             _chart(pfig_a4_resource_vs_depth(
-                    ts, current_entry=entry, current_exit=exit_, mefs=mefs,
+                    ts, mefs=mefs,
                     render=a4_render, n_resource=int(a4_nx), n_depth=int(a4_ny),
                     zlim=zrow_prospect, show_depth_labels=False,
                 ), key="a4")
@@ -771,7 +792,21 @@ with tabs[1]:
         )
 
         st.divider()
-        _chart(pfig_a8_contact_distribution(ts, current_entry=entry), key="a8")
+        _chart(pfig_a9_prospect_density(ts, mefs=mefs), key="a9")
+        _a9_vals = res_all[res_all > 0]
+        st.caption(
+            f"**A9** — the same distribution A5 draws as a curve, drawn as a shape. A5 answers "
+            f"*how likely is at least this much*; A9 answers *where does the mass actually sit*, "
+            f"which is the question a long right tail makes hard to read off a cumulative curve. "
+            f"The **mean is drawn thicker than the P50** because on a right-skewed resource "
+            f"distribution they are different numbers and the mean is the one that gets quoted — "
+            f"here {float(np.mean(_a9_vals)):.1f} against a P50 of "
+            f"{float(np.percentile(_a9_vals, 50)):.1f} MMboe. It is the only volume figure on "
+            f"this tab that needs no well at all."
+        )
+
+        st.divider()
+        _chart(pfig_a8_contact_distribution(ts), key="a8")
         st.caption(
             "**A8** — the contact distribution recovered from the trials, and `P(contact deeper "
             "than this depth)` over it. Read a depth off the y-axis and the line gives the "
@@ -782,48 +817,8 @@ with tabs[1]:
             "location result in this tool ultimately rests on its shape."
         )
 
-        st.divider()
-        st.subheader("Conceptual map view")
-        # The apex is derived from A(z), not offered as an input: this figure is
-        # conceptual, and a second apex control here could disagree with the one
-        # the column-height mapping uses in tab ⑤.
-        map_apex = float(ad.apex_estimate())
-        m1, m2 = st.columns([1, 3])
-        with m1:
-            map_interval = st.number_input(
-                "Contour interval (m)", min_value=5.0, max_value=500.0, value=50.0, step=5.0,
-                help="Contours land on multiples of this, so they read like a depth map.",
-                key="w_map_interval",
-            )
-            map_azimuth = st.slider(
-                "Well azimuth on the map (°)", 0, 359, 35,
-                help=(
-                    "Arbitrary. Only the well's radius carries meaning — it puts the well on the "
-                    "contour of its own entry depth. A(z) records enclosed area per depth and "
-                    "nothing about the closure's shape."
-                ),
-                key="w_map_azimuth",
-            )
-            st.metric("Apex (derived)", f"{map_apex:.0f} m")
-            st.caption("From A(z)'s shallow tail, extrapolated to zero area.")
-        with m2:
-            _chart(pfig_map_view(
-                    ad, apex=map_apex, z_entry=entry, z_exit=exit_,
-                    interval=map_interval, well_azimuth_deg=float(map_azimuth),
-                ), key="mapview")
-        st.caption(
-            f"Concentric contours whose *areas* come from A(z), apex at the centre, deepest "
-            f"sampled contact ({ad.deepest:.0f} m) as the outer ring. The shaded area inside the "
-            f"entry contour is what a dry hole would leave up-dip. **Every contour is dashed; the "
-            f"one solid ring is the well's entry depth**, so line style says only 'is this the "
-            f"well?'. Contours shallower than the shallowest sampled contact "
-            f"({ad.shallowest:.0f} m) are drawn faint — the trials never reached the crest, so "
-            f"their area is a taper to the apex, not a model output. "
-            f"**The shape is a cartoon**: circles of the right area, in the wrong outline."
-        )
-
-with tabs[2]:
-    st.subheader("Well location")
+with tabs[3]:
+    st.subheader("At this well")
     _split_caveat()
 
     if has_area:
@@ -1042,6 +1037,47 @@ with tabs[2]:
             "A6 — Schneider et al.'s 'surprising overlap' between what a dry hole leaves in the "
             "attic and what a discovery proves. Live section — the closure shape from A(z), "
             "colour-keyed to what the well now standing at entry/exit would prove."
+        )
+        st.divider()
+        st.subheader("Conceptual map view")
+        # The apex is derived from A(z), not offered as an input: this figure is
+        # conceptual, and a second apex control here could disagree with any other.
+        # It lives with the well results rather than on the prospect tab because it
+        # draws the *entry contour* and the three areas the well divides the closure
+        # into -- all of which need a well (Lars, 2026-08-11).
+        map_apex = float(ad.apex_estimate())
+        m1, m2 = st.columns([1, 3])
+        with m1:
+            map_interval = st.number_input(
+                "Contour interval (m)", min_value=5.0, max_value=500.0, value=50.0, step=5.0,
+                help="Contours land on multiples of this, so they read like a depth map.",
+                key="w_map_interval",
+            )
+            map_azimuth = st.slider(
+                "Well azimuth on the map (°)", 0, 359, 35,
+                help=(
+                    "Arbitrary. Only the well's radius carries meaning — it puts the well on the "
+                    "contour of its own entry depth. A(z) records enclosed area per depth and "
+                    "nothing about the closure's shape."
+                ),
+                key="w_map_azimuth",
+            )
+            st.metric("Apex (derived)", f"{map_apex:.0f} m")
+            st.caption("From A(z)'s shallow tail, extrapolated to zero area.")
+        with m2:
+            _chart(pfig_map_view(
+                    ad, apex=map_apex, z_entry=entry, z_exit=exit_,
+                    interval=map_interval, well_azimuth_deg=float(map_azimuth),
+                ), key="mapview")
+        st.caption(
+            f"Concentric contours whose *areas* come from A(z), apex at the centre, deepest "
+            f"sampled contact ({ad.deepest:.0f} m) as the outer ring. The shaded area inside the "
+            f"entry contour is what a dry hole would leave up-dip. **Every contour is dashed; the "
+            f"one solid ring is the well's entry depth**, so line style says only 'is this the "
+            f"well?'. Contours shallower than the shallowest sampled contact "
+            f"({ad.shallowest:.0f} m) are drawn faint — the trials never reached the crest, so "
+            f"their area is a taper to the apex, not a model output. "
+            f"**The shape is a cartoon**: circles of the right area, in the wrong outline."
         )
 
 @st.fragment
@@ -1314,7 +1350,7 @@ def _inverse_section(vsweep, ts):
     )
 
 
-with tabs[3]:
+with tabs[2]:
     _location_sweep_tab()
 
 with tabs[4]:

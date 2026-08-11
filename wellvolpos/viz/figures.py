@@ -69,6 +69,7 @@ __all__ = [
     "fig_b8_commercial_chance",
     "fig_b9_chance_weighted",
     "fig_a8_contact_distribution",
+    "fig_a9_prospect_density",
     "exceedance_marks",
     "_depth_percentiles",
     "fig_colour_key",
@@ -248,7 +249,8 @@ def _mark_exceedance_mpl(ax, values, role: str, dark: bool, *, chance: float = 1
 
 def fig_a1_area_depth(
     ad: AreaDepth, *, ts: TrialSet | None = None, current_entry: float | None = None,
-    current_exit: float | None = None, show_reservoir: bool = True, dark: bool = False,
+    current_exit: float | None = None, show_reservoir: bool = True,
+    show_classes: bool = True, dark: bool = False,
 ):
     """The area-depth curve recovered from the trials, entry/exit marked.
 
@@ -271,11 +273,12 @@ def fig_a1_area_depth(
     # C1's reservoir section, merged in (Lars, 2026-08-11): A1 and C1 drew the same
     # A(z), and the only thing C1 added was the base reservoir and the three shaded
     # classes. C1 survives as a small unlabelled thumbnail beside C2.
-    if show_reservoir and ts is not None and current_entry is not None:
+    if show_reservoir and ts is not None:
         _reservoir_section_mpl(
-            ax, ad, ts, z_entry=current_entry,
-            z_exit=current_exit if current_exit is not None else current_entry,
-            dark=dark,
+            ax, ad, ts,
+            z_entry=current_entry if current_entry is not None else ad.shallowest,
+            z_exit=current_exit if current_exit is not None else ad.deepest,
+            dark=dark, show_classes=show_classes,
         )
 
     depth_axis(ax, zlim=(ad.shallowest, ad.deepest))
@@ -1158,6 +1161,48 @@ def fig_b9_chance_weighted(
     fig.tight_layout()
     return fig, ax
 
+def fig_a9_prospect_density(
+    ts: TrialSet, *, mefs: float | None = None, bins: int = 40, dark: bool = False,
+):
+    """A9 for the export path. Twin of ``pfig_a9_prospect_density``.
+
+    One distribution rather than A6's four: this figure is about the *shape* of the
+    prospect's resource, not about overlap. The mean is drawn thicker than the P50
+    because on a right-skewed distribution they differ and the mean is the one that
+    gets quoted.
+    """
+    p = palette(dark)
+    res = np.asarray(ts.col("resource"), dtype=float)
+    values = res[res > 0]
+    fig, ax = new_figure(figsize=(6, 4.4), dark=dark)
+    if not values.size:
+        ax.set_title("A9 · Prospect resource — no successful trials")
+        return fig, ax
+
+    ax.hist(values, bins=bins, density=True, color=colour("prospect", dark), alpha=0.55)
+    stats = {
+        "P90": float(np.percentile(values, 10.0)),
+        "P50": float(np.percentile(values, 50.0)),
+        "Mean": float(np.mean(values)),
+        "P10": float(np.percentile(values, 90.0)),
+    }
+    for name, value in stats.items():
+        ax.axvline(value, color=colour("prospect", dark) if name == "Mean" else p["muted"],
+                   lw=1.8 if name == "Mean" else 1.0,
+                   ls="-" if name == "Mean" else "--")
+        ax.annotate(f" {name} {value:,.1f}", (value, ax.get_ylim()[1]), fontsize=6.5,
+                    color=p["text_secondary"], va="top", rotation=90)
+    if mefs is not None:
+        ax.axvline(mefs, color=colour("minimum", dark), ls=":", lw=1.0)
+
+    ax.set_xlim(left=0)
+    ax.set_xlabel("Recoverable resource (MMboe)")
+    ax.set_ylabel("Density")
+    ax.set_title("A9 · Prospect resource distribution (success case)")
+    fig.tight_layout()
+    return fig, ax
+
+
 # ------------------------------------------------- the export-path twins
 # Three figures were built on the interactive path first, because they were
 # designed by looking at them. They are drawn again here so the export cannot
@@ -1296,7 +1341,8 @@ def fig_map_view(
     return fig, ax
 
 
-def _reservoir_section_mpl(ax, ad, ts, *, z_entry, z_exit, dark, area_scale="area"):
+def _reservoir_section_mpl(ax, ad, ts, *, z_entry, z_exit, dark, area_scale="area",
+                           show_classes=True):
     """The concepts figure's left panel, in matplotlib.
 
     See :func:`wellvolpos.viz.interactive._reservoir_section` for why x is area
@@ -1322,7 +1368,7 @@ def _reservoir_section_mpl(ax, ad, ts, *, z_entry, z_exit, dark, area_scale="are
         base = top + thickness
         ax.plot(a, base, color=p["text"], lw=1.5, ls="--", label="Base reservoir")
 
-        for lo, hi, role, label in (
+        for lo, hi, role, label in () if not show_classes else (
             (-np.inf, z_entry, "up_dip", "up-dip"),
             (z_entry, z_exit, "tested", "tested"),
             (z_exit, np.inf, "possible", "possible"),
