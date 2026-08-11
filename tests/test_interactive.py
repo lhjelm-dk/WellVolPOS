@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 
 from wellvolpos.core.chance import r_location
-from wellvolpos.core.classes import split_trials
+from wellvolpos.core.classes import class_percentiles, risked_exceedance, split_trials
 from wellvolpos.core.sweep import run_sweep, run_volume_sweep
 from wellvolpos.viz import interactive as I
 from wellvolpos.viz.theme import (
@@ -190,12 +190,22 @@ def test_b2_names_its_conditioning_and_keeps_the_regret_colour(vsweep):
 
 
 def test_a2_bands_use_the_outcome_colours_and_reach_100_percent(sweep):
+    """The fills are translucent (Lars, 2026-08-10), so the colour is checked
+    through the alpha rather than as a hex string -- the *role* must still be the
+    canonical one, which is what non-negotiable 3 is about."""
+    from wellvolpos.viz.theme import rgba
+
     fig = I.pfig_a2_outcome_tree(sweep)
     fills = {t.name: t.fillcolor for t in fig.data if t.fillcolor}
-    assert fills["Dry, with attic"] == colour("attic")
-    assert fills["Discovery, contact seen"] == colour("tested")
-    assert fills["Discovery, HC to exit"] == colour("possible")
-    assert fills["Chance failure"] == palette()["muted"]
+    for name, role in (("Dry, with attic", "attic"),
+                       ("Discovery, contact seen", "tested"),
+                       ("Discovery, HC to exit", "possible"),
+                       ("Chance failure", "muted")):
+        assert fills[name] == rgba(role, 0.55), name
+        assert "rgba" in fills[name] and "0.55" in fills[name]
+    # The band *outlines* keep the solid role colour, so the boundaries stay crisp.
+    lines = {t.name: t.line.color for t in fig.data if t.fillcolor}
+    assert lines["Dry, with attic"] == colour("attic")
     top = max(float(np.nanmax(t.x)) for t in fig.data if t.x is not None and len(t.x))
     assert top == pytest.approx(100.0, abs=1e-6)
 
@@ -703,3 +713,145 @@ def test_the_key_has_no_axes_to_read(reduced):
     it. Exempt from the depth rule for the same reason."""
     fig = I.pfig_colour_key()
     assert fig.layout.xaxis.visible is False and fig.layout.yaxis.visible is False
+
+
+# ------------------------------------------------- risked vs unrisked reading
+# The fourth instance of this codebase's recurring mistake, and the reason the
+# arithmetic now lives in core.classes rather than in a figure: the concepts
+# figure risked its curves by zero-padding with the trial file's own masks, so a
+# curve started at the *file's* implied chance instead of the entered one. On
+# prospect A under "trials are risked" the two coincide, which is why three tests
+# and two reviews missed it. On prospect B -- success-case only, POS from the
+# chance table -- they differ by the whole table.
+
+
+def test_a_risked_curve_starts_at_its_chance_by_construction():
+    values = np.array([1.0, 2.0, 3.0, 4.0])
+    for chance in (1.0, 0.5, 0.2):
+        v, pct = risked_exceedance(values, chance)
+        assert float(pct.max()) == pytest.approx(chance * 100.0)
+        assert np.all(np.diff(pct) < 0)
+        # The *volumes* are untouched by risking; only the probabilities move.
+        assert np.array_equal(v, values)
+
+
+def test_risking_scales_the_probability_and_never_the_volume():
+    values = np.array([5.0, 10.0, 20.0])
+    v_un, p_un = risked_exceedance(values, 1.0)
+    v_r, p_r = risked_exceedance(values, 0.4)
+    assert np.array_equal(v_un, v_r)
+    assert np.allclose(p_r, 0.4 * p_un)
+
+
+def test_an_empty_class_gives_an_empty_curve_rather_than_raising():
+    v, pct = risked_exceedance(np.array([]), 0.5)
+    assert v.size == 0 and pct.size == 0
+
+
+def test_class_percentiles_puts_p99_at_the_low_end(reduced):
+    """P99 is exceeded 99 % of the time, so it is the *small* volume. Getting this
+    backwards is the classic error in this domain and it would invert every table
+    in the app."""
+    res = reduced.col("resource")
+    s = class_percentiles(res[res > 0], 0.4576)
+    assert s["p99"] < s["p90"] < s["p50"] < s["p10"] < s["p1"]
+
+
+def test_class_percentiles_reports_where_the_mean_actually_falls(reduced):
+    """The mean is not a percentile. On a right-skewed resource distribution it
+    sits above the P50 -- and the table says at which exceedance, because "mean"
+    and "middle" get used interchangeably and they are not."""
+    res = reduced.col("resource")
+    s = class_percentiles(res[res > 0], 1.0)
+    assert s["mean"] > s["p50"]
+    assert 25.0 < s["mean_at"] < 50.0
+
+
+def test_the_concepts_curves_follow_the_entered_pos_not_the_trial_file(
+    reduced, area_depth, groups, vc
+):
+    """The bug itself, pinned. Two different entered POS values must move the
+    curves; before the fix both drew identically because the zero-padding came
+    from the trial masks."""
+    starts = {}
+    for pos in (0.7605, 0.40):
+        r = r_location(reduced, ENTRY)[0]
+        pw = pos * r
+        fig = I.pfig_concepts(area_depth, reduced, groups, vc, z_entry=ENTRY, z_exit=EXIT,
+                              pos_prospect=pos, p_well=pw, mefs=14.0)
+        heights = {}
+        for t in fig.data:
+            if t.name and t.y is not None and len(t.y) > 10 and "reservoir" not in str(t.name):
+                heights[t.name] = float(np.nanmax(np.asarray(t.y, dtype=float)))
+        starts[pos] = heights
+        assert heights["Prospect resource potential"] == pytest.approx(pos * 100.0, abs=0.5)
+        assert heights["Well associated resource potential"] == pytest.approx(pw * 100.0, abs=0.5)
+        assert heights["Up-dip volume"] == pytest.approx((pos - pw) * 100.0, abs=0.5)
+    assert starts[0.7605] != starts[0.40]
+
+
+def test_the_gap_between_the_two_curve_starts_is_the_location_penalty(
+    reduced, area_depth, groups, vc
+):
+    """The argument the figure exists to make, as an assertion: the vertical
+    distance between where the prospect curve starts and where the well-associated
+    curve starts is POS - P_well, the chance the prospect has something this well
+    would miss."""
+    pos, pw = 0.7605, 0.4576
+    fig = I.pfig_concepts(area_depth, reduced, groups, vc, z_entry=ENTRY, z_exit=EXIT,
+                          pos_prospect=pos, p_well=pw, mefs=14.0)
+    tops = {t.name: float(np.nanmax(np.asarray(t.y, dtype=float)))
+            for t in fig.data if t.name and t.y is not None and len(t.y) > 10
+            and "reservoir" not in str(t.name)}
+    penalty = tops["Prospect resource potential"] - tops["Well associated resource potential"]
+    assert penalty == pytest.approx((pos - pw) * 100.0, abs=0.5)
+
+
+# ------------------------------------------------------ exceedance markers
+def test_exceedance_marks_are_labelled_by_value_and_sit_on_the_curve(reduced, groups, vc):
+    """Lars asked for a marker at P90/P50/mean/P10 carrying the *value*, not the
+    percentile name -- the percentile is already the axis."""
+    fig = I.pfig_a5_exceedance(reduced, groups, vc, mefs=14.0)
+    marks = [t for t in fig.data if t.mode and "markers" in t.mode]
+    assert len(marks) == 16                                  # four statistics on four curves
+    for t in marks:
+        assert t.text is not None and t.text[0].strip().replace(",", "").replace(".", "").isdigit()
+        # The label is the volume, and the statistic's name is in the hover.
+        assert any(k in t.hovertemplate for k in ("P90", "P50", "P10", "Mean"))
+
+
+def test_exceedance_marks_use_the_petroleum_orientation(reduced):
+    """P90 low, P10 high -- and each marker's height is read off the curve, so it
+    lands *on* the line rather than at a nominal percentile."""
+    from wellvolpos.viz.figures import exceedance_marks
+
+    res = reduced.col("resource")
+    marks = dict((label, (value, pct)) for label, value, pct in exceedance_marks(res[res > 0]))
+    assert marks["P90"][0] < marks["P50"][0] < marks["P10"][0]
+    assert marks["P90"][1] == pytest.approx(90.0, abs=1.0)
+    assert marks["P10"][1] == pytest.approx(10.0, abs=1.0)
+    assert marks["Mean"][1] < 50.0                           # right-skewed
+
+
+# ------------------------------------------------------------- the map view
+def test_the_map_draws_dashed_contours_and_one_solid_entry_ring(area_depth):
+    """Lars, 2026-08-10: line style now carries one meaning only -- is this the
+    well? Every contour is dashed; the entry contour is the only solid ring."""
+    apex = area_depth.apex_estimate()
+    fig = I.pfig_map_view(area_depth, apex=apex, z_entry=ENTRY, z_exit=EXIT, interval=50.0)
+    dashes = [t.line.dash for t in fig.data if t.mode == "lines" and t.line is not None]
+    assert dashes.count("solid") == 1
+    assert set(dashes) - {"solid", None} == {"dash"}
+
+
+def test_every_map_contour_carries_a_depth_label(area_depth):
+    """So the map reads like a depth map instead of by hovering. Round depths are
+    what makes labelling in place worth doing -- a legend of fifteen depths is a
+    lookup table."""
+    apex = area_depth.apex_estimate()
+    fig = I.pfig_map_view(area_depth, apex=apex, z_entry=ENTRY, z_exit=EXIT, interval=50.0)
+    labels = [a.text for a in fig.layout.annotations]
+    contours = area_depth.contour_radii(apex, interval=50.0, z_max=area_depth.deepest)
+    for depth in contours.depths:
+        assert f"{depth:.0f}" in " ".join(labels)
+    assert any("well entry" in t for t in labels)

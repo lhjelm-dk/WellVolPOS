@@ -509,6 +509,11 @@ def test_the_concepts_twin_starts_its_curves_at_their_own_chance(reduced, area_d
         area_depth, reduced, groups, vc, z_entry=ENTRY, z_exit=EXIT,
         pos_prospect=POS, p_well=0.4576, mefs=14.0,
     )
+    # Each curve's *maximum* is its own chance -- not 100 %. The earlier version of
+    # this test asserted 100 % for the first two curves, which contradicted its own
+    # docstring and was passing only because the figure zero-padded with the trial
+    # file's masks; on prospect A under the "trials are risked" convention the two
+    # coincide, which is exactly why it went unnoticed.
     starts = {}
     for line in ax_exc.get_lines():
         label = line.get_label()
@@ -516,16 +521,11 @@ def test_the_concepts_twin_starts_its_curves_at_their_own_chance(reduced, area_d
         if label.startswith("_") or y.size < 10:
             continue
         starts[label] = float(np.nanmax(y))
-    assert starts["Prospect resource potential"] == pytest.approx(100.0, abs=0.1)
-    assert starts["Well associated resource potential"] == pytest.approx(100.0, abs=0.1)
-    # The risked curves reach their own chance at the smallest positive volume.
-    for label, expected in (("Prospect resource potential", POS),
-                            ("Well associated resource potential", 0.4576)):
-        line = next(l for l in ax_exc.get_lines() if l.get_label() == label)
-        x = np.asarray(line.get_xdata(), dtype=float)
-        y = np.asarray(line.get_ydata(), dtype=float)
-        at_first_positive = float(y[np.flatnonzero(x > 0)[0]])
-        assert at_first_positive == pytest.approx(expected * 100.0, abs=1.5)
+    assert starts["Prospect resource potential"] == pytest.approx(POS * 100.0, abs=0.5)
+    assert starts["Well associated resource potential"] == pytest.approx(45.76, abs=0.5)
+    assert starts["Resource tested by well"] == pytest.approx(45.76, abs=0.5)
+    # The up-dip case is dry *and* charged, so its chance is POS - P_well.
+    assert starts["Up-dip volume"] == pytest.approx((POS - 0.4576) * 100.0, abs=0.5)
 
 
 def test_the_concepts_twin_keeps_the_depth_rule_on_its_section(reduced, area_depth, groups, vc):

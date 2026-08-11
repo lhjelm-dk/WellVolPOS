@@ -27,7 +27,7 @@ import numpy as np
 
 from ..core.chance import ELEMENTS, SCHEME_LABELS, SHIPPED_SCHEMES, allocate
 from ..core.chance import waterfall_steps as chance_waterfall_steps
-from ..core.classes import VolumeClasses
+from ..core.classes import VolumeClasses, risked_exceedance
 from ..core.groups import Groups
 from ..core.reservoir import thickness_from_pay
 from ..core.stats import MIN_SUPPORT, thin
@@ -64,6 +64,7 @@ __all__ = [
     "fig_b4_chance_waterfall",
     "fig_b5_allocation_dumbbell",
     "fig_b6_inverse",
+    "exceedance_marks",
     "fig_colour_key",
     "fig_concepts",
     "fig_map_view",
@@ -143,6 +144,67 @@ def _exceedance(values: np.ndarray):
     if n == 0:
         return v, np.array([])
     return v, 100.0 * (n - np.arange(n)) / n
+
+
+def exceedance_marks(values) -> list[tuple[str, float, float]]:
+    """(label, volume, exceedance %) for P90, P50, mean and P10 of a distribution.
+
+    The petroleum orientation throughout: **P90 is the low case**, exceeded 90 % of
+    the time, and P10 is the high case. So P90 sits at the *right-hand* end of the
+    probability axis and P10 at the left, which is the opposite of what the numbers
+    look like and the reason these markers are worth drawing rather than leaving a
+    reader to count gridlines.
+
+    The **mean** is not a percentile and is placed by asking the curve where it
+    falls -- on a right-skewed resource distribution it lands well above the P50,
+    typically near P35, and seeing that gap is the point: the mean is the number
+    that gets quoted and it is not the middle.
+
+    Returns an empty list for an empty distribution, and skips any statistic that
+    is not finite, so a caller never has to guard.
+    """
+    v = np.asarray(values, dtype=float)
+    v = v[np.isfinite(v)]
+    if v.size == 0:
+        return []
+    stats = [
+        ("P90", float(np.percentile(v, 10.0))),
+        ("P50", float(np.percentile(v, 50.0))),
+        ("Mean", float(np.mean(v))),
+        ("P10", float(np.percentile(v, 90.0))),
+    ]
+    out = []
+    for label, value in stats:
+        if not np.isfinite(value):
+            continue
+        # Read off the same empirical curve the figure draws, rather than assuming
+        # 90/50/10 -- with ties, zeros or a risked distribution the nominal
+        # percentile and the plotted height are not the same number, and the marker
+        # has to sit *on* the line.
+        pct = 100.0 * float(np.mean(v >= value))
+        out.append((label, value, pct))
+    return out
+
+
+def _mark_exceedance_mpl(ax, values, role: str, dark: bool, *, show_text: bool = True,
+                         size: float = 5.0):
+    """The export-path twin of ``interactive._mark_exceedance``.
+
+    Labelled with the volume rather than the percentile name, for the same reason:
+    the percentile is already the axis. The mean gets a square because it is not a
+    percentile, and on a right-skewed distribution it sits visibly above the P50.
+    """
+    marks = exceedance_marks(values)
+    if not marks:
+        return
+    p = palette(dark)
+    for label, value, pct in marks:
+        ax.plot([value], [pct], marker="s" if label == "Mean" else "D",
+                ms=size + (0.5 if label == "Mean" else 0.0),
+                mfc=colour(role, dark), mec=p["surface"], mew=0.8, ls="none", zorder=5)
+        if show_text:
+            ax.annotate(f" {value:,.1f}", (value, pct), fontsize=6.5,
+                        color=p["text_secondary"], va="center", ha="left", zorder=5)
 
 
 def fig_a1_area_depth(
@@ -336,6 +398,7 @@ def fig_a5_exceedance(
         if v.size == 0:
             continue
         ax.plot(v, pct, color=colour(role, dark), lw=1.8, label=label)
+        _mark_exceedance_mpl(ax, values, role, dark)
 
     if mefs is not None:
         ax.axvline(mefs, color=p["muted"], ls=":", lw=1.0)
@@ -873,13 +936,32 @@ def fig_map_view(
         zip(contours.depths, contours.radii, contours.extrapolated, contours.at_data_limit),
         key=lambda t: -t[0],
     )
+    # Dashed contours with a small depth label, and the entry contour below as the
+    # one solid ring -- so line style says "is this the well?" and nothing else.
+    # Extrapolated rings above the shallowest sampled contact are marked by opacity
+    # instead, which reads as less certain without competing with the entry.
+    label_i = 0
     for zz, rr, is_extrap, is_limit in rings:
         ax.plot(
             rr * np.cos(theta), rr * np.sin(theta), zorder=2,
             color=colour("attic" if zz <= z_entry else "prospect", dark),
-            lw=2.2 if is_limit else 1.0,
-            ls=":" if is_extrap else "-",
+            lw=2.0 if is_limit else 0.9, ls="--",
+            alpha=0.45 if is_extrap else 1.0,
         )
+        if rr > 0:
+            from .interactive import _LABEL_AZIMUTHS
+
+            ang_lab = np.deg2rad(_LABEL_AZIMUTHS[label_i % len(_LABEL_AZIMUTHS)])
+            ax.annotate(f"{zz:.0f}", (rr * np.cos(ang_lab), rr * np.sin(ang_lab)),
+                        ha="center", va="center", fontsize=6.5, color=p["text_secondary"],
+                        alpha=0.5 if is_extrap else 0.95, zorder=3,
+                        bbox=dict(boxstyle="square,pad=0.12", fc=p["surface"], ec="none"))
+            label_i += 1
+    ax.plot(r_entry * np.cos(theta), r_entry * np.sin(theta), zorder=3.5,
+            color=colour("attic", dark), lw=2.6, ls="-")
+    ax.annotate(f"{z_entry:.0f} m — well entry", (0.0, r_entry), xytext=(0, 6),
+                textcoords="offset points", ha="center", fontsize=8,
+                color=colour("attic", dark), zorder=4)
 
     ang = np.deg2rad(well_azimuth_deg)
     xw, yw = r_entry * np.cos(ang), r_entry * np.sin(ang)
@@ -998,17 +1080,21 @@ def fig_concepts(
     ax_sec.set_xlabel(AREA_SCALES.get(area_scale, AREA_SCALES["area"])[0])
     ax_sec.set_title("Reservoir in area–depth space", fontsize=9.5)
 
+    # See the plotly twin: risked by the entered chance through
+    # ``core.classes.risked_exceedance``, never by zero-padding with the trial
+    # file's own masks.
+    disc, dry = groups.discovery, groups.dry_with_attic
     risked = [
-        ("Prospect resource potential", res, "prospect"),
-        ("Well associated resource potential",
-         np.where(groups.discovery, res, 0.0), "well_associated"),
-        ("Resource tested by well", np.where(groups.discovery, vc.proven, 0.0), "tested"),
-        ("Up-dip volume", np.where(groups.dry_with_attic, res, 0.0), "up_dip"),
+        ("Prospect resource potential", res[res > 0], pos_prospect, "prospect"),
+        ("Well associated resource potential", res[disc], p_well, "well_associated"),
+        ("Resource tested by well", vc.proven[disc], p_well, "tested"),
+        ("Up-dip volume", res[dry], max(pos_prospect - p_well, 0.0), "up_dip"),
     ]
     spans: dict[str, tuple[float, float, str]] = {}
-    for name, values, role in risked:
-        v, pct = _exceedance(values)
+    for name, values, chance_of, role in risked:
+        v, pct = risked_exceedance(values, chance_of)
         ax_exc.plot(v, pct, color=colour(role, dark), lw=2.2, label=name)
+        _mark_exceedance_mpl(ax_exc, values, role, dark, show_text=False, size=4.0)
         positive = v[v > 0]
         if positive.size:
             spans[name] = (float(positive.min()), float(positive.max()), role)

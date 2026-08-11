@@ -29,7 +29,7 @@ from plotly.subplots import make_subplots
 
 from ..core.chance import ELEMENTS, SCHEME_LABELS, SHIPPED_SCHEMES, allocate
 from ..core.chance import waterfall_steps as chance_waterfall_steps
-from ..core.classes import VolumeClasses
+from ..core.classes import VolumeClasses, risked_exceedance
 from ..core.groups import Groups
 from ..core.reservoir import thickness_from_pay
 from ..core.stats import MIN_SUPPORT, thin
@@ -43,7 +43,12 @@ from ..core.sweep import (
     volume_target_curve,
 )
 from ..io.adapters.base import TrialSet
-from .figures import _depth_band, _exceedance, area_spread_is_material
+from .figures import (
+    _depth_band,
+    _exceedance,
+    area_spread_is_material,
+    exceedance_marks,
+)
 from .theme import (
     PANEL_HEIGHT,
     SEQUENTIAL_CMAP,
@@ -233,15 +238,24 @@ def pfig_map_view(
         zip(contours.depths, contours.radii, contours.extrapolated, contours.at_data_limit),
         key=lambda t: -t[0],
     )
+    # **Dashed contours, one solid line for the well's entry** (Lars, 2026-08-10).
+    # Line style now carries one meaning only -- "is this the well?" -- instead of
+    # doubling as the extrapolation flag, which was the confusing part: some rings
+    # were solid and some dashed for a reason a reader had to know to see. The
+    # extrapolated rings above the shallowest sampled contact are still marked, but
+    # by *opacity* now, which reads as "less certain" without competing with the
+    # entry contour.
+    label_i = 0
     for zz, rr, is_extrap, is_limit in rings:
         inside_well = zz <= z_entry
         fig.add_scatter(
             x=rr * np.cos(theta), y=rr * np.sin(theta), mode="lines",
             line=dict(
                 color=colour("attic", dark) if inside_well else colour("prospect", dark),
-                width=2.5 if is_limit else 1.2,
-                dash="dot" if is_extrap else "solid",
+                width=2.2 if is_limit else 1.1,
+                dash="dash",
             ),
+            opacity=0.45 if is_extrap else 1.0,
             name=f"{zz:.0f} m", showlegend=False,
             hovertemplate=(
                 f"{zz:.1f} m TVDSS<br>{np.pi * rr * rr:.3f} km² enclosed"
@@ -250,6 +264,24 @@ def pfig_map_view(
                 + "<extra></extra>"
             ),
         )
+        # A small depth label on every ring, so the map can be read like a depth
+        # map instead of by hovering. Placed on the contour itself rather than in a
+        # legend: a legend of fifteen depths is a lookup table, and the point of
+        # round contour values is that they can be read in place.
+        #
+        # Stepped around the circle rather than stacked at due north. Contour radii
+        # are not evenly spaced -- A(z) is nearly quadratic, so the shallow rings
+        # crowd together -- and on prospect B seven labels on one radial line
+        # overlapped into an unreadable column.
+        if rr > 0:
+            ang_lab = np.deg2rad(_LABEL_AZIMUTHS[label_i % len(_LABEL_AZIMUTHS)])
+            fig.add_annotation(
+                x=rr * np.cos(ang_lab), y=rr * np.sin(ang_lab), text=f"{zz:.0f}",
+                showarrow=False, font=dict(size=7.5, color=p["text_secondary"]),
+                bgcolor=p["surface"], borderpad=1,
+                opacity=0.55 if is_extrap else 0.95,
+            )
+            label_i += 1
 
     # The three areas the well divides the closure into, in plan view: the same
     # split B0 draws in section, so the two figures colour-key identically.
@@ -275,12 +307,19 @@ def pfig_map_view(
 
     # Inside the entry contour: nothing the well touches, so it is the attic a
     # dry hole leaves behind.
+    # The entry contour is the **only solid ring** on the map, and it is the one
+    # that matters: everything inside it is what a dry hole leaves up-dip. Every
+    # other contour is dashed, so this reads without needing the legend.
     fig.add_scatter(
         x=r_entry * np.cos(theta), y=r_entry * np.sin(theta), mode="lines",
         fill="toself", fillcolor=rgba("attic", 0.35, dark),
-        line=dict(color=colour("attic", dark), width=2.5),
+        line=dict(color=colour("attic", dark), width=3.0, dash="solid"),
         name=f"Potential attic — up-dip of entry ({a_attic:.2f} km²)",
         hovertemplate=f"potential attic<br>{a_attic:.3f} km² up-dip of the {z_entry:.0f} m entry<extra></extra>",
+    )
+    fig.add_annotation(
+        x=0.0, y=r_entry, text=f"<b>{z_entry:.0f} m — well entry</b>", showarrow=False,
+        yshift=9, font=dict(size=9, color=colour("attic", dark)),
     )
     # Without an exit depth there is no tested band, and everything outside the
     # entry contour is untested rather than "below exit".
@@ -354,21 +393,27 @@ def pfig_a2_outcome_tree(
     cum2 = cum1 + sweep.share_contact_seen * 100.0
     cum3 = cum2 + sweep.share_hc_to_exit * 100.0
 
+    # Roles rather than colours, so the fills can be taken translucent from one
+    # place. Translucent at Lars's request (2026-08-10): at full opacity the four
+    # bands read as flat blocks of paint, and the boundaries between them -- which
+    # are the only thing that moves with depth -- get lost against them. The alpha
+    # also lets the current-depth rule show *through* the bands instead of being
+    # drawn over them.
     bands = [
-        (np.zeros_like(z), cum0, "Chance failure", p["muted"]),
-        (cum0, cum1, "Dry, with attic", colour("attic", dark)),
-        (cum1, cum2, "Discovery, contact seen", colour("tested", dark)),
-        (cum2, cum3, "Discovery, HC to exit", colour("possible", dark)),
+        (np.zeros_like(z), cum0, "Chance failure", "muted"),
+        (cum0, cum1, "Dry, with attic", "attic"),
+        (cum1, cum2, "Discovery, contact seen", "tested"),
+        (cum2, cum3, "Discovery, HC to exit", "possible"),
     ]
     fig = go.Figure()
-    for lower, upper, name, col in bands:
+    for lower, upper, name, role in bands:
         # Closed polygon rather than fill='tonextx': explicit, and immune to
         # trace ordering.
         fig.add_scatter(
             x=np.concatenate([lower, upper[::-1]]),
             y=np.concatenate([z, z[::-1]]),
-            fill="toself", fillcolor=col, mode="lines",
-            line=dict(width=0), name=name, hoverinfo="skip",
+            fill="toself", fillcolor=rgba(role, 0.55, dark), mode="lines",
+            line=dict(color=colour(role, dark), width=1.0), name=name, hoverinfo="skip",
         )
     # An invisible trace carrying the real numbers, so hovering reads out the
     # four shares at one depth instead of a polygon vertex.
@@ -513,6 +558,42 @@ def pfig_a4_resource_vs_depth(
 
 
 # ------------------------------------------------------------------- A5
+def _mark_exceedance(fig, values, role: str, dark: bool, *, row=None, col=None,
+                     show_text: bool = True, size: int = 7):
+    """Put P90 / P50 / mean / P10 markers on an exceedance curve, labelled by value.
+
+    Labelled with the **volume**, not the percentile, because the percentile is
+    already the axis: a reader looking at a curve wants to know "what is the P50",
+    and printing "P50" beside it says nothing they cannot see. The statistic's name
+    goes in the hover, the number goes on the page.
+
+    Diamonds rather than dots, in the curve's own colour with a pale outline, so
+    four markers on four overlapping curves stay separable. The mean is drawn as a
+    square: it is not a percentile, and on a right-skewed distribution it sits
+    visibly above the P50, which is the thing worth noticing.
+    """
+    marks = exceedance_marks(values)
+    if not marks:
+        return
+    p = palette(dark)
+    for label, value, pct in marks:
+        fig.add_scatter(
+            x=[value], y=[pct], mode="markers+text" if show_text else "markers",
+            marker=dict(
+                symbol="square" if label == "Mean" else "diamond",
+                size=size + (1 if label == "Mean" else 0),
+                color=colour(role, dark),
+                line=dict(color=p["surface"], width=1.2),
+            ),
+            text=[f" {value:,.1f}"] if show_text else None,
+            textposition="middle right",
+            textfont=dict(size=8, color=p["text_secondary"]),
+            showlegend=False,
+            hovertemplate=f"{label} = {value:,.2f} MMboe at {pct:.1f}%<extra></extra>",
+            **({} if row is None else dict(row=row, col=col)),
+        )
+
+
 def pfig_a5_exceedance(
     ts: TrialSet, groups: Groups, vc: VolumeClasses, *, mefs: float | None = None,
     dark: bool = False, height: int | None = PANEL_HEIGHT,
@@ -539,6 +620,7 @@ def pfig_a5_exceedance(
             x=v, y=pct, mode="lines", name=name, line=dict(color=colour(role, dark), width=2.5),
             hovertemplate=name + "<br>%{y:.1f}% chance of exceeding %{x:.2f} MMboe<extra></extra>",
         )
+        _mark_exceedance(fig, values, role, dark)
     if mefs is not None:
         _vline(fig, mefs, p["muted"], "dot", "MEFS")
 
@@ -996,6 +1078,11 @@ def pfig_b6_inverse(
     return fig
 
 
+#: Azimuths, in degrees, that successive contour labels are placed at. Stepped so
+#: that neighbouring rings -- which crowd together where A(z) steepens -- do not
+#: stack their labels into one unreadable column.
+_LABEL_AZIMUTHS = (90.0, 55.0, 125.0, 20.0, 160.0, 70.0, 110.0, 40.0, 140.0)
+
 AREA_SCALES = {
     "area": ("Productive area (km²)", lambda a: a),
     "area²": ("Productive area² (km⁴)", lambda a: a ** 2),
@@ -1169,22 +1256,37 @@ def pfig_concepts(
     )
 
     # ------------------------------------------------- risked exceedance curves
+    # Each curve is the *conditional* distribution of its class, risked by the
+    # chance that class occurs. Not zero-padded with the trial file's own masks:
+    # that gave a curve starting at the file's implied chance, which equals the
+    # entered chance only when the convention says the trials are already risked.
+    # On a success-case-only export with a chance table on top the two differ by
+    # the whole table, and the figure then contradicts the caption beside it.
+    # ``core.classes.risked_exceedance`` makes the start equal the chance by
+    # construction -- see its docstring for the three earlier instances.
+    disc, dry = groups.discovery, groups.dry_with_attic
     risked = [
-        ("Prospect resource potential", res, "prospect"),
-        ("Well associated resource potential",
-         np.where(groups.discovery, res, 0.0), "well_associated"),
-        ("Resource tested by well", np.where(groups.discovery, vc.proven, 0.0), "tested"),
-        ("Up-dip volume", np.where(groups.dry_with_attic, res, 0.0), "up_dip"),
+        ("Prospect resource potential", res[res > 0], pos_prospect, "prospect"),
+        ("Well associated resource potential", res[disc], p_well, "well_associated"),
+        ("Resource tested by well", vc.proven[disc], p_well, "tested"),
+        # The up-dip case needs its *own* chance: dry but charged, which is
+        # POS_prospect - P_well, not P_well.
+        ("Up-dip volume", res[dry], max(pos_prospect - p_well, 0.0), "up_dip"),
     ]
     spans: dict[str, tuple[float, float, str]] = {}
-    for name, values, role in risked:
-        v, pct = _exceedance(values)
+    for name, values, chance_of, role in risked:
+        v, pct = risked_exceedance(values, chance_of)
         fig.add_scatter(
             x=v, y=pct, mode="lines", name=name,
             line=dict(color=colour(role, dark), width=2.6),
             hovertemplate=name + "<br>%{y:.1f}% chance of exceeding %{x:.2f} MMboe<extra></extra>",
             row=1, col=2,
         )
+        # Markers without labels here: four risked curves in one panel means
+        # sixteen numbers, and the braces below already carry the ranges. The
+        # values are in the hover.
+        _mark_exceedance(fig, values, role, dark, row=1, col=2,
+                         show_text=False, size=6)
         positive = v[v > 0]
         if positive.size:
             spans[name] = (float(positive.min()), float(positive.max()), role)

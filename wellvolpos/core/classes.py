@@ -195,3 +195,78 @@ def _explain_correlation(ts: TrialSet, m: np.ndarray, r: float) -> str:
         f"related beyond their shared dependence on fill — a rock-property correlation, not just "
         f"wedge geometry."
     )
+
+
+# --------------------------------------------------------- risked distributions
+#: The percentiles the volume-class table reports, in petroleum orientation:
+#: **P99 is the low case** (exceeded 99 % of the time) and P1 is the high case.
+REPORT_PERCENTILES = (99, 90, 50, 10, 1)
+
+
+def risked_exceedance(values: np.ndarray, chance: float):
+    """The risked exceedance curve of a conditional distribution.
+
+    Returns ``(sorted_values, percent)`` where ``percent`` is
+    ``chance x P(X >= x | the outcome happens)``, in per cent.
+
+    **Built from the chance, not by padding with zeros.** Zero-padding a
+    distribution with the trial file's own non-occurrences -- ``np.where(discovery,
+    res, 0)`` -- gives a curve that starts at the *file's* implied chance, which
+    equals the entered chance only when the risking convention says the trials are
+    already risked. On a success-case-only export with a chance table entered on
+    top, the two differ by the whole of the chance table, and the figure then
+    contradicts its own caption.
+
+    That is the fourth time this codebase has drawn an unrisked number under a
+    risked label (after A2, tab ④'s tree and B4), and it is why the arithmetic
+    lives here instead of in the figure: a curve built this way *cannot* start
+    anywhere but at ``chance``.
+    """
+    v = np.sort(np.asarray(values, dtype=float))
+    v = v[np.isfinite(v)]
+    n = v.size
+    if n == 0:
+        return v, np.array([])
+    conditional = (n - np.arange(n)) / n
+    return v, 100.0 * float(chance) * conditional
+
+
+def class_percentiles(values: np.ndarray, chance: float,
+                      percentiles=REPORT_PERCENTILES) -> dict[str, float]:
+    """One class's percentiles, its mean, and the risked chance of exceeding each.
+
+    Two readings of the same distribution, side by side, because a decision needs
+    both and they answer different questions:
+
+    *Unrisked* (conditional) -- the size **if this outcome happens**. Its P50 is
+    exceeded half the time *given* the outcome, so its percentiles are the
+    familiar ones and the shape is the shape of the accumulation.
+
+    *Risked* -- the same volumes, with the chance of the outcome folded in. The
+    P50 volume is then exceeded ``chance x 50 %`` of the time overall. Nothing
+    about the volumes changes; what changes is the probability attached to them,
+    and that is the number a decision is made against.
+
+    The mean is reported with the exceedance probability it actually falls at,
+    which on a right-skewed distribution is well above 50 % of the way down the
+    curve -- typically near P35. That gap is why "the mean" and "the middle" are
+    not interchangeable words here.
+    """
+    v = np.asarray(values, dtype=float)
+    v = v[np.isfinite(v)]
+    out: dict[str, float] = {"n": float(v.size), "chance": float(chance)}
+    if v.size == 0:
+        for q in percentiles:
+            out[f"p{q}"] = float("nan")
+        out["mean"] = float("nan")
+        out["mean_at"] = float("nan")
+        return out
+    for q in percentiles:
+        # P90 is the *low* case: exceeded 90 % of the time, so it is the 10th
+        # percentile of the values. Getting this backwards is the classic error.
+        out[f"p{q}"] = float(np.percentile(v, 100 - q))
+    mean = float(np.mean(v))
+    out["mean"] = mean
+    # Where the mean sits on this distribution's own curve, conditionally.
+    out["mean_at"] = 100.0 * float(np.mean(v >= mean))
+    return out

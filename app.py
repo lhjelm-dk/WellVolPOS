@@ -37,6 +37,8 @@ from wellvolpos.core import (
     allocate,
     apply_min_column_height,
     check_area_pay_correlation,
+    REPORT_PERCENTILES,
+    class_percentiles,
     class_summary,
     compare_definitions,
     expected_volume,
@@ -639,9 +641,11 @@ with tabs[1]:
         st.caption(
             f"Concentric contours whose *areas* come from A(z), apex at the centre, deepest "
             f"sampled contact ({ad.deepest:.0f} m) as the outer ring. The shaded area inside the "
-            f"entry contour is what a dry hole would leave up-dip. Contours shallower than the "
-            f"shallowest sampled contact ({ad.shallowest:.0f} m) are dotted — the trials never "
-            f"reached the crest, so their area is a taper to the apex, not a model output. "
+            f"entry contour is what a dry hole would leave up-dip. **Every contour is dashed; the "
+            f"one solid ring is the well's entry depth**, so line style says only 'is this the "
+            f"well?'. Contours shallower than the shallowest sampled contact "
+            f"({ad.shallowest:.0f} m) are drawn faint — the trials never reached the crest, so "
+            f"their area is a taper to the apex, not a model output. "
             f"**The shape is a cartoon**: circles of the right area, in the wrong outline."
         )
 
@@ -709,18 +713,116 @@ with tabs[2]:
         )
     else:
         st.divider()
-        st.markdown("**Volume classes** (MMboe) — at the current entry/exit")
+        st.markdown("### Volume classes")
+        st.caption(
+            "Five ways of measuring the same prospect, each answering a different question. "
+            "They **nest**: up-dip ⊂ tested ⊂ well associated ⊂ prospect."
+        )
+        class_defs = [
+            ("Prospect resource potential",
+             "The whole un-cut model, crest to spill. What the prospect holds if it works — "
+             "**with no well in it**. This is the number that gets quoted in a portfolio, and it "
+             "is not what any one borehole can find."),
+            ("Well associated volume",
+             "The accumulation given that **this well** finds hydrocarbons — the contact is deeper "
+             "than the reservoir entry, so the well is in the column. Rose calls it *Downdip*. "
+             "**This is the volume a well proposal is made on.**"),
+            ("Resource tested by the well",
+             "The part of that accumulation between the reservoir **entry** and the well's lowest "
+             "known hydrocarbon, which is the shallower of the contact and the reservoir **exit**. "
+             "What a discovery would have *proven*. The headline KPI."),
+            ("Possible — below the reservoir exit",
+             "The rest of the well-associated volume: what lies **below the depth at which the "
+             "well left the reservoir**. The well was still in hydrocarbons when it exited, so it "
+             "never established how far down they go. Well associated, but **not proven** — that "
+             "distinction is the whole reason this class exists instead of being folded into the "
+             "discovery case."),
+            ("Up-dip / attic volume",
+             "The accumulation in the trials where hydrocarbons are present but sit **entirely "
+             "above** the well: the well is dry, the prospect is not. This is what a dry hole "
+             "leaves behind, and the number quoted when somebody argues for a sidetrack."),
+        ]
+        with st.expander("What each class means — worth reading once", expanded=False):
+            for name, text in class_defs:
+                st.markdown(f"**{name}** — {text}")
+            st.caption(
+                "Colours are fixed by concept across every figure in the app; the key is in tab ⑥."
+            )
+
+        # The chance that each class *occurs at all*. The prospect's is
+        # POS_prospect; the three well-associated classes share P_well; the up-dip
+        # case is dry but charged, so POS_prospect - P_well. Taken from `chance`,
+        # never from the trial file's own zero count -- see
+        # core.classes.risked_exceedance for the three times that went wrong.
+        res_all = ts.col("resource")
+        p_updip = max(chance.pos_prospect - chance.p_well, 0.0)
+        rows = [
+            ("Prospect resource potential", res_all[res_all > 0], chance.pos_prospect),
+            ("Well associated volume", vc.discovery_total[groups.discovery], chance.p_well),
+            ("Resource tested by the well", vc.proven[groups.discovery], chance.p_well),
+            ("Possible — below the reservoir exit", vc.possible[groups.discovery], chance.p_well),
+            ("Up-dip / attic volume", vc.attic[groups.dry_with_attic], p_updip),
+        ]
+        stats = [(name, class_percentiles(values, ch)) for name, values, ch in rows]
+        pcols = [f"P{q}" for q in REPORT_PERCENTILES]
+
+        st.markdown("**Volumes (MMboe)** — the size of each class *if it occurs*")
         st.dataframe(
-            pd.DataFrame(
-                [
-                    {"class": "Discovery", **cs["discovery"]},
-                    {"class": "Proven at well", **cs["proven"]},
-                    {"class": "Possible — below reservoir exit", **cs["possible"]},
-                    {"class": "Attic | dry hole", **cs["attic_dry_hole"]},
-                ]
-            )[["class", "n", "p90", "p50", "mean", "p10"]],
-            hide_index=True,
-            width="stretch",
+            pd.DataFrame([
+                {"class": name, "n": int(s["n"]),
+                 **{f"P{q}": s[f"p{q}"] for q in REPORT_PERCENTILES}, "Mean": s["mean"]}
+                for name, s in stats
+            ])[["class", "n", "P99", "P90", "P50", "Mean", "P10", "P1"]],
+            hide_index=True, width="stretch",
+            column_config={c: st.column_config.NumberColumn(format="%.2f")
+                           for c in pcols + ["Mean"]},
+        )
+
+        reading = st.radio(
+            "Probability shown against those volumes",
+            ["risked", "unrisked"],
+            format_func=lambda k: {
+                "risked": "Risked — the chance of exceeding it at all (chance × percentile)",
+                "unrisked": "Unrisked — the chance of exceeding it given the class occurs",
+            }[k],
+            horizontal=True, key="w_class_reading",
+        )
+        is_risked = reading == "risked"
+        st.markdown(
+            "**Probability of exceeding each volume above** — "
+            + ("*risked*: the chance of that much or more, full stop."
+               if is_risked else
+               "*unrisked*: the chance of that much or more **given the class occurs**.")
+        )
+        st.dataframe(
+            pd.DataFrame([
+                {
+                    "class": name,
+                    "chance the class occurs": s["chance"],
+                    **{f"P{q}": (s["chance"] if is_risked else 1.0) * q / 100.0
+                       for q in REPORT_PERCENTILES},
+                    "Mean": (s["chance"] if is_risked else 1.0) * s["mean_at"] / 100.0,
+                }
+                for name, s in stats
+            ])[["class", "chance the class occurs", "P99", "P90", "P50", "Mean", "P10", "P1"]],
+            hide_index=True, width="stretch",
+            column_config={c: st.column_config.NumberColumn(format="percent")
+                           for c in ["chance the class occurs"] + pcols + ["Mean"]},
+        )
+        st.caption(
+            "**Both readings, because they answer different questions and neither is optional.** "
+            "Unrisked is the shape of the accumulation *if it is there* — its P90 is exceeded 90 % "
+            "of the time given the class occurs, which is why the unrisked row is simply "
+            "99/90/50/10/1. Risked folds in the chance of the outcome happening at all, so the "
+            "same volumes carry smaller probabilities: the well-associated P50 of "
+            f"{stats[1][1]['p50']:.1f} MMboe is exceeded {chance.p_well * 0.5:.1%} of the time, "
+            "not 50 %. **The volumes never change between the two readings** — only the "
+            "probability attached to them, and the risked one is what a decision is made against."
+            "\n\n"
+            "**P99 is the low case** and P1 the high case: P99 is exceeded 99 % of the time. And "
+            "the **mean is not a percentile** — on these right-skewed distributions it sits at "
+            f"P{stats[1][1]['mean_at']:.0f} of the well-associated case, not at P50, so 'mean' "
+            "and 'middle' are not interchangeable words here."
         )
         st.divider()
         _chart(pfig_concepts(

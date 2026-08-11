@@ -12,7 +12,14 @@ from .chance import (
     r_location,
     waterfall_steps,
 )
-from .classes import check_area_pay_correlation, class_summary, split_trials
+from .classes import (
+    REPORT_PERCENTILES,
+    check_area_pay_correlation,
+    class_percentiles,
+    class_summary,
+    risked_exceedance,
+    split_trials,
+)
 from .groups import group_summary, group_trials
 from .structure import AreaDepth
 from .reservoir import ThicknessFromPay, thickness_from_pay
@@ -47,6 +54,9 @@ from .threshold import (
 __all__ = [
     "AreaDepth", "group_trials", "group_summary", "split_trials", "class_summary",
     "check_area_pay_correlation",
+    "class_percentiles",
+    "risked_exceedance",
+    "REPORT_PERCENTILES",
     "r_location", "p_well", "allocate", "cube_root_factor", "expected_volume", "ReferenceContour",
     "ELEMENTS", "SCHEMES", "SCHEME_LABELS", "SHIPPED_SCHEMES", "normalised_weights",
     "waterfall_steps",
