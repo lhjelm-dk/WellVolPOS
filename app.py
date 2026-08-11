@@ -736,23 +736,35 @@ with tabs[1]:
         )
 
         st.divider()
-        _chart(pfig_a5_exceedance(ts, groups, vc, mefs=mefs), key="a5")
+        # POS_prospect, not P_well: the risked curve here is the *prospect's*, which
+        # is a property of the prospect and belongs on this tab. It stopped being
+        # drawn when the tab went well-free, because the chance argument was
+        # stripped along with the well ones -- and without a chance the figure
+        # declines to invent an unconditional curve rather than guessing one.
+        _chart(pfig_a5_exceedance(
+                ts, groups, vc, mefs=mefs, pos_prospect=chance.pos_prospect,
+            ), key="a5")
         st.caption(
-            "A5 — the exceedance curves at the current entry/exit, and the figure the whole tool "
-            "builds towards: the well-associated (discovery-case) distribution against the "
-            "prospect's own. No depth axis, so it sits below the row rather than in it."
+            f"**A5 — the prospect's resource, both readings.** The **solid** curve is "
+            f"*conditional*: the success case, given the prospect works. It starts at 100 % and "
+            f"it is where the percentiles live — that is what anyone means by \"the P50\". The "
+            f"**dashed** curve is *unconditional* (risked): the same volumes with POS_prospect "
+            f"folded in, so it starts at **{chance.pos_prospect:.0%}** instead.\n\n"
+            f"The volumes are identical between the two — only the probability attached to them "
+            f"changes, and the risked one is what a portfolio adds up. No depth axis, so this "
+            f"sits below the row rather than in it."
         )
 
         # The numbers behind A5, in both readings (Lars, 2026-08-11). One row per
         # case and statistic, long-form rather than a wide grid, so that every cell
         # is labelled and nothing has to be inferred from a column header.
         st.markdown("**The numbers behind A5**")
-        _p_updip = max(chance.pos_prospect - chance.p_well, 0.0)
+        # Prospect only, matching the figure above it. The other three cases are
+        # well results and moved to tab ④ with the rest of them; leaving them here
+        # was the same leftover as A5's missing chance -- the well was taken out of
+        # the figures on this tab but not out of the numbers under them.
         _a5_cases = [
-            ("Prospect (all trials)", res_all[res_all > 0], chance.pos_prospect),
-            ("Discovery case", vc.discovery_total[groups.discovery], chance.p_well),
-            ("Proven at well", vc.proven[groups.discovery], chance.p_well),
-            ("Attic | dry hole", vc.attic[groups.dry_with_attic], _p_updip),
+            ("Prospect recoverable resource", res_all[res_all > 0], chance.pos_prospect),
         ]
         _rows = []
         for _name, _values, _ch in _a5_cases:
@@ -771,7 +783,7 @@ with tabs[1]:
                     "probability — risked": _cond * _ch,
                 })
         st.dataframe(
-            pd.DataFrame(_rows), hide_index=True, width="stretch", height=330,
+            pd.DataFrame(_rows), hide_index=True, width="stretch",
             column_config={
                 "volume (MMboe)": st.column_config.NumberColumn(format="%.2f"),
                 "probability — unrisked": st.column_config.NumberColumn(format="percent"),
@@ -994,12 +1006,16 @@ with tabs[3]:
         # Two figures, one above the other (Lars, 2026-08-11). They were one stacked
         # composite; split, each renders at its own natural height and either can be
         # exported and placed on its own.
-        # C1 is a small recognition panel, not a panel in a row, so it does not take
-        # the shared height. A1 on tab ② carries the full version.
+        # C1 is fully labelled again (Lars, 2026-08-11). It ran for a while as a
+        # small unlabelled thumbnail on the argument that A1 higher up this tab
+        # carried the readable version -- but C1's job here is to be read *with* C2
+        # directly below it, and the pair only makes its argument if both halves
+        # carry a scale: C2 shows what each volume is worth, C1 has to show where
+        # it sits, and "above the well at 2205 m" is not sayable without a depth
+        # axis. So it takes a full panel height like everything else.
         _chart(pfig_c1_section(
                 ad, ts, z_entry=entry, z_exit=exit_, area_scale=area_scale,
-                height=C1_THUMB_HEIGHT,
-            ), key="c1", height=C1_THUMB_HEIGHT)
+            ), key="c1")
         _chart(pfig_c2_exceedance(
                 ts, groups, vc, pos_prospect=chance.pos_prospect,
                 p_well=chance.p_well, mefs=mefs,

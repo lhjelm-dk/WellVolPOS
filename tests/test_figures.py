@@ -559,22 +559,37 @@ def test_the_c2_twin_starts_its_curves_at_their_own_chance(reduced, area_depth, 
     assert tops_dashed == pytest.approx(expected, abs=0.6)
 
 
-def test_the_c1_twin_is_an_unlabelled_recognition_panel(reduced, area_depth, groups, vc):
-    """C1 is deliberately stripped (Lars, 2026-08-11): A1 carries the full version
-    with axes and the thickness family, and C1's only job beside C2 is to be
-    *recognised*.
+def test_the_c1_twin_carries_a_labelled_depth_axis_and_the_well(
+    reduced, area_depth, groups, vc
+):
+    """C1 is fully labelled (Lars, 2026-08-11), and is *not* an exemption from
+    non-negotiable 2.
 
-    So it is exempt from the depth *label* rule while keeping the part that matters
-    -- depth still on y and still inverted. A reader taking a number off this panel
-    is using the wrong figure, and stripping the ticks is what says so.
+    It briefly was one -- a stripped thumbnail whose job beside C2 was to be
+    recognised rather than read. That failed in use: it is the first figure on the
+    teaching tab, and a structure with no depth axis cannot show that the up-dip
+    volume sits *above* the well at some particular depth, which is the whole
+    content of the panel.
+
+    So this asserts the ordinary rule -- depth on y, inverted, labelled in m TVDSS
+    -- plus the two well rules, which is the other half of what came back.
     """
     fig, ax_sec = figures.fig_c1_section(
         area_depth, reduced, z_entry=ENTRY, z_exit=EXIT,
     )
     lo, hi = ax_sec.get_ylim()
-    assert lo > hi                                       # inverted: the part that matters
-    assert ax_sec.get_ylabel() == "" and ax_sec.get_xlabel() == ""
-    assert len(ax_sec.get_xticks()) == 0 and len(ax_sec.get_yticks()) == 0
+    assert lo > hi                                       # inverted
+    assert "TVDSS" in ax_sec.get_ylabel()
+    assert ax_sec.get_xlabel()                           # the area axis is named
+    assert len(ax_sec.get_yticks()) > 0
+
+    # The well: one rule at entry, one at exit, both in the well colour and both
+    # named. An unnamed rule is the state this test exists to prevent returning to.
+    ys = {round(float(line.get_ydata()[0]), 3) for line in ax_sec.get_lines()
+          if len(set(line.get_ydata())) == 1}
+    assert round(ENTRY, 3) in ys and round(EXIT, 3) in ys
+    texts = {t.get_text() for t in ax_sec.texts}
+    assert "well entry" in texts and "well exit" in texts
 
 
 def test_the_c2_twin_colours_by_the_same_roles_as_its_plotly_original(

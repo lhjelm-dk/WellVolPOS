@@ -1874,35 +1874,43 @@ def pfig_b8_commercial_chance(
 # ----------------------------------------------------- the concepts figure
 def pfig_c1_section(
     ad: AreaDepth, ts: TrialSet, *, z_entry: float, z_exit: float,
-    area_scale: str = "area", dark: bool = False, height: int | None = 260,
+    area_scale: str = "area", zlim: tuple[float, float] | None = None,
+    dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
-    """C1 -- the structure, as a small recognition panel above C2.
+    """C1 -- the structure, above C2's curves.
 
-    A1 now carries the full version of this: the same A(z), the same base reservoir
-    and the same three shaded classes, with axes, labels and the thickness family
-    (Lars, 2026-08-11). What is left here is deliberately **small and unlabelled** --
-    no axis titles, no tick labels, no legend -- because its job beside C2 is not to
-    be read but to be *recognised*: this shape, these three colours, and then the
-    same three colours as curves below.
+    The pair is the argument: this panel says *where* each volume sits in the
+    structure, C2 says what it is worth and how likely it is, and the two carry the
+    same four colours so a reader moves between them without a key.
 
-    Stripping the labels is the point rather than a saving. A reader who tries to
-    take a number off this panel is using the wrong figure, and A1 is one tab away.
+    **Fully labelled** (Lars, 2026-08-11). It ran unlabelled for a while, on the
+    reasoning that beside C2 its job was to be recognised rather than read. That was
+    wrong in use: the pair only makes its argument if both halves carry a scale.
+    C2 says what each volume is worth; C1 has to say where it sits, and "above the
+    well at 2205 m" is not sayable without a depth axis. The class shading, the
+    entry and exit rules and the depth scale are the content, not decoration.
+
+    A1 higher up the same tab draws the same band with the thickness family and the
+    area percentiles; this one stays simpler on purpose -- one base reservoir, no
+    area curves -- so the classes are what the eye lands on.
     """
     p = palette(dark)
     _, transform = AREA_SCALES.get(area_scale, AREA_SCALES["area"])
     fig = go.Figure()
-    _reservoir_band(fig, ad, ts, z_entry=z_entry, z_exit=z_exit, dark=dark,
-                    transform=transform, labels=False)
-    for depth, dash in ((z_entry, "dash"), (z_exit, "dot")):
-        fig.add_hline(y=depth, line=dict(color=p["well"], width=1.2, dash=dash))
+    note = _reservoir_band(fig, ad, ts, z_entry=z_entry, z_exit=z_exit, dark=dark,
+                           transform=transform, labels=True)
+    _hline(fig, z_entry, p["well"], "dash", "well entry")
+    if z_exit != z_entry:
+        _hline(fig, z_exit, p["well"], "dot", "well exit")
 
-    fig.update_layout(title="C1 · the structure", showlegend=False)
+    fig.update_layout(
+        title=f"C1 · the structure, and the volumes a well at this depth divides it into{note}",
+        xaxis_title=AREA_SCALES.get(area_scale, AREA_SCALES["area"])[0],
+        showlegend=False,
+    )
+    fig.update_xaxes(rangemode="tozero")
     apply_plotly(fig, dark, height)
-    # Everything off: this panel is for recognition, not for reading.
-    fig.update_xaxes(title_text=None, showticklabels=False, showgrid=False, zeroline=False)
-    fig.update_yaxes(title_text=None, showticklabels=False, showgrid=False, zeroline=False,
-                     autorange="reversed")
-    fig.update_layout(margin=dict(l=10, r=10, t=34, b=10))
+    depth_axis_plotly(fig, zlim or (ad.shallowest, ad.deepest))
     return fig
 
 

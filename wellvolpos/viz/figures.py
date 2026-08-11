@@ -1402,24 +1402,31 @@ def fig_c1_section(
     ad: AreaDepth, ts: TrialSet, *, z_entry: float, z_exit: float,
     area_scale: str = "area", dark: bool = False,
 ):
-    """C1 for the export path -- the small recognition panel above C2.
+    """C1 for the export path -- the structure above C2's curves.
 
-    A1 carries the full version now, with axes and the thickness family. What is
-    left here is deliberately unlabelled: beside C2 its job is to be *recognised*,
-    not read, and a reader taking a number off it is using the wrong figure.
+    Fully labelled, like the plotly twin (Lars, 2026-08-11). It spent a while as an
+    unlabelled thumbnail on the argument that A1 carried the readable version; in
+    use that failed, because a structural panel with no depth axis cannot show that
+    the up-dip volume sits *above* the well at a particular depth, which is the one
+    thing C1 exists to show.
     """
     p = palette(dark)
-    fig, ax = new_figure(figsize=(6.0, 2.2), dark=dark)
+    from .interactive import AREA_SCALES          # local, as in _reservoir_section_mpl
+
+    label, _ = AREA_SCALES.get(area_scale, AREA_SCALES["area"])
+    fig, ax = new_figure(figsize=(6.0, 4.0), dark=dark)
     _reservoir_section_mpl(ax, ad, ts, z_entry=z_entry, z_exit=z_exit,
                            dark=dark, area_scale=area_scale)
-    for depth, ls in ((z_entry, "--"), (z_exit, ":")):
+    for depth, ls, name in ((z_entry, "--", "well entry"), (z_exit, ":", "well exit")):
         ax.axhline(depth, color=p["well"], lw=1.1, ls=ls)
-    ax.set_ylim(ad.deepest, ad.shallowest)
-    ax.set_xlabel(None)
-    ax.set_ylabel(None)
-    ax.set_xticks([])
-    ax.set_yticks([])
-    ax.set_title("C1 · the structure", fontsize=9)
+        ax.text(0.99, depth, name, transform=ax.get_yaxis_transform(),
+                ha="right", va="bottom", fontsize=7.5, color=p["well"])
+    ax.set_xlim(left=0)
+    ax.set_xlabel(label)
+    depth_axis(ax, zlim=(ad.shallowest, ad.deepest))
+    ax.set_title("C1 · the structure, and the volumes a well at this depth divides it into",
+                 fontsize=9)
+    ax.grid(True, lw=0.6, alpha=0.7)
     fig.tight_layout()
     return fig, ax
 
