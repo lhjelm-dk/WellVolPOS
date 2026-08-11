@@ -29,6 +29,7 @@ import streamlit as st
 
 from wellvolpos.core import (
     ELEMENTS,
+    chance_from_counts,
     MIN_SUPPORT,
     SCHEME_LABELS,
     SHIPPED_SCHEMES,
@@ -83,6 +84,8 @@ from wellvolpos.viz import (
     pfig_b4_chance_waterfall,
     pfig_b5_allocation_dumbbell,
     pfig_b6_inverse,
+    pfig_b7_frontier,
+    pfig_b8_commercial_chance,
     pfig_concepts,
     pfig_map_view,
     row_zlim,
@@ -123,6 +126,12 @@ CONVENTION_PROVENANCE = {
 }
 
 st.set_page_config(page_title="WellVolPOS", layout="wide", page_icon="🛢")
+
+#: C1 is a stacked composite of two panels, so it needs roughly twice a panel's
+#: height. Left as its own constant rather than a multiple of PANEL_HEIGHT, because
+#: PANEL_HEIGHT means "the height a row of depth panels shares" and C1 is not in a
+#: row with anything.
+C1_HEIGHT = 940
 
 
 # Dark mode was built and then dropped, on Lars's instruction (2026-08-10). The
@@ -179,7 +188,7 @@ def _badge(level: str) -> str:
     return {"pass": "✅", "warn": "⚠️", "fail": "⛔"}[level]
 
 
-def _chart(fig, key: str):
+def _chart(fig, key: str, height: int = PANEL_HEIGHT):
     """Render a project figure with the two settings a row's alignment needs.
 
     ``height`` is pinned rather than left at Streamlit's default of ``"content"``:
@@ -191,8 +200,13 @@ def _chart(fig, key: str):
     plotly theme otherwise restyles fonts, title and template on top of ours,
     which is exactly the drift between the two backends that CLAUDE.md's
     "both driven from viz/theme.py" rule exists to prevent.
+
+    ``height`` defaults to the shared panel height, which is what keeps a row of
+    depth panels aligned. C1 overrides it: it is a *stacked composite*, not a panel
+    in a row, and at 470 px both of its halves were squashed to the point where the
+    braces collided with the axis.
     """
-    return st.plotly_chart(fig, width="stretch", height=PANEL_HEIGHT, theme=None, key=key)
+    return st.plotly_chart(fig, width="stretch", height=height, theme=None, key=key)
 
 
 # ------------------------------------------------------------------- tabs
@@ -766,78 +780,83 @@ with tabs[2]:
         stats = [(name, class_percentiles(values, ch)) for name, values, ch in rows]
         pcols = [f"P{q}" for q in REPORT_PERCENTILES]
 
-        st.markdown("**Volumes (MMboe)** — the size of each class *if it occurs*")
-        st.dataframe(
-            pd.DataFrame([
-                {"class": name, "n": int(s["n"]),
-                 **{f"P{q}": s[f"p{q}"] for q in REPORT_PERCENTILES}, "Mean": s["mean"]}
-                for name, s in stats
-            ])[["class", "n", "P99", "P90", "P50", "Mean", "P10", "P1"]],
-            hide_index=True, width="stretch",
-            column_config={c: st.column_config.NumberColumn(format="%.2f")
-                           for c in pcols + ["Mean"]},
-        )
-
-        reading = st.radio(
-            "Probability shown against those volumes",
-            ["risked", "unrisked"],
-            format_func=lambda k: {
-                "risked": "Risked — the chance of exceeding it at all (chance × percentile)",
-                "unrisked": "Unrisked — the chance of exceeding it given the class occurs",
-            }[k],
-            horizontal=True, key="w_class_reading",
-        )
-        is_risked = reading == "risked"
+        # One table, not two (Lars, 2026-08-11). The percentiles are the
+        # **conditional (success case)** ones, which is where the industry defines
+        # them -- "P90 is 90 % probability of exceeding the P90 estimated value"
+        # (Milkov 2021) -- and the added chance column is what turns them into
+        # unconditional probabilities: multiply. A second table of those products
+        # said nothing the multiplication does not.
+        #
+        # The chance column is `n / N` from the trial counts, as asked, and is
+        # labelled that way because it is the *file's* chance. Under the
+        # "trials are risked" convention it equals the app's chance; under
+        # "success-case only, chance table on top" it does not, and the note below
+        # the table says so rather than letting the two be confused.
         st.markdown(
-            "**Probability of exceeding each volume above** — "
-            + ("*risked*: the chance of that much or more, full stop."
-               if is_risked else
-               "*unrisked*: the chance of that much or more **given the class occurs**.")
+            "**Volumes (MMboe), conditional on the case occurring** — with the chance of being "
+            "on each distribution at all"
         )
         st.dataframe(
             pd.DataFrame([
-                {
-                    "class": name,
-                    "chance the class occurs": s["chance"],
-                    **{f"P{q}": (s["chance"] if is_risked else 1.0) * q / 100.0
-                       for q in REPORT_PERCENTILES},
-                    "Mean": (s["chance"] if is_risked else 1.0) * s["mean_at"] / 100.0,
-                }
-                for name, s in stats
-            ])[["class", "chance the class occurs", "P99", "P90", "P50", "Mean", "P10", "P1"]],
+                {"class": name,
+                 "n": int(s_["n"]),
+                 "chance of the case (n / N)": chance_from_counts(int(s_["n"]), ts.n_trials),
+                 **{f"P{q}": s_[f"p{q}"] for q in REPORT_PERCENTILES},
+                 "Mean": s_["mean"]}
+                for name, s_ in stats
+            ])[["class", "n", "chance of the case (n / N)",
+                "P99", "P90", "P50", "Mean", "P10", "P1"]],
             hide_index=True, width="stretch",
-            column_config={c: st.column_config.NumberColumn(format="percent")
-                           for c in ["chance the class occurs"] + pcols + ["Mean"]},
+            column_config={
+                "chance of the case (n / N)": st.column_config.NumberColumn(format="percent"),
+                **{c: st.column_config.NumberColumn(format="%.2f")
+                   for c in [f"P{q}" for q in REPORT_PERCENTILES] + ["Mean"]},
+            },
         )
+        _counts_chance = chance_from_counts(int(stats[1][1]["n"]), ts.n_trials)
         st.caption(
-            "**Both readings, because they answer different questions and neither is optional.** "
-            "Unrisked is the shape of the accumulation *if it is there* — its P90 is exceeded 90 % "
-            "of the time given the class occurs, which is why the unrisked row is simply "
-            "99/90/50/10/1. Risked folds in the chance of the outcome happening at all, so the "
-            "same volumes carry smaller probabilities: the well-associated P50 of "
-            f"{stats[1][1]['p50']:.1f} MMboe is exceeded {chance.p_well * 0.5:.1%} of the time, "
-            "not 50 %. **The volumes never change between the two readings** — only the "
-            "probability attached to them, and the risked one is what a decision is made against."
-            "\n\n"
-            "**P99 is the low case** and P1 the high case: P99 is exceeded 99 % of the time. And "
-            "the **mean is not a percentile** — on these right-skewed distributions it sits at "
-            f"P{stats[1][1]['mean_at']:.0f} of the well-associated case, not at P50, so 'mean' "
-            "and 'middle' are not interchangeable words here."
+            "**These percentiles are conditional — they assume the case happens.** P90 is exceeded "
+            "90 % of the time *given* the case, P50 half the time, and so on; that is what the "
+            "industry means by \"the P50\", and Schneider et al. (2023) determine this success-case "
+            "distribution **before** any chance is applied. To get the *unconditional* (risked) "
+            "probability of any volume in the table, multiply its percentile by the chance column: "
+            f"the well-associated P50 of {stats[1][1]['p50']:.1f} MMboe is exceeded "
+            f"{_counts_chance * 0.5:.1%} of the time, not 50 %. **The volumes do not change between "
+            "the two readings — only the probability attached to them.**\n\n"
+            "**P99 is the low case** and P1 the high case. And the **mean is not a percentile**: on "
+            f"these right-skewed distributions it sits at P{stats[1][1]['mean_at']:.0f} of the "
+            "well-associated case rather than at P50, so \"mean\" and \"middle\" are not "
+            "interchangeable words here."
         )
+        if abs(_counts_chance - chance.p_well) > 5e-4:
+            st.info(
+                f"The chance column counts trials: {int(stats[1][1]['n']):,} of {ts.n_trials:,} "
+                f"are well associated, so **{_counts_chance:.1%}** — the *file's* chance. The app is "
+                f"using **P_well = {chance.p_well:.1%}**, because the risking convention in tab ① "
+                f"says the chance comes from the chance table rather than from the trials. C1's "
+                f"dashed curves and every figure use P_well; this column is the raw count."
+            )
         st.divider()
         _chart(pfig_concepts(
                 ad, ts, groups, vc, z_entry=entry, z_exit=exit_,
                 pos_prospect=chance.pos_prospect, p_well=chance.p_well, mefs=mefs,
-                area_scale=area_scale,
-            ), key="concepts")
+                area_scale=area_scale, height=C1_HEIGHT,
+            ), key="concepts", height=C1_HEIGHT)
         st.caption(
-            "**The concepts, in one picture.** Left: where each volume sits in the structure. "
-            "Right: the same four volumes as *risked* exceedance curves — zeros included for the "
-            "outcomes that do not happen, so each curve starts at its own chance rather than at "
-            "100 %. That is why the prospect curve begins at "
-            f"{chance.pos_prospect:.0%} and the well-associated curve at {chance.p_well:.0%}: the "
-            "vertical gap between those two starts **is** the location penalty. The braces show "
-            "the nesting — up-dip inside tested inside well associated inside prospect."
+            "**C1 — the concepts, in one picture.** Above: where each volume sits in the "
+            "structure. Below: the same volumes as exceedance curves, **two per concept in one "
+            "colour**.\n\n"
+            "The **solid** curve is *conditional* — the success case, given that case happens. It "
+            "starts at 100 % and it is where the percentiles live: that is what anyone means by "
+            "\"the P50\". The **dashed** curve is *unconditional* (risked): the same volumes with "
+            "the chance folded in, so it starts at the chance instead. Here the prospect's dashed "
+            f"curve begins at {chance.pos_prospect:.0%} and the well-associated one at "
+            f"{chance.p_well:.0%} — and **the vertical gap between those two starts is the location "
+            "penalty**, the chance the prospect holds something this well would miss.\n\n"
+            "Markers sit on the *unconditional* curves at P90 / P50 / mean / P10. The braces below "
+            "show the nesting — up-dip inside tested inside well associated inside prospect — and "
+            "the axis carries no negative labels: that space is for the braces, not for "
+            "probabilities."
         )
 
         st.divider()
@@ -925,6 +944,29 @@ def _location_sweep_tab():
         f"meet — it is not a risked comparison, since P_well is unconditional and the regret "
         f"curve is conditional on a dry *and* charged outcome. {sup_disc.message()} "
         f"{sup_dry.message()}"
+    )
+
+    # ---- B7 and B8, both from the 2018 macro workbook (Lars, 2026-08-11)
+    st.divider()
+    st.subheader("The trade-off, and where it is commercial")
+    tb1, tb2 = st.columns(2)
+    with tb1:
+        _chart(pfig_b7_frontier(vsweep, current_z=entry), key="b7")
+    with tb2:
+        _chart(pfig_b8_commercial_chance(vsweep, current_z=entry, zlim=zrow_sweep), key="b8")
+    st.caption(
+        "**B7** is the workbook's *Well POS vs. Well to be tested Mean Resource*, and it is the "
+        "most direct statement of what this tool is about: moving the well down-dip **buys volume "
+        "with chance**. Read it as an efficient frontier — up and to the right is better and "
+        "unavailable — with the depth labels giving the rate of exchange in metres. Neither axis is "
+        "a depth, so this figure is exempt from the depth rule.\n\n"
+        "**B8** puts the workbook's two MEFS charts on one pair of axes, because the difference "
+        "between them *is* the content. `Pmcfs(well)` **rises** down-dip — a deeper well finds a "
+        "bigger accumulation — and is **conditional** on a discovery. `P_well` **falls** down-dip. "
+        "Their product `Pc(well) = P_well × Pmcfs(well)` is **unconditional**: the chance of a "
+        "commercial discovery, full stop. A rising curve times a falling one usually peaks in "
+        "between, and that starred peak is where the well goes on commercial grounds — `Pc(well)` "
+        "being the number Rose says to carry into an EMV."
     )
 
     _inverse_section(vsweep, ts)

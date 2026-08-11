@@ -13,7 +13,12 @@ import numpy as np
 import pytest
 
 from wellvolpos.core.chance import r_location
-from wellvolpos.core.classes import class_percentiles, risked_exceedance, split_trials
+from wellvolpos.core.classes import (
+    class_percentiles,
+    conditional_exceedance,
+    risked_exceedance,
+    split_trials,
+)
 from wellvolpos.core.sweep import run_sweep, run_volume_sweep
 from wellvolpos.viz import interactive as I
 from wellvolpos.viz.theme import (
@@ -497,7 +502,10 @@ def test_concepts_draws_the_reservoir_band_from_a_real_thickness(concepts):
     assert "Top reservoir" in said
     assert "Base reservoir" in said
     assert "Reservoir entry" in said and "Reservoir exit" in said
-    assert "back-calculated from pay" in fig.layout.title.text
+    # The thickness note moved off the figure title and onto the section panel's
+    # own x-axis label, where it belongs and where it stopped colliding with the
+    # first subplot heading.
+    assert "back-calculated from pay" in fig.layout.xaxis.title.text
     assert "area" in fig.layout.xaxis.title.text.lower()
 
 
@@ -517,8 +525,26 @@ def test_concepts_draws_the_base_on_the_seven_column_paste_too(reduced, groups, 
                           pos_prospect=POS, p_well=ch.p_well)
     said = " ".join(a.text or "" for a in fig.layout.annotations)
     assert "Base reservoir" in said
-    assert "back-calculated from pay" in fig.layout.title.text
+    # The thickness note moved off the figure title and onto the section panel's
+    # own x-axis label, where it belongs and where it stopped colliding with the
+    # first subplot heading.
+    assert "back-calculated from pay" in fig.layout.xaxis.title.text
     assert sum(1 for d in fig.data if d.fillcolor) >= 3      # all three wedges
+
+
+
+def _concept_curves(fig, concept):
+    """The (conditional, unconditional) traces for one concept in C1.
+
+    C1 draws two curves per concept, named "<concept> - conditional" and
+    "- unconditional", so tests match on the prefix rather than an exact name.
+    """
+    out = {}
+    for t in fig.data:
+        name = str(t.name or "")
+        if name.startswith(concept + " \u2014 "):
+            out[name.rsplit("\u2014 ", 1)[1]] = t
+    return out.get("conditional"), out.get("unconditional")
 
 
 def test_concepts_risked_curves_start_at_their_own_chance(concepts):
@@ -531,12 +557,13 @@ def test_concepts_risked_curves_start_at_their_own_chance(concepts):
     """
     fig, ch = concepts
     starts = {}
-    for t in fig.data:
-        if t.name in ("Prospect resource potential", "Well associated resource potential",
-                      "Up-dip volume"):
-            x = np.asarray(t.x, dtype=float)
-            y = np.asarray(t.y, dtype=float)
-            starts[t.name] = float(y[x > 0].max())
+    for concept in ("Prospect resource potential", "Well associated resource potential",
+                    "Up-dip volume"):
+        cond, uncond = _concept_curves(fig, concept)
+        # The conditional twin always reaches 100 %; the unconditional one carries
+        # the chance, and that pair is the contrast the figure exists to make.
+        assert float(np.nanmax(np.asarray(cond.y, dtype=float))) == pytest.approx(100.0, abs=1e-6)
+        starts[concept] = float(np.nanmax(np.asarray(uncond.y, dtype=float)))
     assert starts["Prospect resource potential"] == pytest.approx(100 * POS, abs=1e-6)
     assert starts["Well associated resource potential"] == pytest.approx(100 * ch.p_well, abs=1e-6)
     # Up-dip starts at P(dry and charged) = POS - P_well.
@@ -574,11 +601,15 @@ def test_concepts_braces_nest_from_narrowest_to_widest(concepts):
 def test_concepts_uses_one_colour_per_concept_across_both_panels(concepts):
     """The pairing only teaches if the section and the curves agree on colour."""
     fig, _ = concepts
-    curve_colour = {t.name: t.line.color for t in fig.data if t.name and t.line}
-    assert curve_colour["Prospect resource potential"] == colour("prospect")
-    assert curve_colour["Well associated resource potential"] == colour("well_associated")
-    assert curve_colour["Resource tested by well"] == colour("tested")
-    assert curve_colour["Up-dip volume"] == colour("up_dip")
+    for concept, role in (("Prospect resource potential", "prospect"),
+                          ("Well associated resource potential", "well_associated"),
+                          ("Resource tested by well", "tested"),
+                          ("Up-dip volume", "up_dip")):
+        cond, uncond = _concept_curves(fig, concept)
+        # Both readings of one concept share its colour; line style, not hue,
+        # separates them (non-negotiable 3).
+        assert cond.line.color == colour(role) == uncond.line.color, concept
+        assert cond.line.dash == "solid" and uncond.line.dash == "dash"
     # The section's bands carry the same roles, as translucent fills.
     fills = [t.fillcolor for t in fig.data if t.fillcolor]
     for role in ("up_dip", "tested", "possible"):
@@ -780,9 +811,10 @@ def test_the_concepts_curves_follow_the_entered_pos_not_the_trial_file(
         fig = I.pfig_concepts(area_depth, reduced, groups, vc, z_entry=ENTRY, z_exit=EXIT,
                               pos_prospect=pos, p_well=pw, mefs=14.0)
         heights = {}
-        for t in fig.data:
-            if t.name and t.y is not None and len(t.y) > 10 and "reservoir" not in str(t.name):
-                heights[t.name] = float(np.nanmax(np.asarray(t.y, dtype=float)))
+        for concept in ("Prospect resource potential", "Well associated resource potential",
+                        "Up-dip volume"):
+            _cond, uncond = _concept_curves(fig, concept)
+            heights[concept] = float(np.nanmax(np.asarray(uncond.y, dtype=float)))
         starts[pos] = heights
         assert heights["Prospect resource potential"] == pytest.approx(pos * 100.0, abs=0.5)
         assert heights["Well associated resource potential"] == pytest.approx(pw * 100.0, abs=0.5)
@@ -800,9 +832,10 @@ def test_the_gap_between_the_two_curve_starts_is_the_location_penalty(
     pos, pw = 0.7605, 0.4576
     fig = I.pfig_concepts(area_depth, reduced, groups, vc, z_entry=ENTRY, z_exit=EXIT,
                           pos_prospect=pos, p_well=pw, mefs=14.0)
-    tops = {t.name: float(np.nanmax(np.asarray(t.y, dtype=float)))
-            for t in fig.data if t.name and t.y is not None and len(t.y) > 10
-            and "reservoir" not in str(t.name)}
+    tops = {}
+    for concept in ("Prospect resource potential", "Well associated resource potential"):
+        _cond, uncond = _concept_curves(fig, concept)
+        tops[concept] = float(np.nanmax(np.asarray(uncond.y, dtype=float)))
     penalty = tops["Prospect resource potential"] - tops["Well associated resource potential"]
     assert penalty == pytest.approx((pos - pw) * 100.0, abs=0.5)
 
@@ -855,3 +888,123 @@ def test_every_map_contour_carries_a_depth_label(area_depth):
     for depth in contours.depths:
         assert f"{depth:.0f}" in " ".join(labels)
     assert any("well entry" in t for t in labels)
+
+
+# ------------------------------------------------- B7 and B8, from the workbook
+# Both come from the 2018 macro workbook, which carries four charts the 2017 one
+# did not. These two are the ones the app had no equivalent of.
+
+
+def test_b7_plots_chance_against_volume_not_against_depth(vsweep):
+    """The trade-off, stated directly. Neither axis is a depth, so B7 joins A5, A6,
+    B4 and B5 in the depth-rule exemption -- depth appears as labels along the
+    curve instead."""
+    fig = I.pfig_b7_frontier(vsweep, current_z=ENTRY)
+    assert "MMboe" in fig.layout.xaxis.title.text
+    assert "P_well" in fig.layout.yaxis.title.text
+    assert not is_depth_axis_correct_plotly(fig)          # deliberately exempt
+    labels = [a.text for a in fig.layout.annotations]
+    assert any(str(int(z)) in " ".join(labels) for z in vsweep.z[::4])
+
+
+def test_b7_moving_down_dip_buys_volume_with_chance(vsweep):
+    """The whole argument of the tool, as an assertion: along the frontier, chance
+    falls as volume rises. If this ever came out flat or positively sloped, either
+    the sweep or the figure would be wrong."""
+    fig = I.pfig_b7_frontier(vsweep)
+    assoc = next(t for t in fig.data if t.name == "Well associated mean")
+    x = np.asarray(assoc.x, dtype=float)
+    y = np.asarray(assoc.y, dtype=float)
+    ok = np.isfinite(x) & np.isfinite(y)
+    assert ok.sum() > 5
+    # Rank correlation, because the frontier is curved, not linear.
+    from scipy.stats import spearmanr
+
+    rho = spearmanr(x[ok], y[ok]).statistic
+    assert rho < -0.9, rho
+
+
+def test_b7_marks_the_current_well_on_the_frontier(vsweep):
+    fig = I.pfig_b7_frontier(vsweep, current_z=ENTRY)
+    here = next(t for t in fig.data if t.name == "This well")
+    assert f"{ENTRY:.0f}" in here.text[0]
+
+
+def test_b8_is_a_depth_figure_and_multiplies_to_the_commercial_chance(vsweep):
+    """``Pc(well) = P_well x Pmcfs(well)``, checked as arithmetic rather than
+    against the figure's own drawing -- the defence CLAUDE.md asks for after B4."""
+    fig = I.pfig_b8_commercial_chance(vsweep, current_z=ENTRY)
+    assert is_depth_axis_correct_plotly(fig)
+    named = {str(t.name).split(" —")[0]: np.asarray(t.x, dtype=float) for t in fig.data if t.name}
+    pmcfs, pw, pc = named["Pmcfs(well)"], named["P_well"], named["Pc(well)"]
+    ok = np.isfinite(pmcfs) & np.isfinite(pw) & np.isfinite(pc)
+    assert ok.sum() > 5
+    assert np.allclose(pc[ok], pw[ok] * pmcfs[ok] / 100.0, atol=1e-9)
+    # And it never exceeds either factor: a commercial discovery needs both.
+    assert np.all(pc[ok] <= pw[ok] + 1e-9) and np.all(pc[ok] <= pmcfs[ok] + 1e-9)
+
+
+def test_b8_separates_the_conditional_from_the_unconditional_by_line_style(vsweep):
+    """The convention this session settled on, applied here too: conditional solid,
+    unconditional dashed."""
+    fig = I.pfig_b8_commercial_chance(vsweep)
+    dashes = {str(t.name).split(" —")[0]: t.line.dash for t in fig.data if t.name and t.line}
+    assert dashes["Pmcfs(well)"] == "solid"
+    assert dashes["Pc(well)"] == "dash"
+
+
+def test_b8_finds_the_interior_maximum_of_the_commercial_chance(vsweep):
+    """A rising curve times a falling one, so the product usually peaks in between,
+    and that peak is the decision the figure supports."""
+    fig = I.pfig_b8_commercial_chance(vsweep)
+    star = [t for t in fig.data if t.marker and t.marker.symbol == "star"]
+    assert len(star) == 1
+    pc = next(np.asarray(t.x, dtype=float) for t in fig.data
+              if t.name and str(t.name).startswith("Pc(well)"))
+    assert float(star[0].x[0]) == pytest.approx(float(np.nanmax(pc)), abs=1e-9)
+
+
+def test_b8_says_so_rather_than_drawing_nothing_without_a_mefs(reduced, area_depth):
+    from wellvolpos.core.sweep import run_volume_sweep
+
+    bare = run_volume_sweep(reduced, area_depth, POS, n=6, mefs=None, z_gap=EXIT - ENTRY)
+    fig = I.pfig_b8_commercial_chance(bare)
+    assert "needs a MEFS" in fig.layout.title.text
+
+
+# --------------------------------------------- the conditional/unconditional pair
+def test_the_two_readings_are_named_by_both_of_their_industry_words():
+    """Half the industry says "conditional/unconditional" and half says
+    "unrisked/risked". The app says both halves of each pair every time, so a
+    reader never has to guess which is meant."""
+    from wellvolpos.core.classes import READING_LABELS
+
+    assert "Conditional" in READING_LABELS["conditional"]
+    assert "success case" in READING_LABELS["conditional"]
+    assert "Unconditional" in READING_LABELS["unconditional"]
+    assert "risked" in READING_LABELS["unconditional"]
+
+
+def test_the_unconditional_curve_meets_schneiders_p99_anchor(reduced):
+    """Schneider et al. (2023) define Pg as "the chance of making a discovery equal
+    to or exceeding the P99 EUR". So the unconditional curve's height at the
+    conditional P99 should be the chance itself, to within a per cent -- a free
+    check that the two definitions agree, and that our construction is theirs.
+    """
+    res = reduced.col("resource")
+    values = res[res > 0]
+    chance = 0.4576
+    v, pct = risked_exceedance(values, chance)
+    p99 = float(np.percentile(values, 1.0))
+    at_p99 = float(np.interp(p99, v, pct[::-1][::-1])) if False else float(
+        pct[np.searchsorted(v, p99, side="left")]
+    )
+    assert at_p99 == pytest.approx(chance * 100.0, abs=1.0)
+
+
+def test_a_conditional_curve_is_the_unconditional_one_at_chance_one(reduced):
+    res = reduced.col("resource")
+    values = res[res > 0]
+    v1, p1 = conditional_exceedance(values)
+    v2, p2 = risked_exceedance(values, 1.0)
+    assert np.array_equal(v1, v2) and np.allclose(p1, p2)

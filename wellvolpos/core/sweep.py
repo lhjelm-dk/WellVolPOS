@@ -221,6 +221,17 @@ class VolumeSweep:
     # Bootstrap band on the proven mean, or None when n_boot was 0.
     proven_mean_lo: np.ndarray | None = None
     proven_mean_hi: np.ndarray | None = None
+    #: Mean of the *whole* well-associated volume given a discovery -- Rose's
+    #: "Downdip". Carried in its own right rather than left as proven + possible,
+    #: because it is what his trade-off chart plots against ``p_well`` and what his
+    #: ``Pmcfs(well)`` conditions on. Defaulted so the field could be added without
+    #: breaking the constructor's positional order.
+    discovery_mean: np.ndarray | None = None
+    #: ``P(well-associated volume > MEFS | discovery)`` -- Rose's ``Pmcfs(well)``,
+    #: which conditions on the whole downdip EUR rather than on the entry-to-exit
+    #: proven split that ``p_proven_exceeds_mefs`` uses. Two different numbers, both
+    #: legitimate; see :mod:`wellvolpos.core.rose`.
+    p_discovery_exceeds_mefs: np.ndarray | None = None
     alpha: float | None = None
 
 
@@ -265,10 +276,12 @@ def run_volume_sweep(
     proven_mean = np.full(z.size, np.nan)
     possible_mean = np.full(z.size, np.nan)
     attic_mean = np.full(z.size, np.nan)
+    discovery_mean = np.full(z.size, np.nan)
     n_disc = np.zeros(z.size, dtype=int)
     n_dry = np.zeros(z.size, dtype=int)
     p_proven_ex = np.full(z.size, np.nan) if mefs is not None else None
     p_attic_ex = np.full(z.size, np.nan) if mefs is not None else None
+    p_disc_ex = np.full(z.size, np.nan) if mefs is not None else None
     boot_lo = np.full(z.size, np.nan) if n_boot > 0 else None
     boot_hi = np.full(z.size, np.nan) if n_boot > 0 else None
 
@@ -287,10 +300,13 @@ def run_volume_sweep(
 
         if n_disc[i]:
             proven = vc.proven[groups_i.discovery]
+            associated = vc.discovery_total[groups_i.discovery]
             proven_mean[i] = float(proven.mean())
             possible_mean[i] = float(vc.possible[groups_i.discovery].mean())
+            discovery_mean[i] = float(associated.mean())
             if mefs is not None:
                 p_proven_ex[i] = float((proven > mefs).mean())
+                p_disc_ex[i] = float((associated > mefs).mean())
             if n_boot > 0:
                 boot_lo[i], boot_hi[i] = bootstrap_mean_ci(
                     proven, n_boot=n_boot, alpha=alpha, seed=seed
@@ -303,7 +319,9 @@ def run_volume_sweep(
     return VolumeSweep(
         z=z, z_exit=z_exit, z_gap=float(z_gap), p_well=pw,
         proven_mean=proven_mean, possible_mean=possible_mean, attic_mean=attic_mean,
+        discovery_mean=discovery_mean,
         mefs=mefs, p_proven_exceeds_mefs=p_proven_ex, p_attic_exceeds_mefs=p_attic_ex,
+        p_discovery_exceeds_mefs=p_disc_ex,
         n_discovery=n_disc, n_dry=n_dry,
         pos_prospect=float(pos_prospect), reference=reference,
         proven_mean_lo=boot_lo, proven_mean_hi=boot_hi,

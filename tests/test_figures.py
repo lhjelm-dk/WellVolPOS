@@ -104,17 +104,24 @@ def test_b3_depth_axis_and_optimum_is_plotted_inside_the_swept_range(sweep):
     assert sweep.z.min() <= sweep.z_optimum <= sweep.z.max()
 
 
-def test_a5_prospect_curve_settles_at_pos_trials_at_the_zero_pileup(reduced, groups, vc):
-    # 2 395 chance-failure trials tie at resource = 0, so P(X >= 0) = 100% but
-    # the curve steps down to P(X > 0) = POS_trials right after that pile --
-    # the drop sits on the y-axis spine. The three conditional series have no
-    # such pileup and start flat at 100%.
+def test_a5_draws_conditional_curves_only_and_says_so(reduced, groups, vc):
+    """A5 is now explicitly the **conditional (success case)** figure, so every
+    curve starts at 100 % -- including the prospect, whose chance-failure zeros are
+    excluded rather than left to drag the curve down to POS_trials.
+
+    That drop used to be here, and it was the figure being accidentally
+    unconditional in one series and conditional in the other three, which is
+    exactly the mixture this session set out to remove. The unconditional readings
+    live in C1 as dashed twins, and the chances are in tab 3's table.
+    """
     fig, ax = figures.fig_a5_exceedance(reduced, groups, vc)
+    assert "conditional (success case)" in ax.get_title()
     lines = {line.get_label(): line for line in ax.get_lines()}
-    xs, ys = lines["Prospect (all trials)"].get_data()
-    assert ys[xs > 0].max() == pytest.approx(100.0 * POS, abs=1e-6)
-    assert lines["Discovery case"].get_ydata()[0] == pytest.approx(100.0)
-    assert lines["Attic | dry hole"].get_ydata()[0] == pytest.approx(100.0)
+    for label in ("Prospect (all trials)", "Discovery case", "Attic | dry hole"):
+        y = lines[label].get_ydata()
+        assert float(np.nanmax(y)) == pytest.approx(100.0, abs=1e-6), label
+    xs = lines["Prospect (all trials)"].get_xdata()
+    assert float(np.min(xs)) > 0.0
 
 
 # ------------------------------------------------------------------- A1
@@ -514,18 +521,20 @@ def test_the_concepts_twin_starts_its_curves_at_their_own_chance(reduced, area_d
     # docstring and was passing only because the figure zero-padded with the trial
     # file's masks; on prospect A under the "trials are risked" convention the two
     # coincide, which is exactly why it went unnoticed.
-    starts = {}
-    for line in ax_exc.get_lines():
-        label = line.get_label()
-        y = np.asarray(line.get_ydata(), dtype=float)
-        if label.startswith("_") or y.size < 10:
-            continue
-        starts[label] = float(np.nanmax(y))
-    assert starts["Prospect resource potential"] == pytest.approx(POS * 100.0, abs=0.5)
-    assert starts["Well associated resource potential"] == pytest.approx(45.76, abs=0.5)
-    assert starts["Resource tested by well"] == pytest.approx(45.76, abs=0.5)
-    # The up-dip case is dry *and* charged, so its chance is POS - P_well.
-    assert starts["Up-dip volume"] == pytest.approx((POS - 0.4576) * 100.0, abs=0.5)
+    # Each concept now draws *two* curves: a solid conditional one reaching 100 %
+    # and a dashed unconditional one reaching its own chance. Only the conditional
+    # line carries a legend label, so the dashed twins are identified by style.
+    dashed = [l for l in ax_exc.get_lines()
+              if l.get_linestyle() == "--" and len(l.get_ydata()) > 10]
+    solid = [l for l in ax_exc.get_lines()
+             if l.get_linestyle() == "-" and not l.get_label().startswith("_")
+             and len(l.get_ydata()) > 10]
+    for l in solid:
+        assert float(np.nanmax(l.get_ydata())) == pytest.approx(100.0, abs=0.5)
+    tops_dashed = sorted(float(np.nanmax(l.get_ydata())) for l in dashed)
+    # POS, P_well twice (well associated and tested), and POS - P_well.
+    expected = sorted([POS * 100.0, 45.76, 45.76, (POS - 0.4576) * 100.0])
+    assert tops_dashed == pytest.approx(expected, abs=0.6)
 
 
 def test_the_concepts_twin_keeps_the_depth_rule_on_its_section(reduced, area_depth, groups, vc):
@@ -568,8 +577,9 @@ def test_the_concepts_twin_degrades_rather_than_inventing_a_base_reservoir(
     ts.frame["hc_grv"] = ts.frame["hc_grv"] * 1000.0     # nothing can be inverted
     fig, _ = figures.fig_concepts(area_depth, ts, groups, vc, z_entry=ENTRY, z_exit=EXIT,
                             pos_prospect=POS, p_well=0.4576)
-    said = " ".join(t.get_text() for t in fig.texts)
-    assert "not drawn" in said
+    # The note now lives on the section's x-axis label rather than in fig.texts.
+    said = " ".join(t.get_text() for t in fig.texts) + " " + fig.axes[0].get_xlabel()
+    assert "the base reservoir is not drawn" in said
 
 
 def test_the_map_twin_is_plan_view_with_equal_aspect(area_depth):

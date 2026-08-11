@@ -29,7 +29,13 @@ from plotly.subplots import make_subplots
 
 from ..core.chance import ELEMENTS, SCHEME_LABELS, SHIPPED_SCHEMES, allocate
 from ..core.chance import waterfall_steps as chance_waterfall_steps
-from ..core.classes import VolumeClasses, risked_exceedance
+from ..core.classes import (
+    READING_DASH,
+    READING_LABELS,
+    VolumeClasses,
+    conditional_exceedance,
+    risked_exceedance,
+)
 from ..core.groups import Groups
 from ..core.reservoir import thickness_from_pay
 from ..core.stats import MIN_SUPPORT, thin
@@ -78,6 +84,8 @@ __all__ = [
     "pfig_b4_chance_waterfall",
     "pfig_b5_allocation_dumbbell",
     "pfig_b6_inverse",
+    "pfig_b7_frontier",
+    "pfig_b8_commercial_chance",
     "row_zlim",
 ]
 
@@ -558,8 +566,8 @@ def pfig_a4_resource_vs_depth(
 
 
 # ------------------------------------------------------------------- A5
-def _mark_exceedance(fig, values, role: str, dark: bool, *, row=None, col=None,
-                     show_text: bool = True, size: int = 7):
+def _mark_exceedance(fig, values, role: str, dark: bool, *, chance: float = 1.0,
+                     row=None, col=None, show_text: bool = True, size: int = 7):
     """Put P90 / P50 / mean / P10 markers on an exceedance curve, labelled by value.
 
     Labelled with the **volume**, not the percentile, because the percentile is
@@ -572,7 +580,7 @@ def _mark_exceedance(fig, values, role: str, dark: bool, *, row=None, col=None,
     square: it is not a percentile, and on a right-skewed distribution it sits
     visibly above the P50, which is the thing worth noticing.
     """
-    marks = exceedance_marks(values)
+    marks = exceedance_marks(values, chance)
     if not marks:
         return
     p = palette(dark)
@@ -606,26 +614,35 @@ def pfig_a5_exceedance(
     res = ts.col("resource")
     p = palette(dark)
     fig = go.Figure()
+    # Conditional (success case) curves only, and *labelled* as such. A5 is the
+    # figure that shows the four distributions against each other, so putting eight
+    # curves on it would bury the comparison it exists to make -- and each series
+    # is conditional on a *different* event, which makes their unconditional
+    # versions incomparable in a way the shapes hide. C1 is where both readings are
+    # drawn together; the tab ③ table carries the chances.
     series = [
-        ("Prospect (all trials)", res, "prospect"),
+        ("Prospect (all trials)", res[res > 0], "prospect"),
         ("Discovery case", res[groups.discovery], "discovery"),
         ("Proven at well", vc.proven[groups.discovery], "proven"),
         ("Attic | dry hole", res[groups.dry_with_attic], "attic"),
     ]
     for name, values, role in series:
-        v, pct = _exceedance(values)
+        v, pct = conditional_exceedance(values)
         if v.size == 0:
             continue
         fig.add_scatter(
             x=v, y=pct, mode="lines", name=name, line=dict(color=colour(role, dark), width=2.5),
-            hovertemplate=name + "<br>%{y:.1f}% chance of exceeding %{x:.2f} MMboe<extra></extra>",
+            hovertemplate=(
+                name + " — conditional (success case)"
+                "<br>%{y:.1f}% chance of exceeding %{x:.2f} MMboe, given the case<extra></extra>"
+            ),
         )
         _mark_exceedance(fig, values, role, dark)
     if mefs is not None:
         _vline(fig, mefs, p["muted"], "dot", "MEFS")
 
     fig.update_layout(
-        title="A5 · Exceedance curves at the chosen location",
+        title="A5 · Exceedance curves — conditional (success case)",
         xaxis_title="Recoverable resource (MMboe)",
         yaxis_title="Probability of exceedance (%)",
     )
@@ -1213,6 +1230,174 @@ def _reservoir_section(fig, ad, ts, *, z_entry, z_exit, dark, area_scale="area",
     return thickness
 
 
+
+# ------------------------------------------------------------------- B7
+def pfig_b7_frontier(
+    vsweep: VolumeSweep, *, current_z: float | None = None, min_support: int = MIN_SUPPORT,
+    label_every: int = 4, dark: bool = False, height: int | None = PANEL_HEIGHT,
+):
+    """B7 -- the trade-off frontier: chance against volume, parametric in depth.
+
+    From the 2018 macro workbook, where it is titled *"Well POS vs. Well to be
+    tested Mean Resource"* with ``Well asso. Mean resource`` on x and ``Well POS``
+    on y. It is the one chart in that workbook the app had no equivalent of, and it
+    is the most direct statement of the thing this whole tool is about: **moving the
+    well down-dip buys volume with chance.**
+
+    Neither axis is a depth, so depth appears as *labels along the curve* -- every
+    ``label_every``-th sweep step -- and the figure is exempt from the depth rule
+    for the same reason A5, A6, B4 and B5 are.
+
+    Read it like an efficient frontier. Up and to the right is better and
+    unavailable; the curve is what the structure actually offers. A location is
+    dominated if another sits above and to the right of it, and on a monotone
+    closure none do -- which is the point: there is no free lunch, only a rate of
+    exchange, and this figure is where you read that rate.
+
+    ``x`` is the **well-associated** mean (Rose's *Downdip*, the whole accumulation
+    given a discovery) because that is what the workbook plots and what a well
+    proposal is written against. The proven mean is drawn beside it as a lighter
+    line, since the two answer "what would I find" and "what would I have proven".
+    """
+    p = palette(dark)
+    fig = go.Figure()
+    n_disc = vsweep.n_discovery
+    pw = thin(vsweep.p_well, n_disc, min_support) * 100.0
+    assoc = thin(vsweep.discovery_mean, n_disc, min_support) \
+        if vsweep.discovery_mean is not None else None
+    proven = thin(vsweep.proven_mean, n_disc, min_support)
+
+    if assoc is not None:
+        fig.add_scatter(
+            x=assoc, y=pw, mode="lines", name="Well associated mean",
+            line=dict(color=colour("well_associated", dark), width=2.8),
+            customdata=vsweep.z,
+            hovertemplate=("entry %{customdata:.0f} m TVDSS<br>well associated mean "
+                           "%{x:.1f} MMboe<br>P_well %{y:.1f}%<extra></extra>"),
+        )
+    fig.add_scatter(
+        x=proven, y=pw, mode="lines", name="Proven mean",
+        line=dict(color=colour("tested", dark), width=1.8, dash="dash"),
+        customdata=vsweep.z,
+        hovertemplate=("entry %{customdata:.0f} m TVDSS<br>proven mean %{x:.1f} MMboe"
+                       "<br>P_well %{y:.1f}%<extra></extra>"),
+    )
+
+    # Depth labels along the frontier: without them the curve is a shape with no
+    # handle on it, and "where do I drill" is answered in metres.
+    base = assoc if assoc is not None else proven
+    for i in range(0, vsweep.z.size, max(1, label_every)):
+        if not (np.isfinite(base[i]) and np.isfinite(pw[i])):
+            continue
+        fig.add_annotation(
+            x=float(base[i]), y=float(pw[i]), text=f"{vsweep.z[i]:.0f}", showarrow=False,
+            xshift=6, yshift=7, font=dict(size=8, color=p["text_secondary"]),
+        )
+
+    if current_z is not None:
+        here_x = float(np.interp(current_z, vsweep.z, np.nan_to_num(base, nan=0.0)))
+        here_y = float(np.interp(current_z, vsweep.z, np.nan_to_num(pw, nan=0.0)))
+        fig.add_scatter(
+            x=[here_x], y=[here_y], mode="markers+text",
+            marker=dict(symbol="circle-open-dot", size=15,
+                        line=dict(color=p["well"], width=3), color=p["well"]),
+            text=[f"  this well, {current_z:.0f} m"], textposition="middle right",
+            textfont=dict(size=10, color=p["well"]), name="This well",
+            hovertemplate=(f"this well at {current_z:.0f} m<br>{here_x:.1f} MMboe at "
+                           f"{here_y:.1f}%<extra></extra>"),
+        )
+    if vsweep.mefs is not None:
+        _vline(fig, vsweep.mefs, colour("minimum", dark), "dot", "MEFS")
+
+    fig.update_layout(
+        title=(f"B7 · Chance against volume — the location trade-off "
+               f"({reference_label(vsweep.reference)})"),
+        xaxis_title="Mean resource (MMboe)",
+        yaxis_title="P_well  (%)",
+    )
+    fig.update_xaxes(rangemode="tozero")
+    fig.update_yaxes(range=[0, 105])
+    apply_plotly(fig, dark, height)
+    return fig
+
+
+# ------------------------------------------------------------------- B8
+def pfig_b8_commercial_chance(
+    vsweep: VolumeSweep, *, current_z: float | None = None,
+    zlim: tuple[float, float] | None = None, show_depth_labels: bool = True,
+    min_support: int = MIN_SUPPORT, dark: bool = False, height: int | None = PANEL_HEIGHT,
+):
+    """B8 -- commercial chance against depth: Rose's ``Pc(well)``, swept.
+
+    The 2018 workbook draws this as two charts, *"Cond. Prob. of exceeding MEFS vs.
+    depth"* and *"Prob. of exceeding MEFS vs. depth"* -- its columns ``AL`` and
+    ``AM = AL x Well POS``. They belong on one pair of axes, because the whole
+    content is the difference between them:
+
+    * ``Pmcfs(well)`` -- **conditional**: given a discovery, the chance it clears
+      MEFS. It *rises* down-dip, because a deeper well finds a bigger accumulation.
+    * ``P_well`` -- the chance of a discovery at all. It *falls* down-dip.
+    * ``Pc(well) = P_well x Pmcfs(well)`` -- **unconditional**: the chance of a
+      commercial discovery, full stop. The product of a rising and a falling curve,
+      so it usually has an interior maximum, and that maximum is the answer to
+      "where should the well go" on commercial grounds.
+
+    Rose gives ``Pc(well)`` as the number to carry into an EMV calculation. It is a
+    *chance*, not a value, which is why it is inside this tool's scope while
+    economics is not.
+
+    Conditional solid, unconditional dashed, as everywhere else in the app.
+    """
+    p = palette(dark)
+    z = vsweep.z
+    fig = go.Figure()
+    if vsweep.p_discovery_exceeds_mefs is None:
+        fig.update_layout(title="B8 · Commercial chance — needs a MEFS")
+        apply_plotly(fig, dark, height)
+        depth_axis_plotly(fig, zlim or (float(z.min()), float(z.max())),
+                          show_ticklabels=show_depth_labels)
+        return fig
+
+    pw = thin(vsweep.p_well, vsweep.n_discovery, min_support) * 100.0
+    pmcfs = thin(vsweep.p_discovery_exceeds_mefs, vsweep.n_discovery, min_support) * 100.0
+    pc = pw * pmcfs / 100.0
+
+    for values, name, role, dash, width in (
+        (pmcfs, "Pmcfs(well) — conditional on a discovery", "tested", "solid", 2.2),
+        (pw, "P_well — chance of a discovery", "well_associated", "solid", 2.2),
+        (pc, "Pc(well) — commercial chance, unconditional", "minimum", "dash", 2.8),
+    ):
+        fig.add_scatter(
+            x=values, y=z, mode="lines", name=name,
+            line=dict(color=colour(role, dark), width=width, dash=dash),
+            hovertemplate=name + "<br>%{x:.1f}% at " + DEPTH_HOVER + "<extra></extra>",
+        )
+
+    # The interior maximum of Pc, which is the decision this figure supports.
+    if np.any(np.isfinite(pc)):
+        best = int(np.nanargmax(pc))
+        fig.add_scatter(
+            x=[pc[best]], y=[z[best]], mode="markers+text",
+            marker=dict(symbol="star", size=13, color=colour("minimum", dark)),
+            text=[f"  best Pc {pc[best]:.1f}% at {z[best]:.0f} m"],
+            textposition="middle right",
+            textfont=dict(size=9, color=colour("minimum", dark)), showlegend=False,
+            hovertemplate=f"maximum commercial chance<br>{pc[best]:.1f}% at "
+                          f"{z[best]:.0f} m TVDSS<extra></extra>",
+        )
+    if current_z is not None:
+        _hline(fig, current_z, p["text"], "dash")
+
+    fig.update_layout(
+        title=f"B8 · Commercial chance vs location (MEFS {vsweep.mefs:.1f} MMboe)",
+        xaxis_title="Probability (%)",
+    )
+    fig.update_xaxes(range=[0, 105])
+    apply_plotly(fig, dark, height)
+    depth_axis_plotly(fig, zlim or (float(z.min()), float(z.max())),
+                      show_ticklabels=show_depth_labels)
+    return fig
+
 # ----------------------------------------------------- the concepts figure
 def pfig_concepts(
     ad: AreaDepth, ts: TrialSet, groups: Groups, vc: VolumeClasses, *,
@@ -1245,9 +1430,15 @@ def pfig_concepts(
     """
     p = palette(dark)
     res = ts.col("resource")
+    # Stacked, not side by side (Lars, 2026-08-11). Two panels one above the other
+    # share the *volume* dimension down the page instead of competing for width,
+    # and the section no longer has to be squeezed into a third of the figure.
     fig = make_subplots(
-        rows=1, cols=2, column_widths=[0.32, 0.68], horizontal_spacing=0.11,
-        subplot_titles=("Reservoir in area–depth space", "The same volumes, as exceedance curves"),
+        rows=2, cols=1, row_heights=[0.42, 0.58], vertical_spacing=0.13,
+        subplot_titles=(
+            "① Where each volume sits in the structure",
+            "② The same volumes as exceedance curves — solid conditional, dashed unconditional",
+        ),
     )
 
     thickness = _reservoir_section(
@@ -1255,17 +1446,23 @@ def pfig_concepts(
         area_scale=area_scale, row=1, col=1,
     )
 
-    # ------------------------------------------------- risked exceedance curves
-    # Each curve is the *conditional* distribution of its class, risked by the
-    # chance that class occurs. Not zero-padded with the trial file's own masks:
-    # that gave a curve starting at the file's implied chance, which equals the
-    # entered chance only when the convention says the trials are already risked.
-    # On a success-case-only export with a chance table on top the two differ by
-    # the whole table, and the figure then contradicts the caption beside it.
-    # ``core.classes.risked_exceedance`` makes the start equal the chance by
-    # construction -- see its docstring for the three earlier instances.
+    # ------------------------------- conditional and unconditional, both drawn
+    # Two curves per volume concept, in one colour, distinguished by line style:
+    #
+    #   solid  = conditional (success case)  -- starts at 100 %, and this is where
+    #            the percentiles live: "P90 is 90 % probability of exceeding the P90
+    #            estimated value" (Milkov 2021). It is what anybody means by "the
+    #            P50", and Schneider et al. (2023) determine it *before* the chance.
+    #   dashed = unconditional (risked)      -- the same volumes with the chance of
+    #            the case folded in, so it starts at the chance.
+    #
+    # Both, because they answer different questions and a reader kept having to
+    # guess which was on screen. Built through ``core.classes.risked_exceedance``,
+    # so the dashed curve starts at ``chance`` by construction rather than by being
+    # zero-padded with the trial file's own masks -- see that docstring for the four
+    # times this went wrong.
     disc, dry = groups.discovery, groups.dry_with_attic
-    risked = [
+    cases = [
         ("Prospect resource potential", res[res > 0], pos_prospect, "prospect"),
         ("Well associated resource potential", res[disc], p_well, "well_associated"),
         ("Resource tested by well", vc.proven[disc], p_well, "tested"),
@@ -1274,24 +1471,35 @@ def pfig_concepts(
         ("Up-dip volume", res[dry], max(pos_prospect - p_well, 0.0), "up_dip"),
     ]
     spans: dict[str, tuple[float, float, str]] = {}
-    for name, values, chance_of, role in risked:
-        v, pct = risked_exceedance(values, chance_of)
-        fig.add_scatter(
-            x=v, y=pct, mode="lines", name=name,
-            line=dict(color=colour(role, dark), width=2.6),
-            hovertemplate=name + "<br>%{y:.1f}% chance of exceeding %{x:.2f} MMboe<extra></extra>",
-            row=1, col=2,
-        )
-        # Markers without labels here: four risked curves in one panel means
-        # sixteen numbers, and the braces below already carry the ranges. The
-        # values are in the hover.
-        _mark_exceedance(fig, values, role, dark, row=1, col=2,
-                         show_text=False, size=6)
-        positive = v[v > 0]
+    for name, values, chance_of, role in cases:
+        for reading, chance_used in (("conditional", 1.0), ("unconditional", chance_of)):
+            v, pct = risked_exceedance(values, chance_used)
+            if v.size == 0:
+                continue
+            fig.add_scatter(
+                x=v, y=pct, mode="lines",
+                name=f"{name} — {READING_LABELS[reading].split(' (')[0].lower()}",
+                legendgroup=name,
+                line=dict(color=colour(role, dark), width=2.6 if reading == "conditional" else 1.9,
+                          dash=READING_DASH[reading]),
+                hovertemplate=(
+                    f"{name}<br>{READING_LABELS[reading]}"
+                    "<br>%{y:.1f}% chance of exceeding %{x:.2f} MMboe<extra></extra>"
+                ),
+                row=2, col=1,
+            )
+            # Markers on the *unconditional* curve only. Eight per concept would be
+            # noise, and the unconditional is the one a decision reads; the
+            # conditional percentiles are in the table in tab ③ and in the hover.
+            if reading == "unconditional":
+                _mark_exceedance(fig, values, role, dark, chance=chance_used,
+                                 row=2, col=1, show_text=False, size=6)
+        positive = np.sort(np.asarray(values, dtype=float))
+        positive = positive[np.isfinite(positive) & (positive > 0)]
         if positive.size:
             spans[name] = (float(positive.min()), float(positive.max()), role)
 
-    # The two POS values, drawn where the curves actually start.
+    # The two POS values, drawn where the unconditional curves actually start.
     for value, label, role in (
         (pos_prospect, "Asso. Final Prospect POS", "prospect"),
         (p_well, "Asso. Well POS", "well_associated"),
@@ -1299,13 +1507,15 @@ def pfig_concepts(
         fig.add_hline(
             y=value * 100.0, line=dict(color=colour(role, dark), width=1, dash="dot"),
             annotation_text=f"{label} {value:.0%}", annotation_position="top right",
-            annotation_font=dict(size=10, color=colour(role, dark)), row=1, col=2,
+            annotation_font=dict(size=10, color=colour(role, dark)), row=2, col=1,
         )
     if mefs is not None:
+        # Annotated at the *bottom* of the panel: at the top it landed on the
+        # subplot title once the two panels were stacked.
         fig.add_vline(
             x=mefs, line=dict(color=colour("minimum", dark), width=1.2, dash="dot"),
-            annotation_text="min. volume", annotation_position="top",
-            annotation_font=dict(size=10, color=colour("minimum", dark)), row=1, col=2,
+            annotation_text="min. volume", annotation_position="bottom right",
+            annotation_font=dict(size=10, color=colour("minimum", dark)), row=2, col=1,
         )
 
     # ------------------------------------------------------- the nesting braces
@@ -1321,29 +1531,42 @@ def pfig_concepts(
         y = base - i * step
         col_ = colour(role, dark)
         fig.add_scatter(x=[lo, hi], y=[y, y], mode="lines", showlegend=False,
-                        hoverinfo="skip", line=dict(color=col_, width=2.5), row=1, col=2)
+                        hoverinfo="skip", line=dict(color=col_, width=2.5), row=2, col=1)
         for xx in (lo, hi):
             fig.add_scatter(x=[xx, xx], y=[y - 1.8, y + 1.8], mode="lines", showlegend=False,
-                            hoverinfo="skip", line=dict(color=col_, width=2.5), row=1, col=2)
+                            hoverinfo="skip", line=dict(color=col_, width=2.5), row=2, col=1)
         fig.add_annotation(x=hi, y=y, text=f"  {name}", showarrow=False, xanchor="left",
-                           font=dict(size=9, color=col_), row=1, col=2)
+                           font=dict(size=9, color=col_), row=2, col=1)
 
     tfp = thickness_from_pay(ts, ad)
     ss = tfp.summary()
-    sub = (
-        f"<br><sub>base reservoir = top + reservoir thickness back-calculated from pay: "
-        f"P50 {ss['p50']:.0f} m, P90–P10 {ss['p90']:.0f}–{ss['p10']:.0f} m (dotted)</sub>"
+    # The thickness note goes on the *section's* x-axis title, not into the figure
+    # title. As a <sub> line under the title it collided with the first subplot
+    # title, and it is a footnote about the section anyway -- so it belongs beside
+    # the section rather than above the whole figure.
+    note = (
+        f"   ·   base reservoir = top + thickness back-calculated from pay: "
+        f"P50 {ss['p50']:.0f} m, P90–P10 {ss['p90']:.0f}–{ss['p10']:.0f} m (dotted)"
         if tfp.n_resolved else
-        "<br><sub>could not recover a reservoir thickness from pay, so the base reservoir "
-        "is not drawn</sub>"
+        "   ·   no reservoir thickness recoverable from pay, so no base reservoir is drawn"
     )
-    fig.update_layout(title="Concepts — the same volumes in section and in distribution" + sub,
-                      showlegend=False)
-    fig.update_xaxes(title_text=AREA_SCALES.get(area_scale, AREA_SCALES["area"])[0],
-                     rangemode="tozero", row=1, col=1)
-    fig.update_xaxes(title_text="Recoverable resource (MMboe)", rangemode="tozero", row=1, col=2)
-    fig.update_yaxes(title_text="Probability of exceedance (%)",
-                     range=[base - len(order) * step - 3.0, 107.0], row=1, col=2)
+    fig.update_layout(title="C1 · The concepts — one prospect, five volumes", showlegend=False)
+    fig.update_xaxes(
+        title_text=AREA_SCALES.get(area_scale, AREA_SCALES["area"])[0] + note,
+        title_font=dict(size=9), rangemode="tozero", row=1, col=1,
+    )
+    fig.update_xaxes(title_text="Recoverable resource (MMboe)", rangemode="tozero", row=2, col=1)
+    # The braces live below zero, so the axis has to extend there -- but the
+    # negative *labels* are meaningless as probabilities and were being read as
+    # such. Ticks are pinned to the 0-100 range and the space below simply carries
+    # the braces (Lars, 2026-08-11).
+    ticks = list(range(0, 101, 20))
+    fig.update_yaxes(
+        title_text="Probability of exceedance (%)",
+        range=[base - len(order) * step - 3.0, 107.0],
+        tickmode="array", tickvals=ticks, ticktext=[str(t) for t in ticks],
+        row=2, col=1,
+    )
     apply_plotly(fig, dark, height)
     depth_axis_plotly(fig, (ad.shallowest, ad.deepest), row=1, col=1)
     return fig

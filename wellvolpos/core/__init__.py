@@ -13,7 +13,11 @@ from .chance import (
     waterfall_steps,
 )
 from .classes import (
+    READING_DASH,
+    READING_LABELS,
     REPORT_PERCENTILES,
+    chance_from_counts,
+    conditional_exceedance,
     check_area_pay_correlation,
     class_percentiles,
     class_summary,
@@ -57,6 +61,10 @@ __all__ = [
     "class_percentiles",
     "risked_exceedance",
     "REPORT_PERCENTILES",
+    "READING_LABELS",
+    "READING_DASH",
+    "conditional_exceedance",
+    "chance_from_counts",
     "r_location", "p_well", "allocate", "cube_root_factor", "expected_volume", "ReferenceContour",
     "ELEMENTS", "SCHEMES", "SCHEME_LABELS", "SHIPPED_SCHEMES", "normalised_weights",
     "waterfall_steps",

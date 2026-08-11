@@ -389,6 +389,9 @@ def build_figures(b: Bundle, *, dark: bool = False) -> dict[str, object]:
         figs["B2_chance_vs_regret"] = F.fig_b2_chance_vs_regret(
             b.vsweep, current_z=c.entry, dark=dark)[0]
         figs["B6_inverse"] = F.fig_b6_inverse(b.vsweep, ts=b.ts, dark=dark)[0]
+        figs["B7_frontier"] = F.fig_b7_frontier(b.vsweep, current_z=c.entry, dark=dark)[0]
+        figs["B8_commercial_chance"] = F.fig_b8_commercial_chance(
+            b.vsweep, current_z=c.entry, dark=dark)[0]
     return figs
 
 

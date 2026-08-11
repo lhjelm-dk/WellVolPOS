@@ -270,3 +270,71 @@ def class_percentiles(values: np.ndarray, chance: float,
     # Where the mean sits on this distribution's own curve, conditionally.
     out["mean_at"] = 100.0 * float(np.mean(v >= mean))
     return out
+
+
+# ============================================================================
+# Conditional and unconditional exceedance — one vocabulary, used everywhere
+# ============================================================================
+#
+# The industry pairs these words, and this project uses both halves of each pair
+# every time so nobody has to translate:
+#
+#   **Conditional (success case, unrisked)** -- the distribution *given that the
+#   outcome occurs*. Its exceedance curve starts at 100 % and this is where the
+#   percentiles live: "P90 is defined as 90% probability of exceeding the P90
+#   estimated value" (Milkov 2021). When anyone says "the P50", they mean this one.
+#
+#   **Unconditional (risked)** -- the same volumes with the chance of the outcome
+#   folded in, so ``P(X > x) = chance x P(X > x | outcome)``. Its curve starts at
+#   the chance, not at 100 %.
+#
+# The order matters and is not ours: Schneider et al. (2023) are explicit that
+# "the prospect's EUR distribution represents success cases and should be
+# determined **before** the assessment of the probability of geologic success",
+# and Milkov (2021) that "the geological PoS is initially fully decoupled from the
+# success-case petroleum volumes". So the conditional distribution is the primary
+# object and the chance is a separate number applied to it -- which is the same
+# separation as ``P_well = POS_prospect x r_location``, one level down.
+#
+# A consequence worth knowing, because it is a free check on the arithmetic:
+# Schneider defines Pg as "the chance of making a discovery equal to or exceeding
+# the P99 EUR". The unconditional curve's height at the conditional P99 is
+# ``chance x 0.99``, so the two definitions agree to within a per cent by
+# construction -- see ``test_the_unconditional_curve_meets_schneiders_p99_anchor``.
+
+#: How the two readings are named in every axis label, legend and caption. Both
+#: halves of each pair, always, because half the industry says one and half says
+#: the other and a reader should never have to guess which is meant.
+READING_LABELS = {
+    "conditional": "Conditional (success case)",
+    "unconditional": "Unconditional (risked)",
+}
+
+#: Line style per reading. Solid for the conditional curve, dashed for the
+#: unconditional one -- the convention in Lars's reference figure, and it keeps
+#: colour free to mean the volume concept (non-negotiable 3).
+READING_DASH = {"conditional": "solid", "unconditional": "dash"}
+
+
+def conditional_exceedance(values: np.ndarray):
+    """The success-case exceedance curve: ``(values, percent)`` starting at 100 %.
+
+    This is the distribution the percentiles are defined on. Identical to
+    :func:`risked_exceedance` with ``chance = 1``, and named separately because
+    the two are different objects in a report and conflating them is the mistake
+    this module exists to prevent.
+    """
+    return risked_exceedance(values, 1.0)
+
+
+def chance_from_counts(n_case: int, n_total: int) -> float:
+    """The chance of a case, from the trial counts alone: ``n_case / n_total``.
+
+    The *file's* own chance, which is what a reader means when they ask "how many
+    of the trials are like this". Under the "trials are risked" convention it
+    equals the entered chance; under "success-case only, chance table on top" it
+    does not, because the trial file then carries no failure at all. Callers that
+    show it must say which they are showing -- ``app.py`` labels the column
+    ``n / N`` for exactly that reason.
+    """
+    return float(n_case) / float(n_total) if n_total else float("nan")
