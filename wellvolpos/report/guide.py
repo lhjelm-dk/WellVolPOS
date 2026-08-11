@@ -224,20 +224,49 @@ size, never instead of them.
     # -------------------------------------------------------------- references
     st.divider()
     st.markdown("### References")
+    st.caption(
+        "Every entry below was checked against the document itself — the PDFs are in "
+        "`Papers/`, and the two online sources were opened and read. Where a work is cited "
+        "*through* another rather than read directly, it says so."
+    )
     st.markdown(
         """
+**Read in full — the PDFs are in `Papers/`**
+
 | Work | What it contributes here |
 |---|---|
-| **Schneider, Citron, Haryott & Cook (2023)**, *Drilling an exploration prospect downdip*, AAPG Bulletin 107(5) 743–759, DOI 10.1306/09232222051 | The definitive reference. Whole-trial updip/downdip grouping — this app's reference engine. Names the finer proven/possible split as *“additional complexity”* without computing it; `core/classes.py` is that complexity, implemented. |
-| **Schneider & Cook (2017 / long form 2021)**, *Pwell*, AAPG Search & Discovery 42102 | Equation 1 (`Pwell = Pg × Ptrap@well / Ptrap`, cap included), the P90-area reference contour, the *“No Regrets”* volume, `Pmcfs(well)` and `Pc(well)`. Read from the PDF in the project folder. |
-| **Milkov (2021)**, *Reporting the expected exploration outcome*, JPSE 204 108754 | The crest/apex reference convention, and the peer-reviewed statement that well POS is the product of prospect POS and the contact distribution. His segment A2 falls from 0.34 at crest to 0.07 downdip. |
-| **Haskett (2003)**, SPE 84241 | Appraisal placement as value of information — B3's uncertainty-reduction curve. |
-| **Hood (2019)** | The assessment minimum belongs to a minimum *column height*, linked to seal capacity, not a minimum volume. |
-| **Longley (2026)**, GeoExpro | A MEFS cut raises the unrisked mean while lowering commercial chance; they do not cancel. Why MEFS is a reference line here and never a truncation. |
-| **Rose (2001)** and RoseRA / MMRA | Trap chance assessed at the P90 productive area, consistent with POS being the chance of the P99 EUR. |
+| **Schneider, M., Citron, G.P., Haryott, P. & Cook, D. (2023)** *Drilling an exploration prospect downdip: quantifying the trade-offs between chance of success and associated resource potential.* AAPG Bulletin **107**(5) 743–759. [doi:10.1306/09232222051](https://doi.org/10.1306/09232222051) · [open access](https://pubs.geoscienceworld.org/aapg/aapgbull/article/107/5/743/622239/Drilling-an-exploration-prospect-downdip) | The definitive reference. Whole-trial up-dip/down-dip grouping — this app's **reference engine**. Names the finer proven/possible split as *“additional complexity”* without computing it; `core/classes.py` is that complexity, implemented. Also the source of the convention that the EUR distribution is the **success case** and is determined *before* the chance, and that Pg is the chance of exceeding the **P99** EUR. |
+| **Milkov, A.V. (2021)** *Reporting the expected exploration outcome: when, why and how the probability of geological success and success-case volumes for the well differ from those for the prospect.* J. Pet. Sci. Eng. **204** 108754. [doi:10.1016/j.petrol.2021.108754](https://doi.org/10.1016/j.petrol.2021.108754) | The crest/apex reference convention, and the peer-reviewed statement that well POS is prospect POS times the contact distribution. His segment A2 falls from 0.34 at the crest to 0.07 down-dip. Also the definition this app uses for percentiles: *“P90 is defined as 90 % probability of exceeding the P90 estimated value.”* |
+| **Schneider, M. & Cook, D.M. Jr. (2017)** *Drilling a Downdip Location: Effect on Updip and Downdip Resource Estimates and Commercial Chance.* AAPG Search & Discovery **#42102**, posted 3 July 2017 — with the Rose & Associates long-form version, Houston, May 2021. [search & discovery](https://www.searchanddiscovery.com/documents/2017/42102schneider/ndx_schneider.pdf) | Equation 1 (`Pwell = Pg × Ptrap@well / Ptrap`, cap included), the P90-area reference contour, the *“No Regrets”* volume, `Pmcfs(well)` and `Pc(well)`. Both documents are in `Papers/`; the 2021 file is a Rose & Associates client report authored by Schneider and Cook, not by Rose. |
+| **Haskett, W.J. (2003)** *Optimal Appraisal Well Location Through Efficient Uncertainty Reduction and Value of Information Techniques.* SPE **84241**, SPE ATCE, Denver, 5–8 October 2003. [doi:10.2118/84241-MS](https://doi.org/10.2118/84241-MS) | Appraisal placement as value of information — B3's uncertainty-reduction curve, with the optimum found by argmax rather than by eye. |
+| **Singh, V., Yemez, I., Izaguirre, E. & Racero, A. (2017)** *Optimal Subsurface Appraisal: A Key Link to the Success of Development Projects.* Am. J. Applied Sciences **14**(2) 217–230. [doi:10.3844/ajassp.2017.217.230](https://doi.org/10.3844/ajassp.2017.217.230) · open access | Appraisal-value framing around the same trade-off: what a well is worth is what it resolves, not what it finds. |
+| **Hood, K.C. (2019)** *Column Height.* Risk Coordinators' Workshop, 14 November 2019 (ExxonMobil Upstream Integrated Solutions) — and **Hood, K.C. (2024)** *Hydrocarbon Column Heights, Parts 1 & 2*, Rose & Associates blog. Both in `Papers/HCWC/` | The assessment minimum belongs to a minimum **column height**, linked to seal capacity, not to a minimum volume — decision 6, and why this app maps a column height rather than filtering on a volume. Two separate documents; the 2019 workshop deck and the 2024 blog pair are often conflated. |
 
-The demo data is fictional and safe to publish. The source workbook remains the
-specification: `tests/test_excel_parity.py` locks fifteen of its values and was written
-before any other code.
+**Consulted online, and re-read to check these claims**
+
+| Source | What it contributes |
+|---|---|
+| [**Longley, I. (27 January 2026)** *Understanding the “Minimum Economic Field Size” concept and aggregating targets*, GeoExpro](https://geoexpro.com/understanding-the-minimum-economic-field-size-concept-and-aggregating-targets/) | *“Applying a volume cut-off will always lead to the Mean Unrisked volume to increase in comparison to the non-truncated case”* while *“the chance of ‘commercial’ success (Pc) comes down.”* The two do not cancel — which is exactly why this app draws MEFS as a **reference line to read probabilities against** and never truncates a distribution with it. |
+| [**Rose & Associates** — Pwell implementation, 2017–2021](https://www.roseassoc.com/pwell-implementation-from-2017-to-2021/) | Vendor documentation for the MMRA (2018) → RoseRA (2021) lineage. Not peer-reviewed, and cited only for that history. |
+
+**Cited through another work, not read here**
+
+| Work | Route |
+|---|---|
+| **Rose, P.R. (2001)** *Risk Analysis and Management of Petroleum Exploration Ventures.* AAPG Methods in Exploration **12** | Reached via Schneider et al. (2023), who cite it for Pg being the chance of a discovery *“equal to or exceeding the P99 EUR”* — the anchor this app's unconditional curves are checked against. The book itself is not in `Papers/`. |
+| **Capen (1976)**; **Otis & Schneidermann (1997)** | Cited by Schneider et al. (2023) as the established basis for unbiased assessment of the success-case distribution and its chance. Listed so the lineage is visible, not because they were consulted. |
+
+**Deliberately not obtained.** Milkov & Samis (2020, AAPG Bulletin 104) and Samis &
+Milkov (2020), on the real-option value of untested up-dip volume after a dry hole.
+Both paywalled. If the attic / regret analysis becomes central they are the next two
+to get — and the B2 regret curve is the place they would land.
+
+---
+
+**Two provenance notes.** Prospect A's demo data is fictional and safe to publish.
+Prospect B is extracted from the 2018 macro workbook and its publication status has
+**not** been confirmed — treat it as the licensee's until it has. The source workbook
+remains the specification either way: `tests/test_excel_parity.py` locks fifteen of its
+values and was written before any other code.
         """
     )

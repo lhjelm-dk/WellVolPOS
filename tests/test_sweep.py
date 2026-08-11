@@ -8,6 +8,7 @@ from wellvolpos.core.classes import class_summary, split_trials
 from wellvolpos.core.groups import group_trials
 from wellvolpos.core.stats import support_mask
 from wellvolpos.core.sweep import (
+    entry_depth_percentiles,
     find_crossing,
     invert_volume_target,
     run_sweep,
@@ -376,3 +377,50 @@ def test_chance_and_regret_cross_on_the_reference_data(reduced, area_depth):
     z_cross = find_crossing(vsweep.z, vsweep.p_well, vsweep.p_attic_exceeds_mefs)
     assert z_cross is not None
     assert vsweep.z.min() < z_cross < vsweep.z.max()
+
+
+# ------------------------------------- entry-depth percentiles (workbook BB-BE)
+def test_entry_depth_percentiles_are_ordered_shallow_to_deep(reduced):
+    """The 2018 workbook's BB-BE block. Petroleum orientation throughout: P99 is the
+    *shallow* end, exceeded by 99 % of the qualifying contacts."""
+    res = reduced.col("resource")
+    targets = np.percentile(res[res > 0], [20, 50, 80])
+    band = entry_depth_percentiles(reduced, targets)
+    for i in range(targets.size):
+        assert band[99][i] <= band[90][i] <= band[50][i] <= band[10][i]
+
+
+def test_a_bigger_target_needs_a_deeper_contact(reduced):
+    """The geology: more volume means a deeper fill, so every percentile of the
+    qualifying contacts moves down as the target rises."""
+    res = reduced.col("resource")
+    targets = np.percentile(res[res > 0], [20, 50, 80, 95])
+    band = entry_depth_percentiles(reduced, targets)
+    for q in (99, 90, 50):
+        depths = band[q]
+        assert np.all(np.diff(depths[np.isfinite(depths)]) > 0), q
+
+
+def test_it_says_nothing_rather_than_guessing_where_too_few_trials_qualify(reduced):
+    """A target nothing reaches has no contacts to take percentiles of, and NaN is
+    the honest answer."""
+    huge = np.array([float(reduced.col("resource").max()) * 2.0])
+    band = entry_depth_percentiles(reduced, huge)
+    assert all(np.isnan(band[q][0]) for q in band)
+
+
+def test_it_answers_a_different_question_from_the_inverse(reduced, area_depth):
+    """Worth pinning because the two are easy to conflate. The inverse gives one
+    depth per target from the proven-mean curve -- a guarantee. This gives the spread
+    of contacts among trials that hold the volume. On the reference data the spread
+    is over a hundred metres wide, which is Rose's Figure 4 point: averaging it into
+    a single required depth throws away the thing that matters."""
+    vsweep = run_volume_sweep(reduced, area_depth, POS, n=12, z_gap=EXIT - ENTRY, mefs=14.0)
+    target = float(np.nanmedian(vsweep.proven_mean))
+    band = entry_depth_percentiles(reduced, np.array([target]))
+    spread = band[10][0] - band[99][0]
+    assert spread > 50.0
+    inverse = invert_volume_target(vsweep, target)
+    if inverse.achievable:
+        # The required depth is one number; the spread brackets a range around it.
+        assert band[99][0] <= inverse.z_required + spread

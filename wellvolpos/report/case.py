@@ -64,6 +64,9 @@ class Case:
     scheme: str = "equal_cube_root"
     min_column_height: float = 0.0
     chance_table: dict[str, float] = field(default_factory=lambda: {el: 1.0 for el in ELEMENTS})
+    #: The chance the play works at all, one level above the four elements, which are
+    #: read as conditional on it. Multiplies POS_prospect and therefore P_well.
+    play_chance: float = 1.0
 
     # --- presentation, which changes no number -----------------------------
     area_scale: str = "area"
@@ -87,6 +90,9 @@ class Case:
         self.entry, self.exit = float(self.entry), float(self.exit)
         self.mefs = float(self.mefs)
         self.min_column_height = float(self.min_column_height)
+        self.play_chance = float(self.play_chance)
+        if not 0.0 < self.play_chance <= 1.0:
+            raise ValueError(f"play chance must be in (0, 1]; got {self.play_chance}")
         self.chance_table = {k: float(v) for k, v in dict(self.chance_table).items()}
         if self.risking_convention not in CONVENTION_KEYS:
             raise ValueError(

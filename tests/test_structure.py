@@ -138,3 +138,42 @@ def test_an_interval_larger_than_the_closure_still_gives_the_data_limit(area_dep
     assert c.depths.size == 1
     assert c.at_data_limit[0]
     assert c.depths[0] == pytest.approx(area_depth.deepest)
+
+
+# ------------------------------------------------- the two volume-integration rules
+def test_the_frustum_and_trapezoid_rules_agree_on_a_fine_grid(area_depth):
+    """The 2018 workbook integrates GRV between contours with the **frustum** rule
+    (``h/3 (A1 + A2 + sqrt(A1 A2))``, its column ``BK``) where this codebase uses the
+    trapezoid. The frustum rule is exact on a cone and the trapezoid over-estimates,
+    so in principle the workbook's is better.
+
+    In practice the difference is a *discretisation* artefact, and this test is the
+    measurement that says so: on the 4 000-step grid used here the two agree to
+    better than 0.01 %. The workbook needs the frustum rule because it steps roughly
+    20 m at a time; at 0.12 m steps the choice does not matter, which is why the
+    trapezoid default -- validated by the thickness inversion on two prospects --
+    was left alone.
+    """
+    apex = area_depth.apex_estimate()
+    z = np.array([area_depth.shallowest, area_depth.deepest])
+    trap = area_depth.volume_above(z, apex, "trapezoid")
+    frus = area_depth.volume_above(z, apex, "frustum")
+    assert np.allclose(frus, trap, rtol=2e-4)
+
+
+def test_the_rules_do_differ_when_the_grid_is_as_coarse_as_the_workbook(area_depth):
+    """The other half: at ~19 m steps the two rules part company by about 0.1 %, and
+    the frustum one is the smaller — as it must be, since the trapezoid rule
+    over-estimates a cone. Without this, the test above would look like proof the
+    rules are identical rather than proof the grid is fine enough."""
+    apex = area_depth.apex_estimate()
+    _z, v_trap = area_depth._volume_grid(apex, n=25, rule="trapezoid")
+    _z, v_frus = area_depth._volume_grid(apex, n=25, rule="frustum")
+    assert v_frus[-1] < v_trap[-1]
+    assert abs(v_frus[-1] - v_trap[-1]) / v_trap[-1] > 5e-4
+
+
+def test_an_unknown_volume_rule_is_refused(area_depth):
+    apex = area_depth.apex_estimate()
+    with pytest.raises(ValueError, match="unknown volume rule"):
+        area_depth.volume_above(3500.0, apex, "simpson")

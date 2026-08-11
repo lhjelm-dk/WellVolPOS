@@ -579,3 +579,63 @@ def find_crossing(
     if d1 == d0:
         return float(zs[j])
     return float(zs[j] - d0 * (zs[j + 1] - zs[j]) / (d1 - d0))
+
+
+# ------------------------------------- entry-depth percentiles per volume
+#: The percentiles the entry-depth band reports, matching the workbook's columns
+#: ``BB`` (P99), ``BD`` (P90), ``BE`` (P50) and ``BC`` (P10).
+ENTRY_DEPTH_PERCENTILES = (99, 90, 50, 10)
+
+
+def entry_depth_percentiles(
+    ts: TrialSet,
+    targets: np.ndarray,
+    *,
+    percentiles: tuple[int, ...] = ENTRY_DEPTH_PERCENTILES,
+    min_support: int = 20,
+) -> dict[int, np.ndarray]:
+    """For each target volume, the spread of contact depths that deliver it.
+
+    The 2018 macro workbook's ``BB``-``BE`` block, which the app had no equivalent
+    of: given a volume you want, at what depth do the trials that actually contain
+    that much sit? Returns ``{percentile: depths}``, each array the length of
+    ``targets``, NaN where too few trials qualify to say.
+
+    **This is a different question from** :func:`invert_volume_target`, and the
+    difference is worth stating because the two are easy to conflate:
+
+    * The inverse asks "how deep must the well go for the *mean proven volume* to
+      reach this target". One depth per target, from the proven-mean curve, and it
+      answers a *guarantee*.
+    * This asks "among the trials that hold at least this much, where is the
+      contact". A *distribution* per target, from the trials directly, and it
+      answers a *spread*.
+
+    So the band here is the range of contact depths consistent with a volume, while
+    B6's bootstrap band is sampling error on one estimate. Both are honest, they are
+    not the same band, and neither should be drawn as the other.
+
+    The percentiles are in the petroleum orientation: **P99 is the shallow end**,
+    exceeded by 99 % of the qualifying contacts, and P10 the deep end. That keeps
+    them consistent with every other percentile in this codebase, where P99 is the
+    low case -- here "low" meaning up-dip.
+
+    Rose's Figure 4 is the warning that makes this worth having as a spread rather
+    than a mean: *"The EUR of 9.4 MMBO is associated with productive areas from 200
+    to 1500 acres."* The workbook's own ``BA`` column averages those contacts into
+    one number, and averaging over a sevenfold area range is not a required depth.
+    """
+    res = np.asarray(ts.col("resource"), dtype=float)
+    contact = np.asarray(ts.col("contact"), dtype=float)
+    success = res > 0.0
+    out = {q: np.full(np.asarray(targets).size, np.nan) for q in percentiles}
+    for i, target in enumerate(np.asarray(targets, dtype=float)):
+        qualifies = success & (res >= target)
+        n = int(qualifies.sum())
+        if n < min_support:
+            continue
+        depths = contact[qualifies]
+        for q in percentiles:
+            # P99 = shallow end, so it is the 1st percentile of the depths.
+            out[q][i] = float(np.percentile(depths, 100 - q))
+    return out

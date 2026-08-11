@@ -204,30 +204,57 @@ class AreaDepth:
         return float(np.sqrt(max(float(self.area_at_tapered(depth, apex)), 0.0) / np.pi))
 
     # ------------------------------------------------- closure bulk volume
-    def _volume_grid(self, apex: float, n: int = 4000) -> tuple[np.ndarray, np.ndarray]:
+    #: How the closure volume is integrated between two contours.
+    #:
+    #: ``"trapezoid"`` -- ``(A1 + A2)/2 x h``. The default, and validated: it is what
+    #: makes ``core.reservoir`` recover GeoX's own reservoir-thickness column to a mean
+    #: difference of 0.01 m on prospect A and 0.01 m on prospect B, two independent
+    #: files. Whatever GeoX does internally, this reproduces it.
+    #:
+    #: ``"frustum"`` -- ``h/3 x (A1 + A2 + sqrt(A1 x A2))``, the pyramidal rule, which
+    #: is the one Lars's 2018 workbook uses in column ``BK``. It is *exact* for a cone
+    #: or pyramid where the trapezoid rule over-estimates, so it is the better rule in
+    #: principle. Offered rather than imposed: switching the default would move the
+    #: validated thickness inversion, and on these closures the difference is far
+    #: smaller than the apex extrapolation error it would sit inside. See
+    #: ``tests/test_structure.py`` for the measured gap.
+    VOLUME_RULES = ("trapezoid", "frustum")
+
+    def _volume_grid(self, apex: float, n: int = 4000, rule: str = "trapezoid"
+                     ) -> tuple[np.ndarray, np.ndarray]:
         """(depths, cumulative volume above each depth) from the apex down.
 
         ``km2 x m``, which is ``1e6 m3`` -- the same unit GeoX writes HC-bearing
         gross rock volume in, so the two are directly comparable with no factor.
+
+        See :data:`VOLUME_RULES` for the two integration rules and why the
+        trapezoid one is the default despite the frustum rule being exact on a cone.
         """
+        if rule not in self.VOLUME_RULES:
+            raise ValueError(f"unknown volume rule {rule!r}; expected one of {self.VOLUME_RULES}")
         z = np.linspace(float(apex), self.deepest, int(n))
         a = self.area_at_tapered(z, apex)
-        dv = 0.5 * (a[1:] + a[:-1]) * np.diff(z)          # trapezoid
+        h = np.diff(z)
+        if rule == "frustum":
+            a1, a2 = a[:-1], a[1:]
+            dv = h / 3.0 * (a1 + a2 + np.sqrt(np.maximum(a1 * a2, 0.0)))
+        else:
+            dv = 0.5 * (a[1:] + a[:-1]) * h
         return z, np.concatenate([[0.0], np.cumsum(dv)])
 
-    def volume_above(self, depth, apex: float) -> np.ndarray:
+    def volume_above(self, depth, apex: float, rule: str = "trapezoid") -> np.ndarray:
         """Bulk closure volume above ``depth``: the integral of A(z) from the apex.
 
         This is the volume a reservoir of unlimited thickness would enclose above
         that level -- the ceiling on any hydrocarbon-bearing GRV with the contact
         there.
         """
-        z, v = self._volume_grid(apex)
+        z, v = self._volume_grid(apex, rule=rule)
         return np.interp(depth, z, v)
 
-    def depth_for_volume(self, volume, apex: float) -> np.ndarray:
+    def depth_for_volume(self, volume, apex: float, rule: str = "trapezoid") -> np.ndarray:
         """Inverse of :meth:`volume_above`: the depth enclosing a given volume."""
-        z, v = self._volume_grid(apex)
+        z, v = self._volume_grid(apex, rule=rule)
         return np.interp(volume, v, z)
 
     def quality(self) -> tuple[str, str]:

@@ -175,8 +175,9 @@ def tables(b: Bundle) -> dict[str, pd.DataFrame]:
         ("Adapter", b.ts.source, ""),
         ("Exported (UTC)", datetime.now(timezone.utc).isoformat(timespec="seconds"), ""),
     ]
+    settings.append(("Play chance", f"{b.case.play_chance:.4f}", ""))
     for el, v in b.case.chance_table.items():
-        settings.append((f"Chance · {el}", f"{v:.4f}", ""))
+        settings.append((f"Chance · {el} | play", f"{v:.4f}", ""))
     out["Case"] = pd.DataFrame(settings, columns=["setting", "value", "units"])
 
     # --- KPIs ---------------------------------------------------------------

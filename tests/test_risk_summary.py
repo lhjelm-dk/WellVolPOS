@@ -117,3 +117,26 @@ def test_a_custom_weighting_reports_no_single_correction_factor():
     and an average would look like one."""
     s = risk_summary(ELEMENTS, R, scheme={"charge": 0.7, "trap": 0.3, "retention": 0.0})
     assert np.isnan(s.correction_factor)
+
+
+# --------------------------------------------------------------- the play chance
+def test_the_play_column_reads_the_entered_play_chance():
+    """Added as a real input (Lars, 2026-08-11) because the summary shows a Play
+    column, and a column that can only ever read 100 % teaches nothing."""
+    s = risk_summary(ELEMENTS, R, play_chance=0.7)
+    assert all(r[SUMMARY_COLUMNS[0]] == pytest.approx(0.7) for r in s.as_records())
+    assert s.play_chance == pytest.approx(0.7)
+    # The middle column stays *conditional on the play* — it is not rescaled.
+    given = {r["Chance element"]: r[SUMMARY_COLUMNS[1]] for r in s.as_records()}
+    assert given["Charge"] == pytest.approx(0.90)
+
+
+def test_the_play_chance_separates_the_two_prospect_lines():
+    """With a play chance the two middle result lines stop being the same number,
+    which is the point of having both: "Cond. prospect chance" is conditional on the
+    play, "Final prospect POS" includes it."""
+    s = risk_summary(ELEMENTS, R, play_chance=0.5)
+    assert s.conditional_prospect_chance == pytest.approx(0.432)
+    assert s.prospect_pos == pytest.approx(0.216)
+    plain = risk_summary(ELEMENTS, R)
+    assert plain.conditional_prospect_chance == pytest.approx(plain.prospect_pos)

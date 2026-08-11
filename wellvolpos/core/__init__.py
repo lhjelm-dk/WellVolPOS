@@ -41,6 +41,8 @@ from .stats import (
     thin,
 )
 from .sweep import (
+    ENTRY_DEPTH_PERCENTILES,
+    entry_depth_percentiles,
     InverseResult,
     Sweep,
     VolumeSweep,

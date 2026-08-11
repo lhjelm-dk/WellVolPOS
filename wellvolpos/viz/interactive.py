@@ -41,6 +41,7 @@ from ..core.reservoir import thickness_from_pay
 from ..core.stats import MIN_SUPPORT, thin
 from ..core.structure import AreaDepth
 from ..core.sweep import (
+    entry_depth_percentiles,
     Sweep,
     VolumeSweep,
     find_crossing,
@@ -568,7 +569,8 @@ def pfig_a4_resource_vs_depth(
 
 # ------------------------------------------------------------------- A5
 def _mark_exceedance(fig, values, role: str, dark: bool, *, chance: float = 1.0,
-                     row=None, col=None, show_text: bool = True, size: int = 7):
+                     row=None, col=None, show_text: bool = True, size: int = 7,
+                     textposition: str = "middle right", prefix: str = " "):
     """Put P90 / P50 / mean / P10 markers on an exceedance curve, labelled by value.
 
     Labelled with the **volume**, not the percentile, because the percentile is
@@ -594,8 +596,8 @@ def _mark_exceedance(fig, values, role: str, dark: bool, *, chance: float = 1.0,
                 color=colour(role, dark),
                 line=dict(color=p["surface"], width=1.2),
             ),
-            text=[f" {value:,.1f}"] if show_text else None,
-            textposition="middle right",
+            text=[f"{prefix}{value:,.1f}"] if show_text else None,
+            textposition=textposition,
             textfont=dict(size=8, color=p["text_secondary"]),
             showlegend=False,
             hovertemplate=f"{label} = {value:,.2f} MMboe at {pct:.1f}%<extra></extra>",
@@ -1080,6 +1082,28 @@ def pfig_b6_inverse(
             )
 
     ok = np.isfinite(z_req)
+    # The workbook's BB-BE block: the *spread of contact depths* among the trials
+    # that actually hold each target volume. A different question from the required
+    # depth this figure inverts -- that one answers a guarantee from the proven-mean
+    # curve, this one a spread read straight off the trials -- so it is drawn as thin
+    # lines rather than a second filled band, which would read as more sampling
+    # error. Rose's Figure 4 is why the spread is worth showing at all: "The EUR of
+    # 9.4 MMBO is associated with productive areas from 200 to 1500 acres."
+    if ts is not None:
+        pct_band = entry_depth_percentiles(ts, targets)
+        for q, dash in ((99, "dot"), (90, "dash"), (50, "solid"), (10, "dash")):
+            depths = pct_band[q]
+            good = np.isfinite(depths)
+            if good.sum() < 2:
+                continue
+            fig.add_scatter(
+                x=targets[good], y=depths[good], mode="lines",
+                line=dict(color=p["muted"], width=1.0, dash=dash),
+                name=f"P{q} contact depth of trials holding it",
+                hovertemplate=(f"P{q} of the contacts that hold %{{x:.1f}} MMboe"
+                               "<br>" + DEPTH_HOVER + "<extra></extra>"),
+            )
+
     fig.add_scatter(
         x=targets[ok], y=z_req[ok], mode="lines+markers",
         line=dict(color=p["text_secondary"], width=1.2),
@@ -1538,12 +1562,17 @@ def pfig_c2_exceedance(
                     "<br>%{y:.1f}% chance of exceeding %{x:.2f} MMboe<extra></extra>"
                 ),
             )
-            # Markers on the *unconditional* curve only. Eight per concept would be
-            # noise, and the unconditional is the one a decision reads; the
-            # conditional percentiles are in the table in tab ③ and in the hover.
-            if reading == "unconditional":
-                _mark_exceedance(fig, values, role, dark, chance=chance_used,
-                                 show_text=False, size=6)
+            # **Both families labelled** (Lars, 2026-08-11), with the values pushed to
+            # opposite sides so the two readings of one concept do not overwrite each
+            # other: conditional to the right of its marker, unconditional to the
+            # left. The volumes are identical between the two -- only the height
+            # differs -- so seeing the same number twice at two heights is the whole
+            # lesson rather than a duplication.
+            _mark_exceedance(
+                fig, values, role, dark, chance=chance_used, size=6, show_text=True,
+                textposition="middle right" if reading == "conditional" else "middle left",
+                prefix=" " if reading == "conditional" else "",
+            )
         positive = np.sort(np.asarray(values, dtype=float))
         positive = positive[np.isfinite(positive) & (positive > 0)]
         if positive.size:

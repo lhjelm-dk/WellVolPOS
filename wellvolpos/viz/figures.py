@@ -33,6 +33,7 @@ from ..core.reservoir import thickness_from_pay
 from ..core.stats import MIN_SUPPORT, thin
 from ..core.structure import AreaDepth
 from ..core.sweep import (
+    entry_depth_percentiles,
     Sweep,
     VolumeSweep,
     find_crossing,
@@ -194,7 +195,7 @@ def exceedance_marks(values, chance: float = 1.0) -> list[tuple[str, float, floa
 
 
 def _mark_exceedance_mpl(ax, values, role: str, dark: bool, *, chance: float = 1.0,
-                         show_text: bool = True, size: float = 5.0):
+                         show_text: bool = True, size: float = 5.0, ha: str = "left"):
     """The export-path twin of ``interactive._mark_exceedance``.
 
     Labelled with the volume rather than the percentile name, for the same reason:
@@ -210,8 +211,9 @@ def _mark_exceedance_mpl(ax, values, role: str, dark: bool, *, chance: float = 1
                 ms=size + (0.5 if label == "Mean" else 0.0),
                 mfc=colour(role, dark), mec=p["surface"], mew=0.8, ls="none", zorder=5)
         if show_text:
-            ax.annotate(f" {value:,.1f}", (value, pct), fontsize=6.5,
-                        color=p["text_secondary"], va="center", ha="left", zorder=5)
+            label = f" {value:,.1f}" if ha == "left" else f"{value:,.1f} "
+            ax.annotate(label, (value, pct), fontsize=6.5,
+                        color=p["text_secondary"], va="center", ha=ha, zorder=5)
 
 
 def fig_a1_area_depth(
@@ -666,6 +668,17 @@ def fig_b6_inverse(
                 color=colour("p_well", dark), alpha=0.15, lw=0,
                 label=f"nominal {100 * (1 - vsweep.alpha):.0f}% band",
             )
+
+    # The workbook's BB-BE block; see the plotly twin for why it is thin lines and
+    # not a second band.
+    if ts is not None:
+        pct_band = entry_depth_percentiles(ts, targets)
+        for q, ls in ((99, ":"), (90, "--"), (50, "-"), (10, "--")):
+            depths = pct_band[q]
+            good = np.isfinite(depths)
+            if good.sum() >= 2:
+                ax.plot(targets[good], depths[good], color=p["muted"], lw=0.9, ls=ls,
+                        label=f"P{q} contact depth" if q in (99, 10) else None)
 
     sc = ax.scatter(targets[ok], z_req[ok], c=p_at[ok] * 100.0, cmap=SEQUENTIAL_CMAP,
                     vmin=0, vmax=100, s=22, zorder=4)
@@ -1231,9 +1244,11 @@ def fig_c2_exceedance(
                         lw=2.2 if reading == "conditional" else 1.6,
                         ls="-" if reading == "conditional" else "--",
                         label=name if reading == "conditional" else None)
-            if reading == "unconditional":
-                _mark_exceedance_mpl(ax_exc, values, role, dark, chance=chance_used,
-                                     show_text=False, size=4.0)
+            # Both families labelled, values on opposite sides so the two readings
+            # of one concept do not overwrite each other.
+            _mark_exceedance_mpl(ax_exc, values, role, dark, chance=chance_used,
+                                 show_text=True, size=4.0,
+                                 ha="left" if reading == "conditional" else "right")
         vals = np.sort(np.asarray(values, dtype=float))
         positive = vals[np.isfinite(vals) & (vals > 0)]
         if positive.size:

@@ -380,6 +380,7 @@ with tabs[0]:
                     "w_min_col": loaded.min_column_height,
                     "w_map_interval": loaded.map_interval,
                     "w_map_azimuth": int(round(loaded.map_azimuth_deg)),
+                    "w_play": loaded.play_chance,
                     "risking_convention": loaded.risking_convention,
                     "_case_warnings": loaded.check_against(ts),
                     "_case_loaded": loaded.dataset or "a case file",
@@ -551,11 +552,30 @@ with tabs[0]:
         )
         for i, el in enumerate(ELEMENTS)
     }
-    st.caption(
-        f"POS_prospect from this table: **{float(np.prod(list(elements.values()))):.4f}**"
+    # The play chance is a *fifth* input, one level above the four elements: the
+    # chance the play works at all. Added because the risk summary shows a Play
+    # column and a Play chance result line, and a column that can only ever read
+    # 100 % is a column that teaches nothing. It multiplies POS_prospect, so it
+    # multiplies P_well too.
+    pc1, pc2 = st.columns([1, 3])
+    play_chance = pc1.number_input(
+        "Play chance", 0.01, 1.0, 1.00, 0.01, key="w_play",
+        help="Chance the play works at all — that the petroleum system is present and "
+             "functioning at this level. One level above the four elements below, which are "
+             "conditional on it. Leave at 1.00 to assess the segment on its own.",
+    )
+    pc2.caption(
+        f"**POS_prospect = play × charge × trap × reservoir × retention = "
+        f"{play_chance:.2f} × {float(np.prod(list(elements.values()))):.4f} = "
+        f"{play_chance * float(np.prod(list(elements.values()))):.4f}**\n\n"
+        f"Everything here is conditional on the play: the four elements are read as "
+        f"*probability of the prospect given the play*, which is what the middle column of "
+        f"the risk summary in tab ⑤ is called."
     )
 
-pos_from_table = float(np.prod(list(elements.values())))
+# The play chance multiplies the four elements: POS_prospect is the chance the
+# play works *and* every element of this prospect does.
+pos_from_table = float(play_chance) * float(np.prod(list(elements.values())))
 risking_convention = st.session_state.get("risking_convention", "success_case_only")
 # `is not None`, not truthiness: a file whose every trial failed gives
 # pos_trials == 0.0, which is falsy, and would silently fall through to the
@@ -937,10 +957,13 @@ with tabs[2]:
             f"curve begins at {chance.pos_prospect:.0%} and the well-associated one at "
             f"{chance.p_well:.0%} — and **the vertical gap between those two starts is the location "
             "penalty**, the chance the prospect holds something this well would miss.\n\n"
-            "Markers sit on the *unconditional* curves at P90 / P50 / mean / P10. The braces below "
-            "show the nesting — up-dip inside tested inside well associated inside prospect — and "
-            "the axis carries no negative labels: that space is for the braces, not for "
-            "probabilities."
+            "**Markers on both curves**, at P90 / P50 / mean / P10, each labelled with its "
+            "volume — values to the right of the conditional markers and to the left of the "
+            "unconditional ones so the pair does not overwrite itself. The volume is *the same "
+            "number* on both curves; only the height differs, which is the whole lesson. The "
+            "braces below show the nesting — up-dip inside tested inside well associated inside "
+            "prospect — and the axis carries no negative labels: that space is for the braces, "
+            "not for probabilities."
         )
 
         st.divider()
@@ -1071,7 +1094,7 @@ def _current_case() -> Case:
         risking_convention=risking_convention,
         reference=ref.value, scheme=scheme,
         min_column_height=float(ss.get("w_min_col", 0.0)),
-        chance_table=dict(elements),
+        chance_table=dict(elements), play_chance=float(play_chance),
         area_scale=area_scale,
         map_interval=float(ss.get("w_map_interval", 50.0)),
         map_azimuth_deg=float(ss.get("w_map_azimuth", 35.0)),
@@ -1204,7 +1227,18 @@ def _inverse_section(vsweep, ts):
         "cost side of the trade — because a second y-axis is not allowed and the trade is the "
         "point. The shaded band is the bootstrap interval on the proven mean, inverted through "
         "the same curve, so it widens down-dip where the discovery group thins. The level is "
-        "nominal: a percentile bootstrap under-covers on small skewed samples."
+        "nominal: a percentile bootstrap under-covers on small skewed samples.\n\n"
+        "**The four thin grey lines are the workbook's BB–BE block**, added 2026-08-11: for each "
+        "target volume, the P99 / P90 / P50 / P10 **contact depth among the trials that actually "
+        "hold that much**. It answers a different question from the curve, and the two are easy "
+        "to conflate. The curve gives one depth per target — how deep the well must go for the "
+        "*mean proven volume* to reach it, a guarantee. These lines give the *spread* of contacts "
+        "consistent with the volume, read straight off the trials. So the grey band is geological "
+        "range and the shaded band is sampling error; neither should be read as the other.\n\n"
+        "Rose's Figure 4 is why the spread is worth drawing rather than averaged: *“The EUR of "
+        "9.4 MMBO is associated with productive areas from 200 to 1500 acres.”* The workbook's "
+        "own `BA` column averages those contacts into a single number, and an average over that "
+        "range is not a required depth."
     )
 
 
@@ -1229,7 +1263,8 @@ with tabs[4]:
         "multiplied — so the summary comes last, and the third column below is a **result**, not "
         "something anyone typed."
     )
-    _summary = risk_summary(elements, chance.r_location, scheme=scheme)
+    _summary = risk_summary(elements, chance.r_location, scheme=scheme,
+                            play_chance=play_chance)
     st.dataframe(
         pd.DataFrame(_summary.as_records()),
         hide_index=True, width="stretch",
@@ -1404,6 +1439,7 @@ st.caption(
     f"where a well may test one and not the other, is not represented. "
     f"Vertical (depth-dependent) risk is assumed already contained in the contact distribution; "
     f"building that distribution is the HCWC Builder's job. "
-    f"Risking: POS {pos:.4f} from the {pos_provenance}. "
+    f"Risking: POS {pos:.4f} from the {pos_provenance} "
+    f"(play {play_chance:.2f}). "
     f"Reference contour: {ref.value}. Allocation: {scheme}."
 )
