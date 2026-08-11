@@ -290,7 +290,15 @@ def test_pb6_carries_p_well_as_marker_colour_with_a_scale(vsweep_banded):
     curve = next(t for t in fig.data if t.name == "Required entry")
     assert curve.marker.colorscale is not None
     assert curve.marker.color is not None
-    assert "yaxis2" not in fig.layout
+    # The rule is "no dual y-axes", which in plotly means no y-axis *overlaying*
+    # another on the same panel. It is not "no yaxis2": B6 is two side-by-side
+    # panels now, so a second y-axis exists and is entirely legitimate. Asserting
+    # on the name rather than on `overlaying` would have made the merge look like a
+    # violation while leaving a genuine twinned axis undetected on every other
+    # figure.
+    for key in fig.layout:
+        if key.startswith("yaxis"):
+            assert fig.layout[key].overlaying is None, key
 
 
 def test_pb6_hover_gives_volume_depth_and_chance_together(vsweep_banded):
@@ -1052,41 +1060,81 @@ def test_c1_draws_the_well_as_a_vertical_track_on_the_structure(reduced, area_de
     assert float(area_depth.area_at(EXIT)) > xs[0]
 
 
-def test_b6_no_longer_mixes_two_volume_concepts_on_one_axis(reduced, vsweep):
-    """B6 draws the required-depth answer alone; the contact spread is B10.
+def test_b6_gives_each_panel_its_own_x_and_shares_only_the_depth(reduced, vsweep):
+    """B6's two panels may share y and must not share x.
 
-    They were on one pair of axes, and the axes could only be labelled for one of
-    them -- x was the *mean proven volume over the discovery group* for the curve
-    and the *per-trial total resource* for the spread lines, y was a *required entry
-    depth* against a *sampled contact*. Lars reported the figure as unreadable, and
-    that is why: two quantities under one label, the same mistake as an unrisked
-    number under a risked label.
+    They were briefly one overlay, and the axes could only be labelled for one of
+    the two families -- x was the *mean proven volume over the discovery group* for
+    the required-depth curve and the *per-trial total resource* for the spread
+    lines, y was a *required entry depth* against a *sampled contact*. They crossed,
+    and Lars reported the figure as unreadable. Two quantities under one axis label
+    is the same mistake as an unrisked number under a risked label.
 
-    So the assertion is an absence -- no trace on B6 whose y is a contact depth.
+    Merged back as two panels on Lars's instruction, the separation is what keeps
+    it honest: each x names its own quantity, while y is shared because entry depth
+    and contact depth are both structural levels on the same structure -- which is
+    what non-negotiable 2 asks a row to share, and what makes a ruler laid across
+    the row mean something.
     """
-    fig = I.pfig_b6_inverse(vsweep, target=14.0, ts=reduced)
-    names = [getattr(t, "name", "") or "" for t in fig.data]
-    assert not any("contact" in n.lower() for n in names), names
-    assert any("Required entry" == n for n in names)
+    fig = I.pfig_b6_inverse(vsweep, target=14.0, ts=reduced, mefs=14.0)
+    assert "mean proven" in fig.layout.xaxis.title.text
+    assert "one trial" in fig.layout.xaxis2.title.text
+    assert fig.layout.xaxis.title.text != fig.layout.xaxis2.title.text
+
+    # One depth range across the row, inverted, labelled once.
+    assert list(fig.layout.yaxis.range) == list(fig.layout.yaxis2.range)
+    assert fig.layout.yaxis.range[0] > fig.layout.yaxis.range[1]
+    assert "TVDSS" in fig.layout.yaxis.title.text
     # And the guarantee is stated on the axis, not left to the docstring.
     assert "deeper" in fig.layout.yaxis.title.text
 
 
-def test_b10_puts_one_meaning_on_each_axis(reduced):
-    """B10 is the spread B6 gave up: volume held by *one trial* against that trial's
-    *contact*. Both axis titles have to say so, because saying so is the entire
-    reason the figure was split out."""
-    fig = I.pfig_b10_contact_spread(reduced, n_targets=20)
-    assert "one trial" in fig.layout.xaxis.title.text
-    assert "contact" in fig.layout.yaxis.title.text.lower()
-    lo, hi = fig.layout.yaxis.range
-    assert lo > hi                                       # depth still inverted
+def test_b6_spread_panel_runs_p99_to_p1_in_the_petroleum_orientation(reduced, vsweep):
+    """P1 is drawn and P99 is the shallow end.
 
-    # P99 is the shallow end, in the petroleum orientation this codebase uses
-    # everywhere. Getting this backwards would invert the geological reading while
-    # leaving the figure looking perfectly reasonable.
-    series = {t.name: t for t in fig.data}
-    p99, p10 = series["P99 contact"], series["P10 contact"]
-    both = np.isfinite(np.asarray(p99.y, float)) & np.isfinite(np.asarray(p10.y, float))
+    Both were asked for on 2026-08-11: the family stopped at P10, so the shaded
+    range stopped there too and understated the deep tail -- a volume only the
+    largest accumulations hold is consistent with contacts well below P10.
+
+    The orientation assertion matters more than it looks. Getting P99 and P1 the
+    wrong way round would invert the geological reading while leaving the figure
+    looking entirely reasonable.
+    """
+    fig = I.pfig_b6_inverse(vsweep, ts=reduced, n_targets=20)
+    series = {t.name: t for t in fig.data if getattr(t, "name", None)}
+    for q in (99, 90, 50, 10, 1):
+        assert f"P{q} contact" in series, sorted(series)
+    assert "P99–P1 of the contacts" in series      # the fill spans the full family
+
+    p99 = np.asarray(series["P99 contact"].y, dtype=float)
+    p1 = np.asarray(series["P1 contact"].y, dtype=float)
+    both = np.isfinite(p99) & np.isfinite(p1)
     assert both.any()
-    assert np.all(np.asarray(p99.y, float)[both] <= np.asarray(p10.y, float)[both])
+    assert np.all(p99[both] <= p1[both])           # P99 shallow, P1 deep
+
+
+def test_b9_carries_the_chance_weighted_tails_as_grey_lines(vsweep):
+    """B9 draws P99/P90/P10/P1 of the proven volume, each weighted by P_well.
+
+    Grey and thin rather than widening the fill (Lars, 2026-08-11): on a
+    right-skewed resource distribution P1 runs a long way above P10, and filling
+    out to it would swamp the two mean lines the figure is actually about.
+
+    Every one is ``P_well x`` the conditional percentile, so it cannot be an
+    unrisked number under a risked label -- the fifth-and-counting instance of that
+    bug in this codebase.
+    """
+    fig = I.pfig_b9_chance_weighted(vsweep)
+    names = {getattr(t, "name", None) for t in fig.data}
+    for q in ("P99", "P90", "P10", "P1"):
+        assert f"Proven {q}, chance weighted" in names, sorted(n for n in names if n)
+
+    series = {t.name: np.asarray(t.x, dtype=float) for t in fig.data
+              if getattr(t, "name", None)}
+    p90, p10 = series["Proven P90, chance weighted"], series["Proven P10, chance weighted"]
+    mean = series["Proven — chance weighted"]
+    ok = np.isfinite(p90) & np.isfinite(p10) & np.isfinite(mean)
+    assert ok.any()
+    # P90 low, P10 high, mean between them: the weighting is applied to all three
+    # identically, so the ordering of the conditional percentiles survives it.
+    assert np.all(p90[ok] <= mean[ok] + 1e-9) and np.all(mean[ok] <= p10[ok] + 1e-9)

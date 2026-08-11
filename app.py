@@ -98,7 +98,6 @@ from wellvolpos.viz import (
     pfig_b7_frontier,
     pfig_b8_commercial_chance,
     pfig_b9_chance_weighted,
-    pfig_b10_contact_spread,
     pfig_c1_section,
     pfig_c2_exceedance,
     pfig_map_view,
@@ -1417,7 +1416,10 @@ def _inverse_section(vsweep, ts):
             f"That depth rests on only {inv.n_discovery_at:,} discovery trials, below the "
             f"{MIN_SUPPORT}-trial floor — treat the requirement as indicative, not surveyed."
         )
-    _chart(pfig_b6_inverse(vsweep, target=target, ts=ts), key="b6")
+    # Two panels, one depth axis. The spread was briefly its own figure (B10);
+    # merged back on 2026-08-11 so the requirement and the range around it are one
+    # glance, with each panel keeping its own honest x-axis.
+    _chart(pfig_b6_inverse(vsweep, target=target, ts=ts, mefs=mefs), key="b6")
     # The worked sentence first, in the app's live numbers, because "how do I read
     # this" is the question B6 kept failing to answer (Lars, 2026-08-11).
     _worked = ""
@@ -1442,25 +1444,18 @@ def _inverse_section(vsweep, ts):
         "your target all the way down. A sampled proven-mean curve wobbles wherever the discovery "
         "group is thin, and inverting its first crossing gives depths that deeper locations "
         "contradict — no basis for a well proposal.\n\n"
-        "**The contact-depth spread that used to sit on this figure is now B10, below.** Both are "
-        "sound and they were sharing axes that could only be labelled for one of them: x here is "
-        "the *mean proven volume over the discovery group*, x there is the *total resource held "
-        "by one trial*; y here is a *required entry depth*, y there is a *sampled contact*. So "
-        "they crossed, and read as one fuzzy answer."
-    )
-
-    st.divider()
-    _chart(pfig_b10_contact_spread(ts, mefs=mefs), key="b10")
-    st.caption(
-        "**B10 — the range around the requirement.** Pick a volume on the bottom axis; the lines "
-        "are the P99 / P90 / P50 / P10 **hydrocarbon–water contact among the trials that actually "
-        "hold at least that much**. B6 gives you one depth, a requirement. This gives the spread "
-        "of contacts consistent with the same volume, read straight off the trials — and it is "
-        "wide, which is the point.\n\n"
-        "Rose's Figure 4 is why it is drawn rather than averaged: *“The EUR of 9.4 MMBO is "
-        "associated with productive areas from 200 to 1500 acres.”* The workbook's own `BA` column "
-        "averages those contacts into a single number and calls it a required depth; an average "
-        "over that range is not one."
+        "**The right panel is the range around that requirement**: for each volume, the "
+        "P99 / P90 / P50 / P10 / P1 **hydrocarbon–water contact among the trials that actually "
+        "hold at least that much**. It is wide, and that is the content — Rose's Figure 4, "
+        "*“The EUR of 9.4 MMBO is associated with productive areas from 200 to 1500 acres.”* The "
+        "workbook's own `BA` column averages those contacts into one number and calls it a "
+        "required depth; an average over that range is not one.\n\n"
+        "**The two panels share the depth axis and nothing else.** They may share it because "
+        "entry depth and contact depth are both structural levels on the same structure, so a "
+        "ruler laid across the row means something. They may *not* share x: the left is the mean "
+        "proven volume over the discovery group, the right is the total resource held by one "
+        "trial — 33.9–277.7 against 2.2–482.1 MMboe here. On one pair of axes they crossed and "
+        "read as one fuzzy answer, which is how this figure got hard to read in the first place."
     )
 
 

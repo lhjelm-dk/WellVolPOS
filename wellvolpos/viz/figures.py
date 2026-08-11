@@ -68,7 +68,6 @@ __all__ = [
     "fig_b7_frontier",
     "fig_b8_commercial_chance",
     "fig_b9_chance_weighted",
-    "fig_b10_contact_spread",
     "fig_a8_contact_distribution",
     "fig_a9_prospect_density",
     "exceedance_marks",
@@ -713,31 +712,35 @@ def fig_b2_chance_vs_regret(
 
 def fig_b6_inverse(
     vsweep: VolumeSweep, *, target: float | None = None, n_targets: int = 40,
-    ts: TrialSet | None = None, dark: bool = False,
+    ts: TrialSet | None = None, mefs: float | None = None,
+    zlim: tuple[float, float] | None = None, dark: bool = False,
 ):
-    """B6 -- the inverse: volume to prove against the entry depth it demands.
+    """B6 -- the inverse, in two panels sharing one depth axis.
 
-    The source workbook's H38-H40 block as a curve, and the answer to "given a
-    volume to prove, where must the well go and what does it cost in chance".
-    Depth is on y and inverted like every other depth axis, so the curve is
-    read the way the structure is: further right means more volume demanded,
-    further down means the well has to go deeper to prove it.
+    The export twin of :func:`wellvolpos.viz.interactive.pfig_b6_inverse`; that
+    docstring carries the argument. The short form: the left panel gives the
+    required depth for a volume, the right the spread of contacts consistent with
+    the same volume, and they may share **y** (both are structural levels on the
+    same structure) but never **x** -- mean proven volume over the discovery group
+    against total resource held by one trial are different quantities, and one
+    x-axis labelled for both is what made the earlier overlay unreadable.
 
-    ``P_well`` is carried as the colour of the curve rather than a second
-    y-axis, because dual y-axes are forbidden and because the trade is the
-    point: the curve turns dark as the requirement gets cheap in chance and
-    pale as it gets expensive. One blue hue, light to dark, per the colour rule.
+    Returns ``(fig, axes)``, axes being the two panels left to right.
     """
     targets, z_req, p_at = volume_target_curve(vsweep, n=n_targets, ts=ts)
-    fig, ax = new_figure(figsize=(6, 5), dark=dark)
     p = palette(dark)
 
     if targets.size == 0 or not np.isfinite(z_req).any():
+        fig, ax = new_figure(figsize=(6, 5), dark=dark)
         ax.text(0.5, 0.5, "No proven-volume curve to invert", transform=ax.transAxes,
                 ha="center", va="center", fontsize=9, color=p["text"])
-        ax.set_title("B6 · Inverse — volume to prove")
+        ax.set_title("B6 \u00b7 Inverse \u2014 volume to prove")
         fig.tight_layout()
         return fig, ax
+
+    fig, axes = new_figure(1, 2, figsize=(10.5, 4.6), dark=dark, sharey=True)
+    axes = np.atleast_1d(axes)
+    ax, ax2 = axes[0], axes[1]
 
     ok = np.isfinite(z_req)
     if vsweep.alpha is not None:
@@ -753,7 +756,7 @@ def fig_b6_inverse(
     sc = ax.scatter(targets[ok], z_req[ok], c=p_at[ok] * 100.0, cmap=SEQUENTIAL_CMAP,
                     vmin=0, vmax=100, s=22, zorder=4)
     ax.plot(targets[ok], z_req[ok], color=p["text_secondary"], lw=1.0, zorder=3)
-    cb = fig.colorbar(sc, ax=ax, pad=0.02)
+    cb = fig.colorbar(sc, ax=axes.tolist(), pad=0.02)
     cb.set_label(r"$P_{well}$ at that depth (%)", fontsize=8)
 
     if target is not None:
@@ -774,75 +777,50 @@ def fig_b6_inverse(
                 fontsize=8, color=p["text"],
             )
 
-    # "or deeper" is the guarantee: a running minimum from the deep end, so the
-    # proven mean stays at or above the target from here down rather than merely
-    # first reaching it here.
-    depth_axis(ax, ylabel="Enter at this depth or deeper (m TVDSS)")
-    ax.set_xlabel("Volume to prove — mean proven (MMboe)")
-    ax.set_title("B6 · Inverse — how deep must the well go to prove a volume?")
-    if ax.get_legend_handles_labels()[1]:
-        ax.legend(loc="lower right", fontsize=7.5)
-    fig.tight_layout()
-    return fig, ax
+    spread_depths = []
+    if ts is not None:
+        res_all = np.asarray(ts.col("resource"), dtype=float)
+        res_all = res_all[res_all > 0]
+        held = np.linspace(float(np.percentile(res_all, 5)),
+                           float(np.percentile(res_all, 95)), int(n_targets))
+        band_pct = entry_depth_percentiles(ts, held)
+        c = colour("prospect", dark)
+        lo, hi = band_pct[99], band_pct[1]
+        inner = np.isfinite(lo) & np.isfinite(hi)
+        if inner.any():
+            ax2.fill_between(held[inner], lo[inner], hi[inner], color=c, alpha=0.12, lw=0,
+                             label="P99\u2013P1 of the contacts")
+        for q, lw, ls in ((99, 0.9, ":"), (90, 1.2, "--"), (50, 2.2, "-"),
+                          (10, 1.2, "--"), (1, 0.9, ":")):
+            depths = band_pct[q]
+            good = np.isfinite(depths)
+            if good.sum() >= 2:
+                spread_depths.append(depths[good])
+                ax2.plot(held[good], depths[good], color=c, lw=lw, ls=ls,
+                         label=f"P{q} contact")
+        if mefs is not None:
+            ax2.axvline(float(mefs), color=p["muted"], ls=":", lw=1.0)
 
-
-
-
-def fig_b10_contact_spread(
-    ts: TrialSet, *, targets: np.ndarray | None = None, n_targets: int = 40,
-    mefs: float | None = None, dark: bool = False,
-):
-    """B10 -- the contact depths consistent with holding a given volume.
-
-    The 2018 macro workbook's ``BB``-``BE`` block, split out of B6 on 2026-08-11.
-    See the plotly twin for the full argument; the short form is that these lines
-    and B6's curve were sharing axes that meant two different things -- x was mean
-    proven volume there and per-trial total resource here, y was required *entry*
-    depth there and sampled *contact* depth here -- so they crossed and read as one
-    fuzzy answer.
-
-    Rose's Figure 4 is why the spread is drawn rather than averaged: *"The EUR of
-    9.4 MMBO is associated with productive areas from 200 to 1500 acres."*
-    """
-    p = palette(dark)
-    if targets is None:
-        res = np.asarray(ts.col("resource"), dtype=float)
-        res = res[res > 0]
-        targets = np.linspace(float(np.percentile(res, 5)),
-                              float(np.percentile(res, 95)), int(n_targets))
-    targets = np.asarray(targets, dtype=float)
-    band = entry_depth_percentiles(ts, targets)
-
-    fig, ax = new_figure(figsize=(6, 5), dark=dark)
-    c = colour("prospect", dark)
-    lo, hi = band[99], band[10]
-    inner = np.isfinite(lo) & np.isfinite(hi)
-    if inner.any():
-        ax.fill_between(targets[inner], lo[inner], hi[inner], color=c, alpha=0.12, lw=0,
-                        label="P99–P10 of the contacts")
-    for q, lw, ls in ((99, 0.9, ":"), (90, 1.2, "--"), (50, 2.2, "-"), (10, 0.9, ":")):
-        depths = band[q]
-        good = np.isfinite(depths)
-        if good.sum() >= 2:
-            ax.plot(targets[good], depths[good], color=c, lw=lw, ls=ls, label=f"P{q} contact")
-    if mefs is not None:
-        ax.axvline(float(mefs), color=p["muted"], ls=":", lw=1.0)
-        ax.annotate("MEFS", (float(mefs), 0.01), xycoords=("data", "axes fraction"),
-                    fontsize=7.5, color=p["text_secondary"], ha="left")
-
+    # One depth range across the row -- non-negotiable 2 applied, and the only axis
+    # the two panels are allowed to share.
+    all_z = [z_req[ok], *spread_depths]
+    all_z = np.concatenate([a for a in all_z if a.size])
+    row = zlim or (float(all_z.min()), float(all_z.max()))
+    depth_axis(ax, ylabel="Depth (m TVDSS) \u2014 enter at this depth or deeper", zlim=row)
+    depth_axis(ax2, ylabel=None, zlim=row)
     ax.set_xlim(left=0)
-    ax.set_xlabel("Volume held by one trial (MMboe)")
-    finite = [band[q][np.isfinite(band[q])] for q in band]
-    finite = np.concatenate([a for a in finite if a.size]) if any(a.size for a in finite) \
-        else np.asarray([0.0, 1.0])
-    depth_axis(ax, ylabel="Hydrocarbon–water contact (m TVDSS)",
-               zlim=(float(finite.min()), float(finite.max())))
-    ax.set_title("B10 · Where the contact sits, among trials that hold a given volume")
-    ax.grid(True, lw=0.6, alpha=0.7)
-    if ax.get_legend_handles_labels()[1]:
-        ax.legend(loc="lower right", fontsize=7.5)
-    fig.tight_layout()
-    return fig, ax
+    ax2.set_xlim(left=0)
+    ax.set_xlabel("Volume to prove \u2014 mean proven (MMboe)")
+    ax2.set_xlabel("Volume held by one trial (MMboe)")
+    ax.set_title("the requirement", fontsize=9)
+    ax2.set_title("the range around it", fontsize=9)
+    for a in (ax, ax2):
+        a.grid(True, lw=0.6, alpha=0.7)
+        if a.get_legend_handles_labels()[1]:
+            a.legend(loc="lower right", fontsize=7)
+    fig.suptitle("B6 \u00b7 Inverse \u2014 how deep must the well go, and how wide is the answer?",
+                 fontsize=9.5, fontweight="bold", color=p["text"])
+    return fig, axes
 
 
 def fig_b3_uncertainty_reduction(sweep: Sweep, *, current_z: float | None = None, dark: bool = False):
@@ -1197,6 +1175,19 @@ def fig_b9_chance_weighted(
         if band.any():
             ax.fill_betweenx(z[band], lo[band], hi[band], color=colour("tested", dark),
                              alpha=0.20, lw=0, label="Proven P90–P10, chance weighted")
+
+    # P99 and P1 as thin grey lines outside the fill, like the plotly twin: on a
+    # right-skewed distribution P1 runs far above P10, and filling out to it would
+    # swamp the mean lines this figure is about.
+    for stat, label, ls in (("proven_p99", "P99", ":"), ("proven_p90", "P90", "--"),
+                            ("proven_p10", "P10", "--"), ("proven_p1", "P1", ":")):
+        values = getattr(vsweep, stat, None)
+        if values is None:
+            continue
+        weighted = pw * thin(values, vsweep.n_discovery, min_support)
+        if np.isfinite(weighted).sum() >= 2:
+            ax.plot(weighted, z, color=p["muted"], lw=0.9, ls=ls,
+                    label=f"Proven {label}, chance weighted" if label in ("P99", "P1") else None)
 
     for name, mean, role in series:
         weighted = pw * mean

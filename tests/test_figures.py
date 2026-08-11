@@ -438,24 +438,38 @@ def vsweep_banded(reduced, area_depth):
     return run_volume_sweep(reduced, area_depth, POS, n=30, mefs=14.0, z_gap=50.0, n_boot=150)
 
 
-def test_b6_puts_required_depth_on_y_inverted(vsweep_banded):
-    """B6's y-axis carries a depth, so non-negotiable 2 applies to it too."""
-    fig, ax = figures.fig_b6_inverse(vsweep_banded, target=20.0)
-    assert is_depth_axis_correct(ax)
-    assert "TVDSS" in ax.get_ylabel()
+def test_b6_puts_depth_on_y_inverted_and_shares_it_across_the_row(vsweep_banded, reduced):
+    """B6 is two panels now; both carry a depth, so non-negotiable 2 applies to
+    both, and they share the range so a ruler across the row means something.
+
+    Sharing y is what makes the merge honest rather than a return to the overlay:
+    entry depth and contact depth are different quantities but both are structural
+    levels on the same structure, whereas the two x-axes are volumes of different
+    kinds and are never shared.
+    """
+    fig, axes = figures.fig_b6_inverse(vsweep_banded, target=20.0, ts=reduced)
+    left, right = axes[0], axes[1]
+    for ax in (left, right):
+        assert is_depth_axis_correct(ax)
+    assert "TVDSS" in left.get_ylabel()
+    assert left.get_ylim() == right.get_ylim()
+    assert left.get_xlabel() != right.get_xlabel()
+    assert "mean proven" in left.get_xlabel()
+    assert "one trial" in right.get_xlabel()
 
 
 def test_b6_encodes_p_well_as_colour_not_a_second_axis(vsweep_banded):
     """Dual y-axes are forbidden, so the cost side of the trade is the colour."""
-    fig, ax = figures.fig_b6_inverse(vsweep_banded, target=20.0)
-    assert len(fig.axes) == 2                       # the second is the colourbar
-    assert fig.axes[1].get_ylabel().startswith("$P_{well}$")
+    fig, axes = figures.fig_b6_inverse(vsweep_banded, target=20.0)
+    ax = axes[0]
+    assert len(fig.axes) == 3                       # two panels plus the colourbar
+    assert fig.axes[-1].get_ylabel().startswith("$P_{well}$")
     assert ax.get_shared_x_axes().get_siblings(ax) == [ax]   # no twinned axis
 
 
 def test_b6_marks_the_requested_target(vsweep_banded):
-    fig, ax = figures.fig_b6_inverse(vsweep_banded, target=20.0)
-    said = " ".join(t.get_text() for t in ax.texts)
+    fig, axes = figures.fig_b6_inverse(vsweep_banded, target=20.0)
+    said = " ".join(t.get_text() for t in axes[0].texts)
     assert "P_{well}" in said
 
 
@@ -463,9 +477,20 @@ def test_b6_draws_a_band_only_when_the_sweep_carried_one(reduced, area_depth, vs
     banded, _ = figures.fig_b6_inverse(vsweep_banded)
     assert banded.axes[0].collections, "expected a filled bootstrap band"
     plain_sweep = run_volume_sweep(reduced, area_depth, POS, n=20, z_gap=50.0)
-    fig, ax = figures.fig_b6_inverse(plain_sweep)
-    labels = ax.get_legend_handles_labels()[1]
+    fig, axes = figures.fig_b6_inverse(plain_sweep)
+    labels = axes[0].get_legend_handles_labels()[1]
     assert not any("band" in lbl for lbl in labels)
+
+
+def test_b6_spread_panel_runs_p99_to_p1(vsweep_banded, reduced):
+    """P1 was missing and the shaded range therefore stopped at P10 (Lars,
+    2026-08-11), understating the deep tail: a volume only the largest
+    accumulations hold is consistent with contacts well below P10."""
+    fig, axes = figures.fig_b6_inverse(vsweep_banded, ts=reduced)
+    labels = axes[1].get_legend_handles_labels()[1]
+    for q in (99, 90, 50, 10, 1):
+        assert f"P{q} contact" in labels, labels
+    assert any("P99" in lbl and "P1 " in lbl + " " for lbl in labels)
 
 
 def test_b6_says_so_rather_than_drawing_nothing_when_there_is_no_curve(reduced, area_depth):

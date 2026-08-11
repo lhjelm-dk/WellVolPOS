@@ -236,9 +236,16 @@ class VolumeSweep:
     #: case, given a discovery. P90 is the low case. Carried so B1 can show the
     #: spread around its mean and B9 can weight the spread by chance -- both asked
     #: for on 2026-08-11 -- without either figure re-deriving them and drifting.
+    #: ``proven_p99`` and ``proven_p1`` were added 2026-08-11 for B9's grey family.
+    #: They are the extremes of the same conditional distribution, and they are worth
+    #: naming as such: on a right-skewed resource distribution P1 runs a long way
+    #: above P10, so a figure that stops at P10 understates the upside it is drawn to
+    #: show. All five come from one ``np.percentile`` call, so they cannot drift.
+    proven_p99: np.ndarray | None = None
     proven_p90: np.ndarray | None = None
     proven_p50: np.ndarray | None = None
     proven_p10: np.ndarray | None = None
+    proven_p1: np.ndarray | None = None
     alpha: float | None = None
 
 
@@ -284,9 +291,11 @@ def run_volume_sweep(
     possible_mean = np.full(z.size, np.nan)
     attic_mean = np.full(z.size, np.nan)
     discovery_mean = np.full(z.size, np.nan)
+    p99 = np.full(z.size, np.nan)
     p90 = np.full(z.size, np.nan)
     p50 = np.full(z.size, np.nan)
     p10 = np.full(z.size, np.nan)
+    p1 = np.full(z.size, np.nan)
     n_disc = np.zeros(z.size, dtype=int)
     n_dry = np.zeros(z.size, dtype=int)
     p_proven_ex = np.full(z.size, np.nan) if mefs is not None else None
@@ -316,7 +325,12 @@ def run_volume_sweep(
             discovery_mean[i] = float(associated.mean())
             # Petroleum orientation: P90 is the low case, so it is the 10th
             # percentile of the values.
-            p90[i], p50[i], p10[i] = (float(v) for v in np.percentile(proven, [10, 50, 90]))
+            # One call, five outputs, petroleum orientation throughout: P99 is the
+            # low case and therefore the 1st percentile of the values. Deriving them
+            # separately is how two of them come to disagree.
+            p99[i], p90[i], p50[i], p10[i], p1[i] = (
+                float(v) for v in np.percentile(proven, [1, 10, 50, 90, 99])
+            )
             if mefs is not None:
                 p_proven_ex[i] = float((proven > mefs).mean())
                 p_disc_ex[i] = float((associated > mefs).mean())
@@ -335,7 +349,8 @@ def run_volume_sweep(
         discovery_mean=discovery_mean,
         mefs=mefs, p_proven_exceeds_mefs=p_proven_ex, p_attic_exceeds_mefs=p_attic_ex,
         p_discovery_exceeds_mefs=p_disc_ex,
-        proven_p90=p90, proven_p50=p50, proven_p10=p10,
+        proven_p99=p99, proven_p90=p90, proven_p50=p50, proven_p10=p10,
+        proven_p1=p1,
         n_discovery=n_disc, n_dry=n_dry,
         pos_prospect=float(pos_prospect), reference=reference,
         proven_mean_lo=boot_lo, proven_mean_hi=boot_hi,
@@ -598,7 +613,10 @@ def find_crossing(
 # ------------------------------------- entry-depth percentiles per volume
 #: The percentiles the entry-depth band reports, matching the workbook's columns
 #: ``BB`` (P99), ``BD`` (P90), ``BE`` (P50) and ``BC`` (P10).
-ENTRY_DEPTH_PERCENTILES = (99, 90, 50, 10)
+#: P1 added 2026-08-11 (Lars). Without it the family stopped at P10 and the shaded
+#: range therefore stopped there too, which understates the deep tail: a volume that
+#: only the largest accumulations hold is consistent with contacts well below P10.
+ENTRY_DEPTH_PERCENTILES = (99, 90, 50, 10, 1)
 
 
 def entry_depth_percentiles(
