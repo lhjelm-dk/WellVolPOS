@@ -140,3 +140,57 @@ def test_the_play_chance_separates_the_two_prospect_lines():
     assert s.prospect_pos == pytest.approx(0.216)
     plain = risk_summary(ELEMENTS, R)
     assert plain.conditional_prospect_chance == pytest.approx(plain.prospect_pos)
+
+
+# ------------------------------------------------- the play, element by element
+PLAY = {"charge": 0.90, "trap": 0.95, "reservoir": 1.00, "retention": 0.90}
+
+
+def test_the_play_is_risked_element_by_element():
+    """Eight inputs, two levels (Lars, 2026-08-11). The first column stops being a
+    constant, which is the point: "is there a working petroleum system here" and
+    "does this closure have a seal" draw on different evidence, and a single play
+    number cannot be argued about element by element the way a column can."""
+    s = risk_summary(ELEMENTS, R, play_elements=PLAY)
+    at_play = {r["Chance element"]: r[SUMMARY_COLUMNS[0]] for r in s.as_records()}
+    assert at_play == {"Charge": 0.90, "Trap": 0.95, "Reservoir": 1.00, "Retention": 0.90}
+    assert s.play_chance == pytest.approx(0.90 * 0.95 * 1.00 * 0.90)
+
+
+def test_pos_is_the_product_of_all_eight():
+    """The arithmetic is unchanged by the split -- POS_prospect is the product of
+    every input either way. If that ever stopped being true, one level would be
+    getting counted twice."""
+    s = risk_summary(ELEMENTS, R, play_elements=PLAY)
+    all_eight = float(np.prod(list(PLAY.values()) + list(ELEMENTS.values())))
+    assert s.prospect_pos == pytest.approx(all_eight)
+    assert s.well_pos == pytest.approx(all_eight * R)
+
+
+def test_the_two_middle_result_lines_now_differ():
+    """Cond. prospect chance is conditional on the play; final prospect POS includes
+    it. With a play below 1.0 they are different numbers, which is why both lines
+    exist."""
+    s = risk_summary(ELEMENTS, R, play_elements=PLAY)
+    assert s.conditional_prospect_chance == pytest.approx(float(np.prod(list(ELEMENTS.values()))))
+    assert s.prospect_pos < s.conditional_prospect_chance
+
+
+def test_a_scalar_play_chance_still_works_and_cannot_be_combined():
+    """The scalar shortcut stays for callers with one number. Passing both would be
+    two statements of the same thing with no way to say which wins."""
+    scalar = risk_summary(ELEMENTS, R, play_chance=0.5)
+    assert scalar.play_chance == pytest.approx(0.5)
+    assert scalar.play_elements == {}
+    with pytest.raises(ValueError, match="not both"):
+        risk_summary(ELEMENTS, R, play_chance=0.5, play_elements=PLAY)
+
+
+def test_a_play_element_out_of_range_is_refused_by_the_case():
+    from wellvolpos.report.case import Case
+
+    with pytest.raises(ValueError, match="play chance for"):
+        Case(entry=3500.0, exit=3550.0, mefs=14.0,
+             play_elements={**PLAY, "charge": 1.4})
+    with pytest.raises(ValueError, match="play chances are missing"):
+        Case(entry=3500.0, exit=3550.0, mefs=14.0, play_elements={"charge": 0.9})

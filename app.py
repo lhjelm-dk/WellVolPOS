@@ -134,6 +134,15 @@ st.set_page_config(page_title="WellVolPOS", layout="wide", page_icon="🛢")
 #: default demo -- every risked curve coincided with its conditional twin. These
 #: multiply to 0.432, so the app now opens with a POS worth reasoning about.
 CHANCE_DEFAULTS = {"charge": 0.90, "trap": 1.00, "reservoir": 0.60, "retention": 0.80}
+#: Play-level defaults. 1.00 throughout, because a segment assessed on its own has
+#: no play risk above it -- the user opts in by lowering one.
+PLAY_DEFAULTS = {el: 1.00 for el in ("charge", "trap", "reservoir", "retention")}
+PLAY_HELP = {
+    "charge": "Chance the play has a working source and migration system at all.",
+    "trap": "Chance the play develops trapping geometries and a regional seal.",
+    "reservoir": "Chance the play's reservoir interval is present and of quality regionally.",
+    "retention": "Chance accumulations in this play are retained rather than lost regionally.",
+}
 CHANCE_HELP = {
     "charge": "Chance that hydrocarbons were generated and migrated into the trap.",
     "trap": "Chance that a valid trap geometry and seal exist.",
@@ -382,7 +391,7 @@ with tabs[0]:
                     "w_area_scale": loaded.area_scale,
                     "w_map_interval": loaded.map_interval,
                     "w_map_azimuth": int(round(loaded.map_azimuth_deg)),
-                    "w_play": loaded.play_chance,
+                    **{f"w_play_{el}": v for el, v in loaded.play_elements.items()},
                     "risking_convention": loaded.risking_convention,
                     "_case_warnings": loaded.check_against(ts),
                     "_case_loaded": loaded.dataset or "a case file",
@@ -563,25 +572,29 @@ with tabs[0]:
         )
         for i, el in enumerate(ELEMENTS)
     }
-    # The play chance is a *fifth* input, one level above the four elements: the
-    # chance the play works at all. Added because the risk summary shows a Play
-    # column and a Play chance result line, and a column that can only ever read
-    # 100 % is a column that teaches nothing. It multiplies POS_prospect, so it
-    # multiplies P_well too.
-    pc1, pc2 = st.columns([1, 3])
-    play_chance = pc1.number_input(
-        "Play chance", 0.01, 1.0, 1.00, 0.01, key="w_play",
-        help="Chance the play works at all — that the petroleum system is present and "
-             "functioning at this level. One level above the four elements below, which are "
-             "conditional on it. Leave at 1.00 to assess the segment on its own.",
+    st.markdown("**Play chance — the same four elements, one level up**")
+    st.caption(
+        "*Is there a working petroleum system here at all?* Assessed element by element rather "
+        "than as one number (Lars, 2026-08-11), because that question and *does this closure "
+        "have a seal* draw on different evidence, and a single play number cannot be argued "
+        "about element by element the way a column can. The four above are read as **conditional "
+        "on the play working**."
     )
-    pc2.caption(
-        f"**POS_prospect = play × charge × trap × reservoir × retention = "
-        f"{play_chance:.2f} × {float(np.prod(list(elements.values()))):.4f} = "
-        f"{play_chance * float(np.prod(list(elements.values()))):.4f}**\n\n"
-        f"Everything here is conditional on the play: the four elements are read as "
-        f"*probability of the prospect given the play*, which is what the middle column of "
-        f"the risk summary in tab ⑤ is called."
+    pc = st.columns(4)
+    play_elements = {
+        el: pc[i].number_input(
+            f"{el.capitalize()} (play)", 0.01, 1.0, PLAY_DEFAULTS[el], 0.01,
+            key=f"w_play_{el}", help=PLAY_HELP[el],
+        )
+        for i, el in enumerate(ELEMENTS)
+    }
+    play_chance = float(np.prod(list(play_elements.values())))
+    _cond = float(np.prod(list(elements.values())))
+    st.caption(
+        f"**POS_prospect = play × prospect-given-play = {play_chance:.4f} × {_cond:.4f} = "
+        f"{play_chance * _cond:.4f}** — the product of all eight inputs. The risk summary in "
+        f"tab ⑤ shows the two levels as its first two columns and adds the location factor as "
+        f"the third."
     )
 
 # The play chance multiplies the four elements: POS_prospect is the chance the
@@ -1153,7 +1166,7 @@ def _current_case() -> Case:
         entry=entry, exit=exit_, mefs=mefs,
         risking_convention=risking_convention,
         reference=ref.value, scheme=scheme,
-        chance_table=dict(elements), play_chance=float(play_chance),
+        chance_table=dict(elements), play_elements=dict(play_elements),
         area_scale=area_scale,
         map_interval=float(ss.get("w_map_interval", 50.0)),
         map_azimuth_deg=float(ss.get("w_map_azimuth", 35.0)),
@@ -1323,7 +1336,7 @@ with tabs[4]:
         "something anyone typed."
     )
     _summary = risk_summary(elements, chance.r_location, scheme=scheme,
-                            play_chance=play_chance)
+                            play_elements=play_elements)
     st.dataframe(
         pd.DataFrame(_summary.as_records()),
         hide_index=True, width="stretch",

@@ -312,6 +312,9 @@ class RiskSummary:
     correction_factor: float
     scheme: str
     warnings: list[str] = field(default_factory=list)
+    #: The four play-level chances, when the caller risked the play element by
+    #: element rather than as one number. Empty when a scalar was given.
+    play_elements: dict[str, float] = field(default_factory=dict)
 
     def as_records(self) -> list[dict[str, object]]:
         """The element rows, ready for a dataframe."""
@@ -329,7 +332,7 @@ class RiskSummary:
 
 def risk_summary(
     elements: dict[str, float], r: float, *, scheme: str | dict[str, float] = "equal_cube_root",
-    play_chance: float = 1.0,
+    play_chance: float | None = None, play_elements: dict[str, float] | None = None,
 ) -> RiskSummary:
     """Build the risk summary table.
 
@@ -340,20 +343,49 @@ def risk_summary(
     :func:`wellvolpos.core.chance.p_well` rather than against this table's own
     numbers, for the reason CLAUDE.md gives after the B4 defect.
 
-    ``play_chance`` defaults to 1.0. This tool assesses **one prospect segment**
-    from one trial file (decision of record 10) and does not model a play level, so
-    the first column is 1.0 throughout unless a caller states otherwise; it is
-    carried because the summary is read alongside sheets that do have one.
+    **The play is risked element by element** (Lars, 2026-08-11), not as a single
+    number: ``play_elements`` carries a chance for each of charge, trap, reservoir
+    and retention *at the play level*, and ``elements`` carries the same four
+    **conditional on the play working**. Eight inputs, two levels, and the first
+    column of the table stops being a constant.
+
+    That split is the standard one and it is worth stating why it is not cosmetic:
+    "is there a working petroleum system here at all" and "does *this* closure have
+    a seal" are different questions with different evidence, and a single number for
+    the play cannot be argued about element by element the way a column can. The
+    arithmetic is unaffected -- ``POS_prospect`` is the product of all eight either
+    way -- but the conversation is not.
+
+    ``play_chance`` remains accepted as a scalar shortcut for callers that have only
+    one number; passing both is an error, since they would disagree.
     """
+    if play_chance is not None and play_elements is not None:
+        raise ValueError(
+            "pass play_elements or play_chance, not both -- two statements of the "
+            "play chance can disagree, and there would be no way to say which won"
+        )
+    if play_elements is None:
+        play_elements = {}
+        play_scalar = 1.0 if play_chance is None else float(play_chance)
+    else:
+        play_elements = {k: float(v) for k, v in play_elements.items()}
+        play_scalar = float(np.prod(list(play_elements.values()))) if play_elements else 1.0
+
     at_well, warnings = allocate(elements, r, scheme)
     conditional = float(np.prod([float(v) for v in elements.values()])) if elements else 1.0
-    prospect_pos = float(play_chance) * conditional
+    prospect_pos = play_scalar * conditional
     rows: list[dict[str, float | str]] = []
     for name in elements:
         given_play = float(elements[name])
+        # Per-element play chance where one was given, else the scalar spread over
+        # no elements at all -- which is why the fallback is the whole play chance
+        # on the first row would be wrong. It goes on every row as a constant, the
+        # way it always did, and the column header says "(Play)" not "(this
+        # element's play)".
+        at_play = play_elements.get(name, play_scalar if not play_elements else 1.0)
         rows.append({
             "Chance element": name.capitalize(),
-            SUMMARY_COLUMNS[0]: float(play_chance),
+            SUMMARY_COLUMNS[0]: float(at_play),
             SUMMARY_COLUMNS[1]: given_play,
             SUMMARY_COLUMNS[2]: float(at_well[name]),
             # Named so the exemption is visible in the table rather than only in
@@ -372,18 +404,18 @@ def risk_summary(
     # Under "none" the location factor gets its own row instead, so the column still
     # multiplies to the number at the bottom of the table.
     well_pos = prospect_pos * float(r)
-    allocated = float(np.prod([float(v) for v in at_well.values()])) * float(play_chance)
+    allocated = float(np.prod([float(v) for v in at_well.values()])) * play_scalar
     if not np.isclose(allocated, well_pos):
         rows.append({
             "Chance element": "Location factor r",
-            SUMMARY_COLUMNS[0]: float(play_chance),
+            SUMMARY_COLUMNS[0]: play_scalar if not play_elements else 1.0,
             SUMMARY_COLUMNS[1]: 1.0,
             SUMMARY_COLUMNS[2]: float(r),
             "Carries the location penalty": True,
         })
     factor = _correction_factor(elements, at_well)
     return RiskSummary(
-        rows=rows, play_chance=float(play_chance),
+        rows=rows, play_chance=play_scalar, play_elements=play_elements,
         conditional_prospect_chance=conditional, prospect_pos=prospect_pos,
         well_pos=well_pos, correction_factor=factor,
         scheme=scheme if isinstance(scheme, str) else "custom weights",

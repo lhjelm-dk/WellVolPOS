@@ -65,7 +65,11 @@ class Case:
     chance_table: dict[str, float] = field(default_factory=lambda: {el: 1.0 for el in ELEMENTS})
     #: The chance the play works at all, one level above the four elements, which are
     #: read as conditional on it. Multiplies POS_prospect and therefore P_well.
-    play_chance: float = 1.0
+    #: The play-level chance of each element, one level above ``chance_table``,
+    #: whose four are read as conditional on the play working. Their product
+    #: multiplies POS_prospect and therefore P_well.
+    play_elements: dict[str, float] = field(
+        default_factory=lambda: {el: 1.0 for el in ELEMENTS})
 
     # --- presentation, which changes no number -----------------------------
     area_scale: str = "area"
@@ -79,6 +83,11 @@ class Case:
     saved_utc: str = ""
     note: str = ""
 
+    @property
+    def play_chance(self) -> float:
+        """The play's overall chance: the product of its four elements."""
+        return float(np.prod(list(self.play_elements.values()))) if self.play_elements else 1.0
+
     def __post_init__(self) -> None:
         # Stamped at construction rather than at serialisation, so a case is
         # exactly what it will be written as. A ``to_json`` that filled in a
@@ -88,9 +97,13 @@ class Case:
             timespec="seconds")
         self.entry, self.exit = float(self.entry), float(self.exit)
         self.mefs = float(self.mefs)
-        self.play_chance = float(self.play_chance)
-        if not 0.0 < self.play_chance <= 1.0:
-            raise ValueError(f"play chance must be in (0, 1]; got {self.play_chance}")
+        self.play_elements = {k: float(v) for k, v in dict(self.play_elements).items()}
+        for _name, _value in self.play_elements.items():
+            if not 0.0 < _value <= 1.0:
+                raise ValueError(f"play chance for {_name!r} must be in (0, 1]; got {_value}")
+        _missing_play = set(ELEMENTS) - set(self.play_elements)
+        if _missing_play:
+            raise ValueError(f"play chances are missing {sorted(_missing_play)}")
         self.chance_table = {k: float(v) for k, v in dict(self.chance_table).items()}
         if self.risking_convention not in CONVENTION_KEYS:
             raise ValueError(
