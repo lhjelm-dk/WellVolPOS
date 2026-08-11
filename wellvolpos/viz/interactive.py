@@ -52,6 +52,7 @@ from ..core.sweep import (
 from ..io.adapters.base import TrialSet
 from .figures import (
     _depth_band,
+    _depth_percentiles,
     _exceedance,
     area_spread_is_material,
     exceedance_marks,
@@ -89,7 +90,6 @@ __all__ = [
     "pfig_b7_frontier",
     "pfig_b8_commercial_chance",
     "pfig_b9_chance_weighted",
-    "pfig_a7_resource_grid",
     "pfig_a8_contact_distribution",
     "suggest_grid",
     "row_zlim",
@@ -512,45 +512,84 @@ def pfig_a3_chance_decomposition(
 # ------------------------------------------------------------------- A4
 def pfig_a4_resource_vs_depth(
     ts: TrialSet, *, current_entry: float | None = None, current_exit: float | None = None,
-    mefs: float | None = None,
-    n_bins: int = 40, gridsize: int = 60, zlim: tuple[float, float] | None = None,
+    mefs: float | None = None, render: str = "grid",
+    n_bins: int = 40, n_resource: int | None = None, n_depth: int | None = None,
+    gridsize: int = 60, zlim: tuple[float, float] | None = None,
     show_depth_labels: bool = True, dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
-    """A4 -- log-density heatmap of resource vs contact depth, with P90/P50/P10.
+    """A4 -- how the trials fall in resource-by-depth space, with the percentiles.
 
-    Success trials only: the chance-failure zeros belong to POS, not to the
-    shape of the resource distribution.
+    **One figure with two renderings** (Lars, 2026-08-11). It briefly existed as two
+    -- A4's blue log-density and a separate A7 grid taken from the workbook's
+    ``resource grid`` sheet -- which showed the same trials twice under two numbers.
+    Merged, because two panels of one dataset is how a reader comes to believe they
+    are looking at two facts.
+
+    ``render="grid"``
+        The workbook's rendering: **counts per cell**, in inferno, with the grid
+        size selectable and defaulting to Freedman-Diaconis per axis. Cells rather
+        than the workbook's contours, because a count in a cell is discrete with
+        hard zeros outside the sampled envelope and contour interpolation invents
+        values no trial supports. Inferno is perceptually uniform and monotonic in
+        lightness, so darker is unambiguously fewer whether the reader sees colour
+        or a greyscale print.
+    ``render="hexbin"``
+        The original blue log-density. Hexagons tile without the axis-aligned
+        artefacts a rectangular grid shows on a diagonal trend, which is what this
+        cloud is.
+
+    Both are on a **log** count scale: the modal cell holds two orders of magnitude
+    more trials than the tails, and the tails are where a location question lives.
+
+    Over either, the conditional percentile family **P99 / P90 / P50 / P10 / P1**
+    and the mean. The mean keeps the prospect colour and the weight because it is
+    the number that gets quoted; the percentiles are thin and grey. On a skewed
+    resource distribution the mean is **not** the P50, and showing both is half the
+    reason this figure exists.
+
+    Success trials only: the chance-failure zeros belong to POS, not to the shape of
+    the resource distribution.
     """
+    if render not in ("grid", "hexbin"):
+        raise ValueError(f"unknown render {render!r}; expected 'grid' or 'hexbin'")
     res, contact = ts.col("resource"), ts.col("contact")
     succ = res > 0.0
     x, y = res[succ], contact[succ]
     p = palette(dark)
 
-    counts, xedges, yedges = np.histogram2d(x, y, bins=gridsize)
+    if render == "grid":
+        auto_r, auto_z = suggest_grid(x, y)
+        nx, ny = int(n_resource or auto_r), int(n_depth or auto_z)
+        colourscale, label = "Inferno", f"{nx} × {ny} grid"
+    else:
+        nx = ny = int(gridsize)
+        colourscale, label = "Blues", f"{gridsize} × {gridsize} log-density"
+
+    counts, xedges, yedges = np.histogram2d(x, y, bins=(nx, ny))
+    counts = counts.T
+    shown = np.where(counts > 0, counts, np.nan)
     with np.errstate(divide="ignore"):
-        dens = np.log10(counts.T)
-    dens[~np.isfinite(dens)] = np.nan
+        dens = np.log10(shown)
 
     fig = go.Figure()
     fig.add_heatmap(
         x=0.5 * (xedges[:-1] + xedges[1:]), y=0.5 * (yedges[:-1] + yedges[1:]),
-        z=dens, colorscale="Blues", showscale=True,
-        colorbar=dict(title=dict(text="log₁₀ n", side="right"), thickness=12, len=0.6),
-        hovertemplate="%{x:.1f} MMboe at " + DEPTH_HOVER + "<br>log₁₀ n %{z:.2f}<extra></extra>",
+        z=dens, colorscale=colourscale, showscale=True, customdata=shown,
+        colorbar=dict(title=dict(text="trials<br>(log₁₀)", side="right"),
+                      thickness=12, len=0.6),
+        hovertemplate=("%{customdata:.0f} trials<br>%{x:.1f} MMboe at "
+                       + DEPTH_HOVER + "<extra></extra>"),
     )
-    # Same convention as A1: the mean keeps the prospect colour and the weight,
-    # because it is the number that gets quoted; the percentile family is thin
-    # and grey. Note the mean is *not* the P50 on a skewed resource
-    # distribution, which is half the reason for showing both.
-    zb, p90, p50, pmean, p10 = _depth_band(y, x, n_bins=n_bins)
-    for values, name in ((p90, "P90"), (p50, "P50"), (p10, "P10")):
+
+    zb, band = _depth_percentiles(y, x, n_bins=n_bins)
+    for q, dash in ((99, "dot"), (90, "dash"), (50, "solid"), (10, "dash"), (1, "dot")):
         fig.add_scatter(
-            x=values, y=zb, mode="lines", name=name,
-            line=dict(color=p["muted"], width=1),
-            hovertemplate=name + " %{x:.2f} MMboe at " + DEPTH_HOVER + "<extra></extra>",
+            x=band[q], y=zb, mode="lines", name=f"P{q}",
+            line=dict(color=p["muted"], width=1, dash=dash),
+            hovertemplate=f"P{q} " + "%{x:.2f} MMboe at " + DEPTH_HOVER + "<extra></extra>",
         )
     fig.add_scatter(
-        x=pmean, y=zb, mode="lines", name="Mean",
+        x=band["mean"], y=zb, mode="lines", name="Mean",
         line=dict(color=colour("prospect", dark), width=2.5),
         hovertemplate="mean %{x:.2f} MMboe at " + DEPTH_HOVER + "<extra></extra>",
     )
@@ -563,7 +602,10 @@ def pfig_a4_resource_vs_depth(
     if mefs is not None:
         _vline(fig, mefs, p["muted"], "dot", "MEFS")
 
-    fig.update_layout(title="A4 · Resource vs contact depth", xaxis_title="Recoverable resource (MMboe)")
+    fig.update_layout(
+        title=f"A4 · Resource vs contact depth ({label}, {x.size:,} success trials)",
+        xaxis_title="Recoverable resource (MMboe)",
+    )
     fig.update_xaxes(rangemode="tozero")
     apply_plotly(fig, dark, height)
     depth_axis_plotly(fig, zlim or (float(y.min()), float(y.max())),
@@ -802,12 +844,32 @@ def pfig_b1_volume_split(
             line=dict(color=colour(role, dark), width=width, dash=dash),
             hovertemplate=name + "<br>%{x:.2f} MMboe at " + DEPTH_HOVER + "<extra></extra>",
         )
+    # The **spread** around the proven mean, from the workbook's own "Proven 90 /
+    # P50 / P10" curves (Lars, 2026-08-11). Thin and in the proven colour, so the
+    # mean stays the read and the band is context: a mean without its range is the
+    # number people quote and then argue about.
+    #
+    # Conditional percentiles -- the success case, given a discovery -- which is
+    # where percentiles are defined. B9 is where they get weighted by chance.
+    for values, name, dash in (
+        (vsweep.proven_p90, "Proven P90 | discovery", "dot"),
+        (vsweep.proven_p50, "Proven P50 | discovery", "dash"),
+        (vsweep.proven_p10, "Proven P10 | discovery", "dot"),
+    ):
+        if values is None:
+            continue
+        fig.add_scatter(
+            x=thin(values, vsweep.n_discovery, min_support), y=vsweep.z, mode="lines",
+            name=name, line=dict(color=colour("proven", dark), width=1.0, dash=dash),
+            hovertemplate=name + "<br>%{x:.2f} MMboe at " + DEPTH_HOVER + "<extra></extra>",
+        )
+
     if current_z is not None:
         _hline(fig, current_z, p["text_secondary"], "dash")
 
     fig.update_layout(
         title=f"B1 · Volume split vs location (exit = entry + {vsweep.z_gap:.0f} m)",
-        xaxis_title="Mean resource (MMboe)",
+        xaxis_title="Resource (MMboe) — thick lines are means, thin are proven P90/P50/P10",
     )
     fig.update_xaxes(rangemode="tozero")
     apply_plotly(fig, dark, height)
@@ -1154,7 +1216,7 @@ def pfig_b6_inverse(
 _LABEL_AZIMUTHS = (90.0, 55.0, 125.0, 20.0, 160.0, 70.0, 110.0, 40.0, 140.0)
 
 
-# ------------------------------------------------------------------- A7
+# ------------------------------------------------- grid sizing
 def suggest_grid(values: np.ndarray, depths: np.ndarray) -> tuple[int, int]:
     """A defensible default grid for :func:`pfig_a7_resource_grid`.
 
@@ -1185,77 +1247,6 @@ def suggest_grid(values: np.ndarray, depths: np.ndarray) -> tuple[int, int]:
         return int(np.clip(round(span / width), 15, 90))
 
     return bins(values), bins(depths)
-
-
-def pfig_a7_resource_grid(
-    ts: TrialSet, *, n_resource: int | None = None, n_depth: int | None = None,
-    current_entry: float | None = None, current_exit: float | None = None,
-    zlim: tuple[float, float] | None = None, show_depth_labels: bool = True,
-    log_counts: bool = True, dark: bool = False, height: int | None = PANEL_HEIGHT,
-):
-    """A7 -- how many trials fall in each resource-by-depth cell.
-
-    The workbook's ``resource grid`` sheet and its *"Number of Success Trials pr. HC
-    depth"* chart, as a heat map rather than as contours. Contours were the wrong
-    encoding there: they imply a smooth field, and this is a **count of trials in a
-    cell** -- a discrete thing with hard zeros outside the sampled envelope, where
-    contour interpolation invents intermediate values that no trial supports. A grid
-    of cells shows exactly what was counted and nothing else.
-
-    Inferno, because it is perceptually uniform and monotonic in lightness, so a
-    darker cell is unambiguously fewer trials whether the reader is looking at
-    colour or at a greyscale print. That is the same reason CLAUDE.md forbids a
-    rainbow for a density.
-
-    Counts are shown on a **log** colour scale by default. The distribution is
-    strongly peaked -- on the demo data the modal cell holds two orders of magnitude
-    more trials than the tails -- so on a linear scale everything outside the mode
-    reads as empty, and the tails are exactly where a well-location question lives.
-
-    Success trials only: chance failures carry no contact and would pile into a
-    single meaningless cell.
-    """
-    p = palette(dark)
-    res = np.asarray(ts.col("resource"), dtype=float)
-    contact = np.asarray(ts.col("contact"), dtype=float)
-    ok = (res > 0) & np.isfinite(res) & np.isfinite(contact)
-    res, contact = res[ok], contact[ok]
-
-    auto_r, auto_z = suggest_grid(res, contact)
-    nx = int(n_resource or auto_r)
-    ny = int(n_depth or auto_z)
-
-    counts, xe, ye = np.histogram2d(res, contact, bins=(nx, ny))
-    counts = counts.T                                   # rows = depth
-    shown = np.where(counts > 0, counts, np.nan)        # empty cells stay blank
-    z = np.log10(shown) if log_counts else shown
-
-    fig = go.Figure()
-    fig.add_heatmap(
-        x=0.5 * (xe[:-1] + xe[1:]), y=0.5 * (ye[:-1] + ye[1:]), z=z,
-        colorscale="Inferno", customdata=shown,
-        hovertemplate=("%{customdata:.0f} trials<br>%{x:.1f} MMboe at "
-                       + DEPTH_HOVER + "<extra></extra>"),
-        colorbar=dict(
-            title=dict(text="trials<br>(log₁₀)" if log_counts else "trials", side="right"),
-            thickness=12, len=0.65,
-        ),
-    )
-    for depth, label, dash in ((current_entry, "well entry", "dash"),
-                               (current_exit, "well exit", "dot")):
-        if depth is not None:
-            _hline(fig, depth, p["well"], dash, label)
-
-    fig.update_layout(
-        title=(f"A7 · Trials per resource–depth cell ({nx} × {ny} grid, "
-               f"{res.size:,} success trials)"),
-        xaxis_title="Recoverable resource (MMboe)",
-    )
-    fig.update_xaxes(rangemode="tozero")
-    apply_plotly(fig, dark, height)
-    depth_axis_plotly(fig, zlim or (float(contact.min()), float(contact.max())),
-                      show_ticklabels=show_depth_labels)
-    return fig
 
 
 # ------------------------------------------------------------------- A8
@@ -1372,6 +1363,23 @@ def pfig_b9_chance_weighted(
             ("Well associated — chance weighted",
              thin(vsweep.discovery_mean, vsweep.n_discovery, min_support), "well_associated")
         )
+
+    # The chance-weighted **spread**, drawn first so the mean lines sit on top of
+    # it. P_well x the conditional P90 and P10 of the proven volume: the same
+    # weighting applied to the range rather than only to its centre, because an
+    # expectation quoted without one is the number that gets argued about.
+    if vsweep.proven_p90 is not None and vsweep.proven_p10 is not None:
+        lo = pw * thin(vsweep.proven_p90, vsweep.n_discovery, min_support)
+        hi = pw * thin(vsweep.proven_p10, vsweep.n_discovery, min_support)
+        band = np.isfinite(lo) & np.isfinite(hi)
+        if band.any():
+            fig.add_scatter(
+                x=np.concatenate([lo[band], hi[band][::-1]]),
+                y=np.concatenate([z[band], z[band][::-1]]),
+                fill="toself", fillcolor=rgba("tested", 0.20, dark), mode="lines",
+                line=dict(width=0), name="Proven P90–P10, chance weighted",
+                hoverinfo="skip",
+            )
 
     best_note = []
     for name, mean, role in series:

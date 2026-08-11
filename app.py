@@ -74,7 +74,6 @@ from wellvolpos.viz import (
     pfig_a3_chance_decomposition,
     pfig_a4_resource_vs_depth,
     pfig_a5_exceedance,
-    pfig_a7_resource_grid,
     pfig_a8_contact_distribution,
     pfig_a6_overlap,
     pfig_b0_section,
@@ -656,6 +655,30 @@ with tabs[1]:
             (float(succ_contact.min()), float(succ_contact.max())),
             pad_frac=0.02,
         )
+        # A4's two renderings of one dataset. It was briefly two figures — A4's blue
+        # log-density and a separate A7 grid — which showed the same trials twice
+        # under two numbers; merged on Lars's instruction (2026-08-11).
+        _auto_r, _auto_z = suggest_grid(res_all[res_all > 0.0], succ_contact)
+        ac1, ac2, ac3 = st.columns([2, 1, 1])
+        a4_render = ac1.radio(
+            "A4 rendering", ["grid", "hexbin"], horizontal=True, key="w_a4_render",
+            format_func=lambda k: {"grid": "Trial-count grid (workbook, inferno)",
+                                   "hexbin": "Log-density hexbin"}[k],
+        )
+        a4_nx = ac2.number_input("Resource bins", 10, 120, _auto_r, 2, key="w_grid_res",
+                                 disabled=a4_render != "grid")
+        a4_ny = ac3.number_input("Depth bins", 10, 120, _auto_z, 2, key="w_grid_z",
+                                 disabled=a4_render != "grid")
+        st.caption(
+            f"Grid default **{_auto_r} × {_auto_z}** from the Freedman–Diaconis rule on each "
+            f"axis — bin width 2·IQR/n^⅓, which adapts to spread *and* sample size and survives "
+            f"the long right tail a resource distribution always has. The workbook's own "
+            f"`resource grid` sheet is a fixed 100 × 100, which on 10 000 trials leaves most "
+            f"cells empty. Counts are on a **log** scale either way: the modal cell holds two "
+            f"orders of magnitude more trials than the tails, and the tails are where a location "
+            f"question lives."
+        )
+
         c1, c2 = st.columns(2)
         with c1:
             _chart(pfig_a1_area_depth(
@@ -664,6 +687,7 @@ with tabs[1]:
         with c2:
             _chart(pfig_a4_resource_vs_depth(
                     ts, current_entry=entry, current_exit=exit_, mefs=mefs,
+                    render=a4_render, n_resource=int(a4_nx), n_depth=int(a4_ny),
                     zlim=zrow_prospect, show_depth_labels=False,
                 ), key="a4")
         st.caption(
@@ -728,35 +752,6 @@ with tabs[1]:
             "probability is wherever it happens to fall on the curve — above P50 on a "
             "right-skewed distribution. That is why it gets its own row rather than sitting "
             "between P50 and P10 as if it were one of them."
-        )
-
-        st.divider()
-        st.subheader("The trials themselves")
-        gc1, gc2 = st.columns([1, 3])
-        with gc1:
-            _auto_r, _auto_z = suggest_grid(res_all[res_all > 0], ts.col("contact")[res_all > 0])
-            grid_res = st.number_input("Resource bins", 10, 120, _auto_r, 2, key="w_grid_res")
-            grid_z = st.number_input("Depth bins", 10, 120, _auto_z, 2, key="w_grid_z")
-            st.caption(
-                f"Default {_auto_r} × {_auto_z} from the **Freedman–Diaconis** rule on each axis "
-                f"— bin width 2·IQR/n^⅓, which adapts to spread *and* sample size and survives "
-                f"the long right tail a resource distribution always has. The workbook's own "
-                f"`resource grid` sheet is a fixed 100 × 100, which on 10 000 trials leaves most "
-                f"cells empty."
-            )
-        with gc2:
-            _chart(pfig_a7_resource_grid(
-                    ts, n_resource=int(grid_res), n_depth=int(grid_z),
-                    current_entry=entry, current_exit=exit_,
-                ), key="a7")
-        st.caption(
-            "**A7** — how many trials fall in each resource-by-depth cell. The workbook draws "
-            "this with contours; cells are the honest encoding, because a count in a cell is "
-            "discrete with hard zeros outside the sampled envelope and contour interpolation "
-            "invents values no trial supports. Inferno is perceptually uniform and monotonic in "
-            "lightness, so darker is unambiguously fewer whether you read colour or a greyscale "
-            "print. Counts are on a **log** scale: the modal cell holds two orders of magnitude "
-            "more trials than the tails, and the tails are where a location question lives."
         )
 
         st.divider()

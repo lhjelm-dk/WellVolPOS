@@ -365,8 +365,6 @@ def _draw_export_figures(b: Bundle, *, dark: bool = False) -> dict[str, object]:
     figs["B5_allocation_dumbbell"] = F.fig_b5_allocation_dumbbell(
         c.chance_table, ch.r_location, pos_prospect=b.pos, dark=dark)[0]
 
-    figs["A7_resource_grid"] = F.fig_a7_resource_grid(
-        b.ts, current_entry=c.entry, current_exit=c.exit, dark=dark)[0]
     figs["A8_contact_distribution"] = F.fig_a8_contact_distribution(
         b.ts, current_entry=c.entry, dark=dark)[0]
 

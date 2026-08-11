@@ -68,9 +68,9 @@ __all__ = [
     "fig_b7_frontier",
     "fig_b8_commercial_chance",
     "fig_b9_chance_weighted",
-    "fig_a7_resource_grid",
     "fig_a8_contact_distribution",
     "exceedance_marks",
+    "_depth_percentiles",
     "fig_colour_key",
     "fig_c1_section",
     "fig_c2_exceedance",
@@ -97,6 +97,33 @@ def _depth_percentile_trend(contact: np.ndarray, resource: np.ndarray, n_bins: i
         p50.append(float(np.percentile(r[idx], 50.0)))
         p10.append(float(np.percentile(r[idx], 90.0)))
     return np.array(z), np.array(p90), np.array(p50), np.array(p10)
+
+
+def _depth_percentiles(contact: np.ndarray, values: np.ndarray, n_bins: int = 40,
+                       percentiles=(99, 90, 50, 10, 1)):
+    """Equal-count depth bins, returning ``(z, {percentile: values, "mean": ...})``.
+
+    The general form of :func:`_depth_band`, which returns a fixed P90/P50/mean/P10
+    tuple. A4 needs P99 and P1 as well (Lars, 2026-08-11), and a dict keeps the
+    caller from having to remember a five-tuple's order -- which is the kind of
+    thing that silently swaps P90 and P10 and inverts a figure.
+
+    Petroleum convention: **P99 is the low value**, exceeded 99 % of the time, so it
+    is the 1st percentile of the values.
+    """
+    order = np.argsort(contact)
+    c, v = np.asarray(contact)[order], np.asarray(values)[order]
+    z: list[float] = []
+    out: dict = {q: [] for q in percentiles}
+    out["mean"] = []
+    for idx in np.array_split(np.arange(c.size), min(n_bins, max(c.size, 1))):
+        if idx.size == 0:
+            continue
+        z.append(float(c[idx].mean()))
+        for q in percentiles:
+            out[q].append(float(np.percentile(v[idx], 100 - q)))
+        out["mean"].append(float(v[idx].mean()))
+    return np.array(z), {k: np.array(val) for k, val in out.items()}
 
 
 def _depth_band(contact: np.ndarray, values: np.ndarray, n_bins: int = 40):
@@ -349,27 +376,54 @@ def fig_a3_chance_decomposition(
 
 
 def fig_a4_resource_vs_depth(
-    ts: TrialSet, *, current_entry: float | None = None, mefs: float | None = None,
-    n_bins: int = 40, zlim: tuple[float, float] | None = None, dark: bool = False,
+    ts: TrialSet, *, current_entry: float | None = None, current_exit: float | None = None,
+    mefs: float | None = None, render: str = "grid", n_bins: int = 40,
+    n_resource: int | None = None, n_depth: int | None = None,
+    zlim: tuple[float, float] | None = None, dark: bool = False,
 ):
-    """Log-density hexbin of resource vs contact depth, with smoothed P90/P50/P10.
+    """A4 for the export path. Twin of ``pfig_a4_resource_vs_depth``.
 
-    Replaces the unreadable full-trial scatter. Success trials only -- the
-    chance-failure zeros belong to POS, not to the shape of the resource
-    distribution conditional on a contact actually being sampled.
+    Two renderings of one dataset: ``"grid"`` counts trials per cell in inferno, the
+    workbook's rendering with a Freedman-Diaconis default; ``"hexbin"`` is the
+    original blue log-density. Over either, the conditional percentile family
+    P99/P90/P50/P10/P1 and the mean.
+
+    Success trials only -- the chance-failure zeros belong to POS, not to the shape
+    of the resource distribution conditional on a contact being sampled.
     """
+    from matplotlib.colors import LogNorm
+
+    from .interactive import suggest_grid
+
+    if render not in ("grid", "hexbin"):
+        raise ValueError(f"unknown render {render!r}; expected 'grid' or 'hexbin'")
     res, contact = ts.col("resource"), ts.col("contact")
     succ = res > 0.0
-    fig, ax = new_figure(figsize=(6, 5), dark=dark)
+    x, y = res[succ], contact[succ]
+    fig, ax = new_figure(figsize=(6.4, 5.2), dark=dark)
     p = palette(dark)
 
-    ax.hexbin(res[succ], contact[succ], gridsize=45, cmap=SEQUENTIAL_CMAP, mincnt=1, bins="log")
+    if render == "grid":
+        auto_r, auto_z = suggest_grid(x, y)
+        nx, ny = int(n_resource or auto_r), int(n_depth or auto_z)
+        counts, xe, ye = np.histogram2d(x, y, bins=(nx, ny))
+        shown = np.ma.masked_where(counts.T <= 0, counts.T)
+        mesh = ax.pcolormesh(xe, ye, shown, cmap="inferno",
+                             norm=LogNorm(vmin=1, vmax=max(2.0, float(counts.max()))))
+        fig.colorbar(mesh, ax=ax, label="trials per cell (log)")
+        label = f"{nx} × {ny} grid"
+    else:
+        ax.hexbin(x, y, gridsize=45, cmap=SEQUENTIAL_CMAP, mincnt=1, bins="log")
+        label = "log-density"
 
-    z, p90, p50, p10 = _depth_percentile_trend(contact[succ], res[succ], n_bins=n_bins)
+    z, band = _depth_percentiles(y, x, n_bins=n_bins)
     c = colour("prospect", dark)
-    ax.plot(p50, z, color=c, lw=1.8, label="P50")
-    ax.plot(p90, z, color=c, lw=1.1, ls=":", label="P90")
-    ax.plot(p10, z, color=c, lw=1.1, ls=":", label="P10")
+    for q, ls, lw in ((99, ":", 0.9), (90, "--", 1.0), (50, "-", 1.8),
+                      (10, "--", 1.0), (1, ":", 0.9)):
+        ax.plot(band[q], z, color=c, lw=lw, ls=ls, label=f"P{q}")
+    ax.plot(band["mean"], z, color=c, lw=2.2, label="Mean")
+    if current_exit is not None:
+        ax.axhline(current_exit, color=p["well"], ls=":", lw=1.2)
 
     if current_entry is not None:
         ax.axhline(current_entry, color=p["text_secondary"], ls="--", lw=1.0)
@@ -381,8 +435,8 @@ def fig_a4_resource_vs_depth(
     depth_axis(ax, ylabel="HC-water contact (m TVDSS)", zlim=zlim)
     ax.set_xlim(left=0)
     ax.set_xlabel("Recoverable resource (MMboe)")
-    ax.set_title("A4 · Resource vs contact depth")
-    ax.legend(loc="lower right", fontsize=7.5)
+    ax.set_title(f"A4 · Resource vs contact depth ({label})")
+    ax.legend(loc="lower right", fontsize=6.5, ncol=2)
     fig.tight_layout()
     return fig, ax
 
@@ -554,6 +608,17 @@ def fig_b1_volume_split(
     ax.plot(possible, vsweep.z, color=colour("possible", dark), lw=1.6, ls="--",
             label="Possible below exit | discovery")
     ax.plot(attic, vsweep.z, color=colour("attic", dark), lw=2.0, label="Attic | dry hole")
+
+    # The spread around the proven mean; see the plotly twin.
+    for values, label, ls in (
+        (vsweep.proven_p90, "Proven P90", ":"),
+        (vsweep.proven_p50, "Proven P50", "--"),
+        (vsweep.proven_p10, "Proven P10", ":"),
+    ):
+        if values is not None:
+            ax.plot(thin(values, vsweep.n_discovery, min_support), vsweep.z,
+                    color=colour("proven", dark), lw=0.9, ls=ls,
+                    label=label if label != "Proven P50" else None)
 
     if current_z is not None and vsweep.z.min() <= current_z <= vsweep.z.max():
         ax.axhline(current_z, color=p["text_secondary"], ls="--", lw=1.0)
@@ -989,50 +1054,6 @@ def fig_b8_commercial_chance(
     return fig, ax
 
 
-def fig_a7_resource_grid(
-    ts: TrialSet, *, n_resource: int | None = None, n_depth: int | None = None,
-    current_entry: float | None = None, current_exit: float | None = None,
-    zlim: tuple[float, float] | None = None, log_counts: bool = True, dark: bool = False,
-):
-    """A7 for the export path. Twin of ``pfig_a7_resource_grid``.
-
-    Trials per resource-by-depth cell, in inferno on a log count scale. Cells rather
-    than contours because a count in a cell is discrete with hard zeros, and contour
-    interpolation invents values no trial supports.
-    """
-    from matplotlib.colors import LogNorm
-
-    from .interactive import suggest_grid
-
-    p = palette(dark)
-    res = np.asarray(ts.col("resource"), dtype=float)
-    contact = np.asarray(ts.col("contact"), dtype=float)
-    ok = (res > 0) & np.isfinite(res) & np.isfinite(contact)
-    res, contact = res[ok], contact[ok]
-    auto_r, auto_z = suggest_grid(res, contact)
-    nx, ny = int(n_resource or auto_r), int(n_depth or auto_z)
-
-    fig, ax = new_figure(figsize=(6.6, 5.4), dark=dark)
-    counts, xe, ye = np.histogram2d(res, contact, bins=(nx, ny))
-    shown = np.ma.masked_where(counts.T <= 0, counts.T)
-    mesh = ax.pcolormesh(
-        xe, ye, shown, cmap="inferno",
-        norm=LogNorm(vmin=1, vmax=max(2.0, float(counts.max()))) if log_counts else None,
-    )
-    fig.colorbar(mesh, ax=ax, label="trials per cell" + (" (log)" if log_counts else ""))
-
-    for depth, ls in ((current_entry, "--"), (current_exit, ":")):
-        if depth is not None:
-            ax.axhline(depth, color=p["well"], ls=ls, lw=1.4)
-
-    depth_axis(ax, zlim=zlim or (float(contact.min()), float(contact.max())))
-    ax.set_xlim(left=0)
-    ax.set_xlabel("Recoverable resource (MMboe)")
-    ax.set_title(f"A7 · Trials per resource–depth cell ({nx} × {ny})")
-    fig.tight_layout()
-    return fig, ax
-
-
 def fig_a8_contact_distribution(
     ts: TrialSet, *, n_bins: int = 40, current_entry: float | None = None,
     zlim: tuple[float, float] | None = None, dark: bool = False,
@@ -1099,6 +1120,14 @@ def fig_b9_chance_weighted(
         series.append(("Well associated — chance weighted",
                        thin(vsweep.discovery_mean, vsweep.n_discovery, min_support),
                        "well_associated"))
+
+    if vsweep.proven_p90 is not None and vsweep.proven_p10 is not None:
+        lo = pw * thin(vsweep.proven_p90, vsweep.n_discovery, min_support)
+        hi = pw * thin(vsweep.proven_p10, vsweep.n_discovery, min_support)
+        band = np.isfinite(lo) & np.isfinite(hi)
+        if band.any():
+            ax.fill_betweenx(z[band], lo[band], hi[band], color=colour("tested", dark),
+                             alpha=0.20, lw=0, label="Proven P90–P10, chance weighted")
 
     for name, mean, role in series:
         weighted = pw * mean

@@ -232,6 +232,13 @@ class VolumeSweep:
     #: proven split that ``p_proven_exceeds_mefs`` uses. Two different numbers, both
     #: legitimate; see :mod:`wellvolpos.core.rose`.
     p_discovery_exceeds_mefs: np.ndarray | None = None
+    #: Conditional percentiles of the **proven** volume at each depth: the success
+    #: case, given a discovery. P90 is the low case. Carried so B1 can show the
+    #: spread around its mean and B9 can weight the spread by chance -- both asked
+    #: for on 2026-08-11 -- without either figure re-deriving them and drifting.
+    proven_p90: np.ndarray | None = None
+    proven_p50: np.ndarray | None = None
+    proven_p10: np.ndarray | None = None
     alpha: float | None = None
 
 
@@ -277,6 +284,9 @@ def run_volume_sweep(
     possible_mean = np.full(z.size, np.nan)
     attic_mean = np.full(z.size, np.nan)
     discovery_mean = np.full(z.size, np.nan)
+    p90 = np.full(z.size, np.nan)
+    p50 = np.full(z.size, np.nan)
+    p10 = np.full(z.size, np.nan)
     n_disc = np.zeros(z.size, dtype=int)
     n_dry = np.zeros(z.size, dtype=int)
     p_proven_ex = np.full(z.size, np.nan) if mefs is not None else None
@@ -304,6 +314,9 @@ def run_volume_sweep(
             proven_mean[i] = float(proven.mean())
             possible_mean[i] = float(vc.possible[groups_i.discovery].mean())
             discovery_mean[i] = float(associated.mean())
+            # Petroleum orientation: P90 is the low case, so it is the 10th
+            # percentile of the values.
+            p90[i], p50[i], p10[i] = (float(v) for v in np.percentile(proven, [10, 50, 90]))
             if mefs is not None:
                 p_proven_ex[i] = float((proven > mefs).mean())
                 p_disc_ex[i] = float((associated > mefs).mean())
@@ -322,6 +335,7 @@ def run_volume_sweep(
         discovery_mean=discovery_mean,
         mefs=mefs, p_proven_exceeds_mefs=p_proven_ex, p_attic_exceeds_mefs=p_attic_ex,
         p_discovery_exceeds_mefs=p_disc_ex,
+        proven_p90=p90, proven_p50=p50, proven_p10=p10,
         n_discovery=n_disc, n_dry=n_dry,
         pos_prospect=float(pos_prospect), reference=reference,
         proven_mean_lo=boot_lo, proven_mean_hi=boot_hi,
