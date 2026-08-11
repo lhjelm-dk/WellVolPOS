@@ -519,44 +519,26 @@ with tabs[0]:
         st.markdown(f"{_badge(c.level)} **{c.name}** — {c.message}")
 
     st.divider()
-    st.subheader("Risking convention")
+    st.subheader("Zero-volume trials — what the detector found")
+    # The *finding* stays here with the rest of QC; the *decision* moved to tab ②
+    # (Lars, 2026-08-11). The split is the honest one: whether 2,395 trials have
+    # every hydrocarbon quantity at exactly zero is a fact about this file, and
+    # belongs beside the checks that establish it. How to read those zeros is a
+    # judgement that sets POS_prospect, and POS_prospect is a property of the
+    # prospect -- so it now sits on the prospect tab, next to the curve it risks.
     f = qc.failure
     if f and f.has_failures:
         st.markdown(f"**{f.summary()}**")
         with st.expander("Evidence"):
             for e in f.evidence:
                 st.markdown(f"- {e}")
-        default = 0 if f.verdict == "chance_failure" else 1
-        # Branch on a stable key, never on the label text: the label is user
-        # copy and rewording it must not be able to change which POS the whole
-        # app uses.
-        conv = st.radio(
-            "Is that right?",
-            CONVENTION_KEYS,
-            index=default,
-            format_func=lambda k: CONVENTION_LABELS[k],
+        st.info(
+            "**How these zeros are read is set in tab ② (Prospect)**, together with the chance "
+            "table, because that choice is what POS_prospect is and tab ② is where POS_prospect "
+            "is drawn. The evidence above is what you read to make it."
         )
-        st.session_state["risking_convention"] = conv
-        if conv == "geometric":
-            st.info(
-                "**To be implemented in a later update.** The principle is in Lowry, Suttill & "
-                "Taylor (2005), *Advances in risking exploration prospects*, APPEA Journal 45(1) "
-                "179–188, [doi:10.1071/AJ04012](https://doi.org/10.1071/AJ04012): the geological "
-                "chance factors and the *geometric* chance that a given location is within the "
-                "accumulation are separate things, and conflating them double-counts. Until it is "
-                "built this option behaves as *success-case only*, and the caveat below says why "
-                "that is not the same answer."
-            )
-            st.warning(
-                "Not yet implemented. Reading the zeros as geometric means they are *charged* "
-                "trials with no trapped column above the crest, so they belong in the "
-                "denominator of r_location — which conditions on `resource > 0` and therefore "
-                "currently drops them. Until that is built, this option behaves like "
-                "'success-case only' and r_location is not what this reading requires."
-            )
     else:
         st.markdown("No zero-volume trials — the export looks success-case only.")
-        st.session_state["risking_convention"] = "success_case_only"
 
     if qc.blocked:
         st.error("A check failed. The analysis tabs stay closed until it is resolved.")
@@ -564,60 +546,54 @@ with tabs[0]:
 if qc.blocked:
     st.stop()
 
-# The chance table is an **input**, so it lives in tab ① with the data and the
-# risking convention (Lars, 2026-08-11). Charge, trap, reservoir and retention are
-# judgements about the prospect: made before anyone picks a location, and unchanged
-# by picking one. The location factor is *computed* from the trials and the well's
-# depth, so the summary that multiplies the two can only be assembled afterwards --
-# and that summary is in tab ⑤. Keeping the input and the summary apart is what
-# stops the third column of that summary being read as something a person entered.
-with tabs[0]:
-    st.divider()
-    st.subheader("Chance table — the geological risk elements")
-    st.caption(
-        "**Inputs, not results.** Per-element chance of success for the prospect, multiplied "
-        "together to give POS_prospect. Nothing here depends on where the well goes: the "
-        "location factor is computed from the trials, and the two are brought together in the "
-        "risk summary in tab ⑤. If the risking convention above says the trials already carry "
-        "the chance, this table drives the attribution figures only."
-    )
-    ec = st.columns(4)
-    elements = {
-        el: ec[i].number_input(
-            el.capitalize(), 0.01, 1.0, CHANCE_DEFAULTS[el], 0.01, key=f"w_chance_{el}",
-            help=CHANCE_HELP[el],
-        )
-        for i, el in enumerate(ELEMENTS)
-    }
-    st.markdown("**Play chance — the same four elements, one level up**")
-    st.caption(
-        "*Is there a working petroleum system here at all?* Assessed element by element rather "
-        "than as one number (Lars, 2026-08-11), because that question and *does this closure "
-        "have a seal* draw on different evidence, and a single play number cannot be argued "
-        "about element by element the way a column can. The four above are read as **conditional "
-        "on the play working**."
-    )
-    pc = st.columns(4)
-    play_elements = {
-        el: pc[i].number_input(
-            f"{el.capitalize()} (play)", 0.01, 1.0, PLAY_DEFAULTS[el], 0.01,
-            key=f"w_play_{el}", help=PLAY_HELP[el],
-        )
-        for i, el in enumerate(ELEMENTS)
-    }
-    play_chance = float(np.prod(list(play_elements.values())))
-    _cond = float(np.prod(list(elements.values())))
-    st.caption(
-        f"**POS_prospect = play × prospect-given-play = {play_chance:.4f} × {_cond:.4f} = "
-        f"{play_chance * _cond:.4f}** — the product of all eight inputs. The risk summary in "
-        f"tab ⑤ shows the two levels as its first two columns and adds the location factor as "
-        f"the third."
-    )
+# The chance table and the risking convention live in **tab ②** now (Lars,
+# 2026-08-11), moved out of tab ①. Both determine POS_prospect, and POS_prospect is
+# a property of the prospect -- so the inputs sit on the prospect tab, beside the
+# distribution they risk. That the risked A5 curve had gone missing on that very tab
+# is the argument in miniature: the number and its consequence were two tabs apart.
+#
+# **Read here, created there.** Every number below comes out of session_state rather
+# than off a widget, because the widgets are built further down the script than this
+# and Streamlit runs top to bottom. That is not a workaround: it is what makes the
+# ordering a *layout* decision instead of a computation one. The widgets own these
+# keys, so changing one triggers a rerun and this read sees the new value at the top
+# of it -- there is no lag and no second copy of the state.
+#
+# Charge, trap, reservoir and retention are judgements about the prospect: made
+# before anyone picks a location and unchanged by picking one. The location factor is
+# *computed* from the trials and the well's depth, so the summary that multiplies the
+# two can only be assembled afterwards -- and that summary is in tab ⑤. Keeping the
+# input and the summary apart is what stops the third column of that summary being
+# read as something a person entered.
+elements = {el: float(st.session_state.get(f"w_chance_{el}", CHANCE_DEFAULTS[el]))
+            for el in ELEMENTS}
+play_elements = {el: float(st.session_state.get(f"w_play_{el}", PLAY_DEFAULTS[el]))
+                 for el in ELEMENTS}
+play_chance = float(np.prod(list(play_elements.values())))
 
 # The play chance multiplies the four elements: POS_prospect is the chance the
 # play works *and* every element of this prospect does.
 pos_from_table = float(play_chance) * float(np.prod(list(elements.values())))
-risking_convention = st.session_state.get("risking_convention", "success_case_only")
+
+# The convention is *seeded here*, before POS is read, not down in tab ② where the
+# radio is built. Seeding it beside the widget left the first run after a file
+# change reading the old default while the radio already showed the new one -- the
+# footer said "from the chance table" under a radio saying the trials carry it.
+# Widget defaults have to exist before the value is used, and the value is used
+# here.
+_f0 = qc.failure
+if _f0 and _f0.has_failures:
+    if "risking_convention" not in st.session_state:
+        st.session_state["risking_convention"] = (
+            CONVENTION_KEYS[0] if _f0.verdict == "chance_failure" else CONVENTION_KEYS[1]
+        )
+    risking_convention = st.session_state["risking_convention"]
+else:
+    # No zero-volume trials: there is nothing to interpret, so the convention is
+    # *forced* rather than chosen -- and it is deliberately not written to session
+    # state. Writing it there is how a value forced by one trial file survives into
+    # the next one and silently overrides the choice that file deserves.
+    risking_convention = "success_case_only"
 # `is not None`, not truthiness: a file whose every trial failed gives
 # pos_trials == 0.0, which is falsy, and would silently fall through to the
 # chance table.
@@ -651,6 +627,94 @@ def _split_caveat() -> None:
         st.warning(f"**The proven/possible split is not defensible on this data.** {_split_message}")
 
 with tabs[1]:
+    # ------------------------------------------------ the risk that makes POS_prospect
+    # Moved here from tab ① (Lars, 2026-08-11). These eight numbers and the convention
+    # below them *are* POS_prospect, and POS_prospect is a property of the prospect --
+    # so they belong on the prospect tab, above the distributions they risk rather than
+    # a tab away from them.
+    #
+    # They come first on the tab, before the KPI strip, because every risked number
+    # below is downstream of them. A reader who scrolls past an input and then meets a
+    # figure it controls has to scroll back to find out why the figure says what it
+    # says.
+    st.subheader("Chance table — the geological risk elements")
+    st.caption(
+        "**Inputs, not results.** Per-element chance of success, in two levels, multiplied "
+        "together to give POS_prospect. Nothing here depends on where the well goes: the "
+        "location factor is computed from the trials, and the two are brought together in the "
+        "risk summary in tab ⑤."
+    )
+    st.markdown("**The prospect, given the play works**")
+    ec = st.columns(4)
+    for i, el in enumerate(ELEMENTS):
+        ec[i].number_input(
+            el.capitalize(), 0.01, 1.0, CHANCE_DEFAULTS[el], 0.01, key=f"w_chance_{el}",
+            help=CHANCE_HELP[el],
+        )
+    st.markdown("**The play — the same four elements, one level up**")
+    st.caption(
+        "*Is there a working petroleum system here at all?* Assessed element by element rather "
+        "than as one number (Lars, 2026-08-11), because that question and *does this closure "
+        "have a seal* draw on different evidence, and a single play number cannot be argued "
+        "about element by element the way a column can. The four above are read as **conditional "
+        "on the play working**."
+    )
+    pc = st.columns(4)
+    for i, el in enumerate(ELEMENTS):
+        pc[i].number_input(
+            f"{el.capitalize()} (play)", 0.01, 1.0, PLAY_DEFAULTS[el], 0.01,
+            key=f"w_play_{el}", help=PLAY_HELP[el],
+        )
+    _cond = float(np.prod(list(elements.values())))
+    st.caption(
+        f"**POS_prospect = play × prospect-given-play = {play_chance:.4f} × {_cond:.4f} = "
+        f"{play_chance * _cond:.4f}** — the product of all eight inputs. The risk summary in "
+        f"tab ⑤ shows the two levels as its first two columns and adds the location factor as "
+        f"the third."
+    )
+
+    # The convention: what the zero-volume trials mean, and therefore where POS comes
+    # from. The *evidence* for the decision stays in tab ①'s QC report, because
+    # whether those trials are zero is a fact about the file; this is the judgement.
+    _f = qc.failure
+    if _f and _f.has_failures:
+        st.markdown("**Risking convention — where POS_prospect comes from**")
+        st.caption(
+            f"The detector found: {_f.summary()} The evidence is in tab ① under *Zero-volume "
+            f"trials*. Reading them as chance failures makes the trial file itself carry the "
+            f"chance; reading the export as success-case only makes the table above carry it."
+        )
+        # Branch on a stable key, never on the label text: the label is user copy and
+        # rewording it must not be able to change which POS the whole app uses. The
+        # radio *owns* ``risking_convention``, so a loaded case that writes that key
+        # sets the control rather than fighting it. The key is seeded further up,
+        # where POS is read -- see the comment there.
+        conv = st.radio(
+            "How should the zero-volume trials be read?",
+            CONVENTION_KEYS,
+            format_func=lambda k: CONVENTION_LABELS[k],
+            key="risking_convention",
+        )
+        if conv == "geometric":
+            st.info(
+                "**To be implemented in a later update.** The principle is in Lowry, Suttill & "
+                "Taylor (2005), *Advances in risking exploration prospects*, APPEA Journal 45(1) "
+                "179–188, [doi:10.1071/AJ04012](https://doi.org/10.1071/AJ04012): the geological "
+                "chance factors and the *geometric* chance that a given location is within the "
+                "accumulation are separate things, and conflating them double-counts. Until it is "
+                "built this option behaves as *success-case only*, and the caveat below says why "
+                "that is not the same answer."
+            )
+            st.warning(
+                "Not yet implemented. Reading the zeros as geometric means they are *charged* "
+                "trials with no trapped column above the crest, so they belong in the "
+                "denominator of r_location — which conditions on `resource > 0` and therefore "
+                "currently drops them. Until that is built, this option behaves like "
+                "'success-case only' and r_location is not what this reading requires."
+            )
+    st.caption(f"**Effective POS_prospect: {pos:.4f}**, from {pos_source}.")
+
+    st.divider()
     st.subheader("Prospect — the un-cut model")
     res_all = ts.col("resource")
     s = group_summary(ts, groups)["prospect"]

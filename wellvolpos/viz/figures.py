@@ -1421,6 +1421,17 @@ def fig_c1_section(
         ax.axhline(depth, color=p["well"], lw=1.1, ls=ls)
         ax.text(0.99, depth, name, transform=ax.get_yaxis_transform(),
                 ha="right", va="bottom", fontsize=7.5, color=p["well"])
+
+    # The well itself, as a vertical line -- see ``interactive._well_track`` for why
+    # x = A(z_entry) is the only honest anchor on an area axis. The rules above give
+    # the depths; this gives the borehole, which is what the eye looks for on a
+    # section.
+    _, xt = AREA_SCALES.get(area_scale, AREA_SCALES["area"])
+    x_well = float(np.asarray(xt(np.asarray([ad.area_at(z_entry)], dtype=float)))[0])
+    ax.plot([x_well, x_well], [ad.shallowest, z_entry],
+            color=p["well"], lw=1.1, ls=":")
+    ax.plot([x_well, x_well], [z_entry, z_exit],
+            color=p["well"], lw=4.0, solid_capstyle="butt", label="the well")
     ax.set_xlim(left=0)
     ax.set_xlabel(label)
     depth_axis(ax, zlim=(ad.shallowest, ad.deepest))

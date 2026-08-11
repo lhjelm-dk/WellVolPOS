@@ -239,7 +239,6 @@ size, never instead of them.
 | **Milkov, A.V. (2021)** *Reporting the expected exploration outcome: when, why and how the probability of geological success and success-case volumes for the well differ from those for the prospect.* J. Pet. Sci. Eng. **204** 108754. [doi:10.1016/j.petrol.2021.108754](https://doi.org/10.1016/j.petrol.2021.108754) | The crest/apex reference convention, and the peer-reviewed statement that well POS is prospect POS times the contact distribution. His segment A2 falls from 0.34 at the crest to 0.07 down-dip. Also the definition this app uses for percentiles: *“P90 is defined as 90 % probability of exceeding the P90 estimated value.”* |
 | **Schneider, M. & Cook, D.M. Jr. (2017)** *Drilling a Downdip Location: Effect on Updip and Downdip Resource Estimates and Commercial Chance.* AAPG Search & Discovery **#42102**, posted 3 July 2017 — with the Rose & Associates long-form version, Houston, May 2021. [search & discovery](https://www.searchanddiscovery.com/documents/2017/42102schneider/ndx_schneider.pdf) | Equation 1 (`Pwell = Pg × Ptrap@well / Ptrap`, cap included), the P90-area reference contour, the *“No Regrets”* volume, `Pmcfs(well)` and `Pc(well)`. Both documents are in `Papers/`; the 2021 file is a Rose & Associates client report authored by Schneider and Cook, not by Rose. |
 | **Haskett, W.J. (2003)** *Optimal Appraisal Well Location Through Efficient Uncertainty Reduction and Value of Information Techniques.* SPE **84241**, SPE ATCE, Denver, 5–8 October 2003. [doi:10.2118/84241-MS](https://doi.org/10.2118/84241-MS) | Appraisal placement as value of information — B3's uncertainty-reduction curve, with the optimum found by argmax rather than by eye. |
-| **Lowry, D., Suttill, R. & Taylor, R. (2005)** *Advances in risking exploration prospects.* APPEA Journal **45**(1) 179–188. [doi:10.1071/AJ04012](https://doi.org/10.1071/AJ04012) · [Semantic Scholar](https://www.semanticscholar.org/paper/ADVANCES-IN-RISKING-EXPLORATION-PROSPECTS-Lowry-Suttill/d6ab492ea957fe7fc901d9504ae02231002935bb) | The principle behind the **geometric** risking convention — that the geological chance factors and the geometric chance of a location being inside the accumulation are separate, and conflating them double-counts. That option is offered in tab ① and is **to be implemented in a later update**; until then it behaves as success-case only and says so. |
 | **Singh, V., Yemez, I., Izaguirre, E. & Racero, A. (2017)** *Optimal Subsurface Appraisal: A Key Link to the Success of Development Projects.* Am. J. Applied Sciences **14**(2) 217–230. [doi:10.3844/ajassp.2017.217.230](https://doi.org/10.3844/ajassp.2017.217.230) · open access | Appraisal-value framing around the same trade-off: what a well is worth is what it resolves, not what it finds. |
 | **Hood, K.C. (2019)** *Column Height.* Risk Coordinators' Workshop, 14 November 2019 (ExxonMobil Upstream Integrated Solutions) — and **Hood, K.C. (2024)** *Hydrocarbon Column Heights, Parts 1 & 2*, Rose & Associates blog. Both in `Papers/HCWC/` | The assessment minimum belongs to a minimum **column height**, linked to seal capacity, not to a minimum volume — decision 6, and why this app maps a column height rather than filtering on a volume. Two separate documents; the 2019 workshop deck and the 2024 blog pair are often conflated. |
 
@@ -264,9 +263,10 @@ to get — and the B2 regret curve is the place they would land.
 
 ---
 
-**Provenance.** Both demo datasets are safe to publish (confirmed 2026-08-11):
-prospect A is fictional, prospect B is extracted from the 2018 macro workbook. The
-source workbook remains the specification either way: `tests/test_excel_parity.py` locks fifteen of its
+**Two provenance notes.** Prospect A's demo data is fictional and safe to publish.
+Prospect B is extracted from the 2018 macro workbook and its publication status has
+**not** been confirmed — treat it as the licensee's until it has. The source workbook
+remains the specification either way: `tests/test_excel_parity.py` locks fifteen of its
 values and was written before any other code.
         """
     )

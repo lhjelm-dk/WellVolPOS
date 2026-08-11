@@ -591,6 +591,17 @@ def test_the_c1_twin_carries_a_labelled_depth_axis_and_the_well(
     texts = {t.get_text() for t in ax_sec.texts}
     assert "well entry" in texts and "well exit" in texts
 
+    # And the well itself: a *vertical* segment spanning entry to exit, anchored on
+    # the top-reservoir curve at A(z_entry). Two rules alone say at what depths the
+    # well enters and leaves; they never draw the borehole (Lars, 2026-08-11).
+    verticals = [line for line in ax_sec.get_lines()
+                 if len(line.get_xdata()) == 2 and len(set(line.get_xdata())) == 1]
+    track = [line for line in verticals
+             if sorted(map(float, line.get_ydata())) == sorted([ENTRY, EXIT])]
+    assert len(track) == 1, "exactly one well track, spanning entry to exit"
+    x = float(track[0].get_xdata()[0])
+    assert x == pytest.approx(float(area_depth.area_at(ENTRY)), rel=1e-9)
+
 
 def test_the_c2_twin_colours_by_the_same_roles_as_its_plotly_original(
     reduced, area_depth, groups, vc

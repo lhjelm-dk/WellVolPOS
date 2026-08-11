@@ -1872,6 +1872,46 @@ def pfig_b8_commercial_chance(
     return fig
 
 # ----------------------------------------------------- the concepts figure
+def _well_track(fig, ad: AreaDepth, *, z_entry: float, z_exit: float,
+                zlim: tuple[float, float] | None, dark: bool, transform):
+    """Draw the well itself as a vertical line on an area-depth panel.
+
+    The two horizontal rules say at what *depth* the well enters and leaves the
+    reservoir; they do not show the well. This does, and on a section that is the
+    thing the eye looks for first (Lars, 2026-08-11).
+
+    **Where it goes on the x-axis, and why that is not arbitrary.** x here is
+    enclosed area, which is not a spatial coordinate, so "vertical" is nominal --
+    but there is exactly one honest anchor: ``A(z_entry)``, the area of the contour
+    the well enters the reservoir on. That is the point where the entry rule meets
+    the top-reservoir curve, so the track starts *on* the structure rather than
+    floating beside it, and its foot at ``(A(z_entry), z_exit)`` sits inside the
+    closure, since ``A(z_exit) > A(z_entry)``. Any other x would be a decoration.
+
+    B0 puts the well at x = 0 because that panel's x is a schematic half-width and
+    zero is the crest line. Here zero area *is* the apex, which is the one place the
+    well demonstrably is not.
+
+    Drawn in two pieces, following B0: thick between entry and exit -- the part in
+    the reservoir, which is what the classes are cut on -- and thin above it, so the
+    track reads as a borehole arriving from above rather than a floating segment.
+    """
+    x = float(transform(np.asarray([ad.area_at(z_entry)], dtype=float))[0])
+    p = palette(dark)
+    top = (zlim or (ad.shallowest, ad.deepest))[0]
+    if z_entry > top:
+        fig.add_scatter(
+            x=[x, x], y=[top, z_entry], mode="lines", showlegend=False,
+            line=dict(color=p["well"], width=1.6, dash="dot"), hoverinfo="skip",
+        )
+    fig.add_scatter(
+        x=[x, x], y=[z_entry, z_exit], mode="lines", name="the well",
+        line=dict(color=p["well"], width=6), showlegend=False,
+        hovertemplate="the well " + DEPTH_HOVER + "<extra></extra>",
+    )
+    return fig
+
+
 def pfig_c1_section(
     ad: AreaDepth, ts: TrialSet, *, z_entry: float, z_exit: float,
     area_scale: str = "area", zlim: tuple[float, float] | None = None,
@@ -1902,6 +1942,8 @@ def pfig_c1_section(
     _hline(fig, z_entry, p["well"], "dash", "well entry")
     if z_exit != z_entry:
         _hline(fig, z_exit, p["well"], "dot", "well exit")
+    _well_track(fig, ad, z_entry=z_entry, z_exit=z_exit, zlim=zlim,
+                dark=dark, transform=transform)
 
     fig.update_layout(
         title=f"C1 · the structure, and the volumes a well at this depth divides it into{note}",

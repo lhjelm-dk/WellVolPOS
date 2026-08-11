@@ -1023,3 +1023,30 @@ def test_a_conditional_curve_is_the_unconditional_one_at_chance_one(reduced):
     v1, p1 = conditional_exceedance(values)
     v2, p2 = risked_exceedance(values, 1.0)
     assert np.array_equal(v1, v2) and np.allclose(p1, p2)
+
+
+def test_c1_draws_the_well_as_a_vertical_track_on_the_structure(reduced, area_depth):
+    """C1 shows the well, not only the two depths at which it meets the reservoir.
+
+    Horizontal rules at entry and exit say *where* the reservoir is cut; they never
+    draw the borehole, and on a structural panel that is the first thing the eye
+    looks for (Lars, 2026-08-11).
+
+    The x anchor is the assertion that matters. On an area axis x is not a spatial
+    coordinate, so "vertical" is nominal and the placement has to be argued: the
+    track sits at ``A(z_entry)``, the area of the contour the well enters the
+    reservoir on, which is exactly where the entry rule meets the top-reservoir
+    curve. Anywhere else and the well floats beside the structure instead of
+    starting on it. Note this is the opposite of B0, where the well is at x = 0 --
+    there zero is the crest line, here zero area *is* the apex.
+    """
+    fig = I.pfig_c1_section(area_depth, reduced, z_entry=ENTRY, z_exit=EXIT)
+    track = [t for t in fig.data if getattr(t, "name", None) == "the well"]
+    assert len(track) == 1
+    xs, ys = list(track[0].x), list(track[0].y)
+    assert xs[0] == xs[1] == pytest.approx(float(area_depth.area_at(ENTRY)), rel=1e-9)
+    assert sorted(map(float, ys)) == sorted([ENTRY, EXIT])
+
+    # Its foot is inside the closure, which is the geometric check that the anchor
+    # is the shallow one: the closure is wider at the exit than at the entry.
+    assert float(area_depth.area_at(EXIT)) > xs[0]
