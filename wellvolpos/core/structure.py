@@ -14,7 +14,7 @@ reported rather than assumed: see :attr:`AreaDepth.r2`.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 from sklearn.isotonic import IsotonicRegression
@@ -57,6 +57,10 @@ class AreaDepth:
     r2: float
     resid_sd: float
     n_points: int
+    #: Memoised volume grids, keyed by (apex, n, rule). Derived, so it takes no
+    #: part in equality or repr -- two AreaDepth objects with the same curve are
+    #: the same object regardless of what either has been asked to integrate.
+    _grid_cache: dict = field(default_factory=dict, compare=False, repr=False)
 
     # -------------------------------------------------------------- builders
     @classmethod
@@ -229,9 +233,22 @@ class AreaDepth:
 
         See :data:`VOLUME_RULES` for the two integration rules and why the
         trapezoid one is the default despite the frustum rule being exact on a cone.
+
+        **Memoised on the instance**, because it is pure in ``(apex, n, rule)`` and
+        was being rebuilt once per trial. ``thickness_from_pay`` loops over every
+        success trial calling :meth:`depth_for_volume`, so a single import rebuilt
+        this 4 000-point integration **9 595 times** -- 97 % of that function's
+        runtime, and it re-entered the wedge split three times per call on top.
+        Caching took ``split_trials`` from 518 ms back to single digits. The grid
+        depends on nothing mutable: ``z`` and ``a`` are set at construction and
+        never written.
         """
         if rule not in self.VOLUME_RULES:
             raise ValueError(f"unknown volume rule {rule!r}; expected one of {self.VOLUME_RULES}")
+        key = (float(apex), int(n), rule)
+        cached = self._grid_cache.get(key)
+        if cached is not None:
+            return cached
         z = np.linspace(float(apex), self.deepest, int(n))
         a = self.area_at_tapered(z, apex)
         h = np.diff(z)
@@ -240,7 +257,9 @@ class AreaDepth:
             dv = h / 3.0 * (a1 + a2 + np.sqrt(np.maximum(a1 * a2, 0.0)))
         else:
             dv = 0.5 * (a[1:] + a[:-1]) * h
-        return z, np.concatenate([[0.0], np.cumsum(dv)])
+        out = (z, np.concatenate([[0.0], np.cumsum(dv)]))
+        self._grid_cache[key] = out
+        return out
 
     def volume_above(self, depth, apex: float, rule: str = "trapezoid") -> np.ndarray:
         """Bulk closure volume above ``depth``: the integral of A(z) from the apex.

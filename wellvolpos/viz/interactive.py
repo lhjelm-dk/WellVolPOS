@@ -33,7 +33,6 @@ from ..core.classes import (
     READING_DASH,
     READING_LABELS,
     VolumeClasses,
-    conditional_exceedance,
     risked_exceedance,
 )
 from ..core.groups import Groups
@@ -54,13 +53,11 @@ from ..io.adapters.base import TrialSet
 from .figures import (
     _depth_band,
     _depth_percentiles,
-    _exceedance,
     area_spread_is_material,
     exceedance_marks,
 )
 from .theme import (
     PANEL_HEIGHT,
-    SEQUENTIAL_CMAP,
     VALUE_CMAP,
     apply_plotly,
     colour,
@@ -1465,8 +1462,8 @@ def pfig_b6_inverse(
         # Both readings named on the axis itself. One pair of axes carrying two
         # definitions of volume and two kinds of depth is only honest if the axis
         # says so -- unlabelled, this is the figure Lars could not read.
-        xaxis_title=(f"Volume (MMboe) \u2014 <i>target {stat_label}</i> (curve) \u00b7 "
-                     "<i>held by one trial</i> (grey)"),
+        xaxis_title=(f"Volume (MMboe) \u2014 target {stat_label} (curve) / "
+                     "held by one trial (grey)"),
     )
     fig.update_xaxes(rangemode="tozero")
     apply_plotly(fig, dark, height)
@@ -1474,8 +1471,8 @@ def pfig_b6_inverse(
     all_z = np.concatenate([a for a in all_z if a.size])
     depth_axis_plotly(
         fig, zlim or (float(all_z.min()), float(all_z.max())),
-        title=("Depth (m TVDSS) \u2014 <i>required entry, or deeper</i> (curve) \u00b7 "
-               "<i>contact</i> (grey)"),
+        title=("Depth (m TVDSS) \u2014 required entry, or deeper (curve) / "
+               "contact (grey)"),
         show_ticklabels=show_depth_labels,
     )
     return fig

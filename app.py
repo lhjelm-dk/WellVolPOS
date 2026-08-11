@@ -48,7 +48,6 @@ from wellvolpos.core import (
     SHIPPED_SCHEMES,
     AreaDepth,
     ReferenceContour,
-    allocate,
     check_area_pay_correlation,
     REPORT_PERCENTILES,
     class_percentiles,

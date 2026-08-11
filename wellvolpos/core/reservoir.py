@@ -170,26 +170,28 @@ def thickness_from_pay(
         )
 
     thickness = np.full(contact.shape, np.nan)
-    resolved = np.zeros(contact.shape, dtype=bool)
-    n_full = n_bad = 0
 
     above = ad.volume_above(contact, apex_v)
     remainder = above - grv          # closure volume left below (z_c - T)
 
-    for i in np.flatnonzero(success):
-        if not np.isfinite(remainder[i]) or grv[i] <= 0.0:
-            continue
-        if remainder[i] < -tol:
-            n_bad += 1                                   # more pay than the closure holds
-            continue
-        if remainder[i] <= tol:
-            n_full += 1                                  # charged to base; T unbounded above
-            continue
-        z_lo = float(ad.depth_for_volume(remainder[i], apex_v))
-        t = float(contact[i]) - z_lo
-        if t > 0.0:
-            thickness[i] = t
-            resolved[i] = True
+    # Vectorised. This was a Python loop over every success trial, each iteration
+    # calling depth_for_volume -- which rebuilt a 4 000-point volume grid from
+    # scratch, 9 595 times on one import. The grid is memoised now, but the loop
+    # was the other half: np.interp over 9 595 scalars costs far more than one
+    # call over an array of 9 595. Same arithmetic, three masks instead of three
+    # `continue`s.
+    usable = success & np.isfinite(remainder) & (grv > 0.0)
+    bad = usable & (remainder < -tol)                  # more pay than the closure holds
+    full = usable & (remainder >= -tol) & (remainder <= tol)   # charged to base
+    ok = usable & (remainder > tol)
+
+    if ok.any():
+        t = np.asarray(contact, dtype=float)[ok] - ad.depth_for_volume(remainder[ok], apex_v)
+        good = t > 0.0
+        idx = np.flatnonzero(ok)[good]
+        thickness[idx] = t[good]
+    resolved = np.isfinite(thickness)
+    n_bad, n_full = int(bad.sum()), int(full.sum())
 
     return ThicknessFromPay(
         thickness=thickness, resolved=resolved,

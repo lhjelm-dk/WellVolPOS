@@ -688,7 +688,7 @@ def entry_depth_percentiles(
     targets: np.ndarray,
     *,
     percentiles: tuple[int, ...] = ENTRY_DEPTH_PERCENTILES,
-    min_support: int = 20,
+    min_support: int = MIN_SUPPORT,
 ) -> dict[int, np.ndarray]:
     """For each target volume, the spread of contact depths that deliver it.
 

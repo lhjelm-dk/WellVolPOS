@@ -285,7 +285,7 @@ def fig_a1_area_depth(
 
     depth_axis(ax, zlim=(ad.shallowest, ad.deepest))
     ax.set_xlim(left=0)
-    ax.set_xlabel("Enclosed area (km²)")
+    ax.set_xlabel("Productive area (km²)")
     ax.set_title("A1 · Area–depth curve and reservoir")
     if current_entry is not None:
         ax.legend(loc="lower right", fontsize=7.5)
@@ -471,8 +471,6 @@ def fig_a5_exceedance(
 
     # Both readings, like the plotly twin: solid conditional, dashed unconditional,
     # each series risked by *its own* chance.
-    p_updip = (max(pos_prospect - p_well, 0.0)
-               if (pos_prospect is not None and p_well is not None) else None)
     # Prospect only, like the plotly twin: the other three series live in C2 and in
     # tab 3's table, and three places for one set of numbers is three places to
     # disagree. Their populations were verified identical before removing them here.
@@ -639,7 +637,7 @@ def fig_b1_volume_split(
 
     depth_axis(ax, zlim=(float(vsweep.z.min()), float(vsweep.z.max())))
     ax.set_xlim(left=0)
-    ax.set_xlabel("Mean resource (MMboe)")
+    ax.set_xlabel("Resource (MMboe) — thick lines are means, thin are proven P90/P50/P10")
     ax.set_title(f"B1 · Volume split vs location (exit = entry + {vsweep.z_gap:.0f} m)")
     ax.legend(loc="upper right", fontsize=7.5)
     fig.tight_layout()
@@ -806,7 +804,8 @@ def fig_b6_inverse(
     all_z = np.concatenate([a for a in all_z if a.size])
     # Both readings named on each axis: one pair of axes carrying two definitions
     # of volume and two kinds of depth is only honest if the axis says so.
-    depth_axis(ax, ylabel="Depth (m TVDSS) \u2014 required entry (curve) / contact (grey)",
+    depth_axis(ax, ylabel=("Depth (m TVDSS) \u2014 required entry, or deeper (curve) / "
+                           "contact (grey)"),
                zlim=zlim or (float(all_z.min()), float(all_z.max())))
     ax.set_xlim(left=0)
     ax.set_xlabel(f"Volume (MMboe) \u2014 target {stat_label} (curve) / held by one trial (grey)")
@@ -1198,7 +1197,10 @@ def fig_b9_chance_weighted(
 
     depth_axis(ax, zlim=zlim or (float(z.min()), float(z.max())))
     ax.set_xlim(left=0)
-    ax.set_xlabel(r"$P_{well}\times$ mean volume  (MMboe, expected)")
+    # Plain text, not mathtext: the plotly twin cannot render LaTeX, so writing it
+    # here guaranteed the two labels differed and the guard could never compare
+    # them. Legibility is worth less than the export saying what the screen says.
+    ax.set_xlabel("P_well × mean volume  (MMboe, expected)")
     ax.set_title("B9 · Chance-weighted resource vs location")
     ax.legend(loc="lower right", fontsize=7.5)
     fig.tight_layout()

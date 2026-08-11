@@ -74,7 +74,7 @@ conflation in **206 cells**, not one.
     except ValueError:
         recovered = "This export lacks the columns needed to invert the wedge."
     st.markdown(
-        f"""
+        """
 **Reservoir thickness** is a property of the *rock* — top reservoir to base reservoir,
 present throughout the closure whether or not anything is charged. **Pay** is a property
 of the *accumulation* — top reservoir down to the contact, capped by the base.
