@@ -38,12 +38,10 @@ from wellvolpos.core import (
     AreaDepth,
     ReferenceContour,
     allocate,
-    apply_min_column_height,
     check_area_pay_correlation,
     REPORT_PERCENTILES,
     class_percentiles,
     class_summary,
-    compare_definitions,
     expected_volume,
     describe_support,
     group_summary,
@@ -53,8 +51,6 @@ from wellvolpos.core import (
     run_sweep,
     run_volume_sweep,
     split_trials,
-    spread_at_fixed_column,
-    volume_percentile_threshold,
     volume_target_curve,
 )
 from wellvolpos.io.adapters import (
@@ -78,6 +74,8 @@ from wellvolpos.viz import (
     pfig_a3_chance_decomposition,
     pfig_a4_resource_vs_depth,
     pfig_a5_exceedance,
+    pfig_a7_resource_grid,
+    pfig_a8_contact_distribution,
     pfig_a6_overlap,
     pfig_b0_section,
     pfig_b1_volume_split,
@@ -88,10 +86,12 @@ from wellvolpos.viz import (
     pfig_b6_inverse,
     pfig_b7_frontier,
     pfig_b8_commercial_chance,
+    pfig_b9_chance_weighted,
     pfig_c1_section,
     pfig_c2_exceedance,
     pfig_map_view,
     row_zlim,
+    suggest_grid,
 )
 
 DATA = Path(__file__).parent / "data"
@@ -377,7 +377,6 @@ with tabs[0]:
                     "w_ref": ReferenceContour(loaded.reference),
                     "w_scheme": loaded.scheme,
                     "w_area_scale": loaded.area_scale,
-                    "w_min_col": loaded.min_column_height,
                     "w_map_interval": loaded.map_interval,
                     "w_map_azimuth": int(round(loaded.map_azimuth_deg)),
                     "w_play": loaded.play_chance,
@@ -510,6 +509,15 @@ with tabs[0]:
         )
         st.session_state["risking_convention"] = conv
         if conv == "geometric":
+            st.info(
+                "**To be implemented in a later update.** The principle is in Lowry, Suttill & "
+                "Taylor (2005), *Advances in risking exploration prospects*, APPEA Journal 45(1) "
+                "179–188, [doi:10.1071/AJ04012](https://doi.org/10.1071/AJ04012): the geological "
+                "chance factors and the *geometric* chance that a given location is within the "
+                "accumulation are separate things, and conflating them double-counts. Until it is "
+                "built this option behaves as *success-case only*, and the caveat below says why "
+                "that is not the same answer."
+            )
             st.warning(
                 "Not yet implemented. Reading the zeros as geometric means they are *charged* "
                 "trials with no trapped column above the crest, so they belong in the "
@@ -720,6 +728,47 @@ with tabs[1]:
             "probability is wherever it happens to fall on the curve — above P50 on a "
             "right-skewed distribution. That is why it gets its own row rather than sitting "
             "between P50 and P10 as if it were one of them."
+        )
+
+        st.divider()
+        st.subheader("The trials themselves")
+        gc1, gc2 = st.columns([1, 3])
+        with gc1:
+            _auto_r, _auto_z = suggest_grid(res_all[res_all > 0], ts.col("contact")[res_all > 0])
+            grid_res = st.number_input("Resource bins", 10, 120, _auto_r, 2, key="w_grid_res")
+            grid_z = st.number_input("Depth bins", 10, 120, _auto_z, 2, key="w_grid_z")
+            st.caption(
+                f"Default {_auto_r} × {_auto_z} from the **Freedman–Diaconis** rule on each axis "
+                f"— bin width 2·IQR/n^⅓, which adapts to spread *and* sample size and survives "
+                f"the long right tail a resource distribution always has. The workbook's own "
+                f"`resource grid` sheet is a fixed 100 × 100, which on 10 000 trials leaves most "
+                f"cells empty."
+            )
+        with gc2:
+            _chart(pfig_a7_resource_grid(
+                    ts, n_resource=int(grid_res), n_depth=int(grid_z),
+                    current_entry=entry, current_exit=exit_,
+                ), key="a7")
+        st.caption(
+            "**A7** — how many trials fall in each resource-by-depth cell. The workbook draws "
+            "this with contours; cells are the honest encoding, because a count in a cell is "
+            "discrete with hard zeros outside the sampled envelope and contour interpolation "
+            "invents values no trial supports. Inferno is perceptually uniform and monotonic in "
+            "lightness, so darker is unambiguously fewer whether you read colour or a greyscale "
+            "print. Counts are on a **log** scale: the modal cell holds two orders of magnitude "
+            "more trials than the tails, and the tails are where a location question lives."
+        )
+
+        st.divider()
+        _chart(pfig_a8_contact_distribution(ts, current_entry=entry), key="a8")
+        st.caption(
+            "**A8** — the contact distribution recovered from the trials, and `P(contact deeper "
+            "than this depth)` over it. Read a depth off the y-axis and the line gives the "
+            "fraction of success trials whose contact lies below it, which **is** `r_location` at "
+            "that entry, crest-referenced. So A8 is A3's raw material shown as a distribution "
+            "instead of as a chance curve, and the two agree at every depth by construction. "
+            "This distribution is what the HCWC Builder produces and GeoX consumes; every "
+            "location result in this tool ultimately rests on its shape."
         )
 
         st.divider()
@@ -1061,6 +1110,16 @@ def _location_sweep_tab():
         _chart(pfig_b7_frontier(vsweep, current_z=entry), key="b7")
     with tb2:
         _chart(pfig_b8_commercial_chance(vsweep, current_z=entry, zlim=zrow_sweep), key="b8")
+    _chart(pfig_b9_chance_weighted(vsweep, current_z=entry, zlim=zrow_sweep), key="b9")
+    st.caption(
+        "**B9 — the targeting tool.** `P_well × mean volume`, swept: a falling curve times a "
+        "rising one, so it peaks somewhere in between and that depth maximises the expectation. "
+        "It is drawn for the proven volume and for the whole well-associated volume, which peak "
+        "in different places — the gap between those two stars is the exit depth's doing.\n\n"
+        "**An expected value describes no outcome that can happen.** The well finds something "
+        "near the success-case mean or it finds nothing; it never finds the chance-weighted "
+        "number. Use B9 to *rank* locations and B1 or B7 to say how big the prize is."
+    )
     st.caption(
         "**B7** is the workbook's *Well POS vs. Well to be tested Mean Resource*, and it is the "
         "most direct statement of what this tool is about: moving the well down-dip **buys volume "
@@ -1093,7 +1152,6 @@ def _current_case() -> Case:
         entry=entry, exit=exit_, mefs=mefs,
         risking_convention=risking_convention,
         reference=ref.value, scheme=scheme,
-        min_column_height=float(ss.get("w_min_col", 0.0)),
         chance_table=dict(elements), play_chance=float(play_chance),
         area_scale=area_scale,
         map_interval=float(ss.get("w_map_interval", 50.0)),
@@ -1321,89 +1379,6 @@ with tabs[4]:
         "attribution across elements differs, and reservoir is exempt under all of them."
     )
 
-    st.divider()
-    st.subheader("Minimum column height")
-    st.caption(
-        "**A mapping, not a filter.** This states what a minimum column height means in "
-        "contact depth, area and volume terms; it does **not** exclude trials from any "
-        "figure or KPI. Filtering would first need a decision on whether a sub-minimum "
-        "trial becomes a chance failure (lowering POS) or simply leaves the population "
-        "(renormalising it) — two different answers, so it is not assumed here."
-    )
-    if not has_area:
-        st.warning(
-            "No productive-area column in this export — the minimum-column-height mapping "
-            "needs it and is skipped."
-        )
-    else:
-        # The apex is always derived from the trials, never entered — Lars's
-        # instruction, and it overrides design plan §5.2 / decision 6, which
-        # wanted a mapped apex here. One apex per session, from one source, so
-        # the map view and this mapping cannot disagree.
-        #
-        # The honest consequence: it is an *extrapolation* of A(z)'s shallow tail
-        # to zero area, because the trials do not contain the apex. The
-        # `crest` column in a full GeoX export looks like it should supply it and
-        # does not — on the reference file 60 % of success trials have their
-        # "crest" deeper than their own contact, which is impossible, so that
-        # column is not per-row trustworthy. Minimum column height is measured
-        # from this apex and inherits its error.
-        tc1, tc2 = st.columns(2)
-        apex = float(ad.apex_estimate())
-        tc1.metric("Apex (derived from A(z))", f"{apex:.1f} m TVDSS")
-        min_col = tc2.number_input("Minimum column height (m)", min_value=0.0, value=0.0, step=5.0,
-                                   key="w_min_col")
-        st.caption(
-            f"Apex **derived from the trials**, not entered: A(z)'s shallow tail extrapolated to "
-            f"zero area gives {apex:.1f} m TVDSS, against a shallowest sampled contact of "
-            f"{ad.shallowest:.1f} m. The trials do not contain the crest, so this is an "
-            f"extrapolation and the column heights below inherit its error."
-        )
-
-        tm = apply_min_column_height(ts, ad, apex, min_col)
-        st.markdown(tm.message)
-        # Shown whether or not the threshold binds: per the design plan the
-        # mapping is the deliverable, and threshold.py's own docstring says
-        # non-binding is the normal case on this data.
-        m1, m2, m3 = st.columns(3)
-        m1.metric("Min admissible contact", f"{tm.min_contact_depth:.1f} m TVDSS")
-        if tm.min_area is None:
-            m2.metric("Equivalent area", "—")
-        elif tm.min_contact_depth < ad.shallowest:
-            # AreaDepth.area_at is np.interp, which clips rather than
-            # extrapolating, so above the shallowest sampled contact it keeps
-            # returning that contact's area instead of tending to zero.
-            m2.metric("Equivalent area", "above sampled range")
-        else:
-            m2.metric("Equivalent area", f"{tm.min_area:.3f} km²")
-        if tm.binds and tm.equivalent_percentile is not None:
-            m3.metric("Exceeded by", f"{tm.equivalent_percentile:.1%} of success trials")
-        else:
-            m3.metric("Trials excluded", f"{tm.n_excluded:,} ({tm.frac_excluded:.2%})")
-
-        with st.expander("How far is a column-height cut from a volume cut, here?"):
-            cmp = compare_definitions(ts, apex, min_col if min_col > 0 else 175.0)
-            spread = spread_at_fixed_column(ts, apex, min_col if min_col > 0 else 175.0)
-            if cmp.get("comparable"):
-                st.markdown(
-                    f"- Cutting by depth keeps {cmp['n_kept_by_depth']:,} success trials; the "
-                    f"volume cut that keeps the same number sits at "
-                    f"{cmp['volume_threshold']:.3f} MMboe.\n"
-                    f"- They disagree on **{cmp['disagreement_frac']:.2%}** of that set — close, "
-                    f"but not the same operation.\n"
-                    + (
-                        f"- At a fixed column height the resource still spans "
-                        f"**{spread['ratio']:.1f}×** ({spread['n']:,} trials), because area is "
-                        f"pinned while gross pay and yield are not."
-                        if np.isfinite(spread.get("ratio", float("nan"))) else ""
-                    )
-                )
-            else:
-                st.markdown("Not comparable at this apex and column height.")
-            st.caption(
-                "P99.5 volume floor, the source workbook's alternative expression of the same "
-                f"control: {volume_percentile_threshold(ts, 0.995):.3f} MMboe."
-            )
 
     st.divider()
     _export_section()

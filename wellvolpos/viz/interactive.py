@@ -88,6 +88,10 @@ __all__ = [
     "pfig_b6_inverse",
     "pfig_b7_frontier",
     "pfig_b8_commercial_chance",
+    "pfig_b9_chance_weighted",
+    "pfig_a7_resource_grid",
+    "pfig_a8_contact_distribution",
+    "suggest_grid",
     "row_zlim",
 ]
 
@@ -1148,6 +1152,262 @@ def pfig_b6_inverse(
 #: that neighbouring rings -- which crowd together where A(z) steepens -- do not
 #: stack their labels into one unreadable column.
 _LABEL_AZIMUTHS = (90.0, 55.0, 125.0, 20.0, 160.0, 70.0, 110.0, 40.0, 140.0)
+
+
+# ------------------------------------------------------------------- A7
+def suggest_grid(values: np.ndarray, depths: np.ndarray) -> tuple[int, int]:
+    """A defensible default grid for :func:`pfig_a7_resource_grid`.
+
+    **Freedman–Diaconis** on each axis independently: bin width ``2 IQR / n^(1/3)``,
+    which is the rule that adapts to spread *and* sample size and is robust to the
+    long right tail a resource distribution always has. Sturges would under-bin
+    10 000 skewed trials badly; a fixed count would be wrong on any other file.
+
+    Clamped to 15-90 bins per axis. Below 15 the structure this figure exists to
+    show is averaged away; above 90 most cells hold one trial or none and the plot
+    becomes a scatter drawn expensively.
+
+    The workbook's own ``resource grid`` sheet is a fixed 100 x 100. That is inside
+    this range at the top end, and on 10 000 trials it leaves most cells empty --
+    which is why the default here is computed rather than copied.
+    """
+    def bins(x: np.ndarray) -> int:
+        x = np.asarray(x, dtype=float)
+        x = x[np.isfinite(x)]
+        if x.size < 4:
+            return 15
+        q75, q25 = np.percentile(x, [75, 25])
+        iqr = float(q75 - q25)
+        span = float(np.ptp(x))
+        if iqr <= 0 or span <= 0:
+            return 15
+        width = 2.0 * iqr / np.cbrt(x.size)
+        return int(np.clip(round(span / width), 15, 90))
+
+    return bins(values), bins(depths)
+
+
+def pfig_a7_resource_grid(
+    ts: TrialSet, *, n_resource: int | None = None, n_depth: int | None = None,
+    current_entry: float | None = None, current_exit: float | None = None,
+    zlim: tuple[float, float] | None = None, show_depth_labels: bool = True,
+    log_counts: bool = True, dark: bool = False, height: int | None = PANEL_HEIGHT,
+):
+    """A7 -- how many trials fall in each resource-by-depth cell.
+
+    The workbook's ``resource grid`` sheet and its *"Number of Success Trials pr. HC
+    depth"* chart, as a heat map rather than as contours. Contours were the wrong
+    encoding there: they imply a smooth field, and this is a **count of trials in a
+    cell** -- a discrete thing with hard zeros outside the sampled envelope, where
+    contour interpolation invents intermediate values that no trial supports. A grid
+    of cells shows exactly what was counted and nothing else.
+
+    Inferno, because it is perceptually uniform and monotonic in lightness, so a
+    darker cell is unambiguously fewer trials whether the reader is looking at
+    colour or at a greyscale print. That is the same reason CLAUDE.md forbids a
+    rainbow for a density.
+
+    Counts are shown on a **log** colour scale by default. The distribution is
+    strongly peaked -- on the demo data the modal cell holds two orders of magnitude
+    more trials than the tails -- so on a linear scale everything outside the mode
+    reads as empty, and the tails are exactly where a well-location question lives.
+
+    Success trials only: chance failures carry no contact and would pile into a
+    single meaningless cell.
+    """
+    p = palette(dark)
+    res = np.asarray(ts.col("resource"), dtype=float)
+    contact = np.asarray(ts.col("contact"), dtype=float)
+    ok = (res > 0) & np.isfinite(res) & np.isfinite(contact)
+    res, contact = res[ok], contact[ok]
+
+    auto_r, auto_z = suggest_grid(res, contact)
+    nx = int(n_resource or auto_r)
+    ny = int(n_depth or auto_z)
+
+    counts, xe, ye = np.histogram2d(res, contact, bins=(nx, ny))
+    counts = counts.T                                   # rows = depth
+    shown = np.where(counts > 0, counts, np.nan)        # empty cells stay blank
+    z = np.log10(shown) if log_counts else shown
+
+    fig = go.Figure()
+    fig.add_heatmap(
+        x=0.5 * (xe[:-1] + xe[1:]), y=0.5 * (ye[:-1] + ye[1:]), z=z,
+        colorscale="Inferno", customdata=shown,
+        hovertemplate=("%{customdata:.0f} trials<br>%{x:.1f} MMboe at "
+                       + DEPTH_HOVER + "<extra></extra>"),
+        colorbar=dict(
+            title=dict(text="trials<br>(log₁₀)" if log_counts else "trials", side="right"),
+            thickness=12, len=0.65,
+        ),
+    )
+    for depth, label, dash in ((current_entry, "well entry", "dash"),
+                               (current_exit, "well exit", "dot")):
+        if depth is not None:
+            _hline(fig, depth, p["well"], dash, label)
+
+    fig.update_layout(
+        title=(f"A7 · Trials per resource–depth cell ({nx} × {ny} grid, "
+               f"{res.size:,} success trials)"),
+        xaxis_title="Recoverable resource (MMboe)",
+    )
+    fig.update_xaxes(rangemode="tozero")
+    apply_plotly(fig, dark, height)
+    depth_axis_plotly(fig, zlim or (float(contact.min()), float(contact.max())),
+                      show_ticklabels=show_depth_labels)
+    return fig
+
+
+# ------------------------------------------------------------------- A8
+def pfig_a8_contact_distribution(
+    ts: TrialSet, *, n_bins: int = 40, current_entry: float | None = None,
+    zlim: tuple[float, float] | None = None, show_depth_labels: bool = True,
+    dark: bool = False, height: int | None = PANEL_HEIGHT,
+):
+    """A8 -- the contact distribution recovered from the trials, two ways at once.
+
+    Bars: the **density** of sampled hydrocarbon-water contacts, as a horizontal
+    histogram so depth stays on y where the depth rule requires it. This is the
+    distribution the HCWC Builder produces and GeoX consumes, read back out of the
+    trial file -- and the shape of it is what every location result in this tool
+    ultimately rests on.
+
+    Line: **P(contact deeper than z)**, the inverse cumulative. Read a depth off the
+    y-axis and this is the fraction of *success* trials whose contact lies below it
+    -- which is ``r_location`` at that entry depth, crest-referenced. So A8 is the
+    raw material of A3 shown as a distribution rather than as a chance curve, and
+    the two must agree at every depth.
+
+    **Two x-axes, and this is the one place the project allows it.** Counts and
+    probability share no units and no scale; the alternative is two panels, and the
+    whole point is to see the mode of the distribution sitting against the steep
+    part of the cumulative. The rule that matters -- CLAUDE.md's *"no dual y-axes,
+    ever"* -- is about the *depth* axis meaning one thing, and it is untouched here:
+    both series are read against the same y.
+    """
+    p = palette(dark)
+    res = np.asarray(ts.col("resource"), dtype=float)
+    contact = np.asarray(ts.col("contact"), dtype=float)
+    ok = (res > 0) & np.isfinite(contact)
+    contact = contact[ok]
+    lo, hi = float(contact.min()), float(contact.max())
+
+    counts, edges = np.histogram(contact, bins=int(n_bins), range=(lo, hi))
+    centres = 0.5 * (edges[:-1] + edges[1:])
+    width = float(edges[1] - edges[0])
+
+    fig = go.Figure()
+    fig.add_bar(
+        x=counts, y=centres, orientation="h", width=width * 0.92,
+        marker=dict(color=rgba("prospect", 0.55, dark),
+                    line=dict(color=colour("prospect", dark), width=0.5)),
+        name="Sampled contacts", xaxis="x2",
+        hovertemplate="%{x:,.0f} trials with a contact near " + DEPTH_HOVER + "<extra></extra>",
+    )
+
+    # The inverse cumulative, from the sorted contacts rather than from the bars, so
+    # it is exact rather than binned -- it has to equal r_location, which is computed
+    # from the trials themselves.
+    ordered = np.sort(contact)
+    deeper = 100.0 * (ordered.size - np.arange(ordered.size)) / ordered.size
+    fig.add_scatter(
+        x=deeper, y=ordered, mode="lines", name="P(contact deeper than this)",
+        line=dict(color=colour("well_associated", dark), width=2.6),
+        hovertemplate="%{x:.1f}% of success trials have a contact below "
+                      + DEPTH_HOVER + "<extra></extra>",
+    )
+    if current_entry is not None:
+        _hline(fig, current_entry, p["well"], "dash", "well entry")
+
+    fig.update_layout(
+        title=f"A8 · Contact distribution and P(deeper) — {contact.size:,} success trials",
+        xaxis=dict(title="P(contact deeper than this depth)  (%)", range=[0, 105]),
+        xaxis2=dict(title="trials per bin", overlaying="x", side="top",
+                    showgrid=False, rangemode="tozero"),
+        bargap=0.05,
+    )
+    apply_plotly(fig, dark, height)
+    depth_axis_plotly(fig, zlim or (lo, hi), show_ticklabels=show_depth_labels)
+    return fig
+
+
+# ------------------------------------------------------------------- B9
+def pfig_b9_chance_weighted(
+    vsweep: VolumeSweep, *, current_z: float | None = None,
+    zlim: tuple[float, float] | None = None, show_depth_labels: bool = True,
+    min_support: int = MIN_SUPPORT, dark: bool = False, height: int | None = PANEL_HEIGHT,
+):
+    """B9 -- chance-weighted resource against location: where the expectation peaks.
+
+    ``P_well(z) x mean volume(z)``, swept. The planning question this answers is
+    Lars's: *where do I target the most resource for the least risk?* -- and the
+    answer is not the deepest location, nor the shallowest.
+
+    It is a product of a falling curve and a rising one. Chance falls down-dip
+    because fewer contacts lie below the well; volume rises because a deeper well
+    that does find hydrocarbons finds more of them. So the product usually has an
+    **interior maximum**, and that depth is the expectation-maximising target.
+    Drawn for both the proven volume and the whole well-associated volume, because
+    they peak in different places and the difference is the exit depth's doing.
+
+    **This is an expected value, and expected values describe no outcome that can
+    happen.** The well either finds something near the success-case mean or it finds
+    nothing; it never finds the chance-weighted number. It is the right quantity to
+    *rank locations* with and the wrong one to quote as a volume -- which is why the
+    success-case means stay on B1 and B7 beside it, and why this figure says so in
+    its axis title rather than calling itself "resource".
+
+    The same caution the source workbook's own *'Risked' Pmean* column deserves.
+    """
+    p = palette(dark)
+    z = vsweep.z
+    fig = go.Figure()
+    pw = thin(vsweep.p_well, vsweep.n_discovery, min_support)
+    series = [
+        ("Proven — chance weighted", thin(vsweep.proven_mean, vsweep.n_discovery, min_support),
+         "tested"),
+    ]
+    if vsweep.discovery_mean is not None:
+        series.append(
+            ("Well associated — chance weighted",
+             thin(vsweep.discovery_mean, vsweep.n_discovery, min_support), "well_associated")
+        )
+
+    best_note = []
+    for name, mean, role in series:
+        weighted = pw * mean
+        fig.add_scatter(
+            x=weighted, y=z, mode="lines", name=name,
+            line=dict(color=colour(role, dark), width=2.4),
+            customdata=np.column_stack([pw * 100.0, mean]),
+            hovertemplate=(name + "<br>%{x:.2f} MMboe expected"
+                           "<br>= %{customdata[0]:.1f}% × %{customdata[1]:.1f} MMboe at "
+                           + DEPTH_HOVER + "<extra></extra>"),
+        )
+        if np.any(np.isfinite(weighted)):
+            i = int(np.nanargmax(weighted))
+            fig.add_scatter(
+                x=[weighted[i]], y=[z[i]], mode="markers+text",
+                marker=dict(symbol="star", size=13, color=colour(role, dark)),
+                text=[f"  {weighted[i]:.1f} MMboe at {z[i]:.0f} m"],
+                textposition="middle right",
+                textfont=dict(size=9, color=colour(role, dark)), showlegend=False,
+                hovertemplate=f"maximum expectation<br>{weighted[i]:.2f} MMboe at "
+                              f"{z[i]:.0f} m TVDSS<extra></extra>",
+            )
+            best_note.append(z[i])
+    if current_z is not None:
+        _hline(fig, current_z, p["text"], "dash")
+
+    fig.update_layout(
+        title="B9 · Chance-weighted resource vs location (expected, not a volume anyone finds)",
+        xaxis_title="P_well × mean volume  (MMboe, expected)",
+    )
+    fig.update_xaxes(rangemode="tozero")
+    apply_plotly(fig, dark, height)
+    depth_axis_plotly(fig, zlim or (float(z.min()), float(z.max())),
+                      show_ticklabels=show_depth_labels)
+    return fig
 
 AREA_SCALES = {
     "area": ("Productive area (km²)", lambda a: a),

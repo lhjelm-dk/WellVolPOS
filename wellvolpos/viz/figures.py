@@ -67,6 +67,9 @@ __all__ = [
     "fig_b6_inverse",
     "fig_b7_frontier",
     "fig_b8_commercial_chance",
+    "fig_b9_chance_weighted",
+    "fig_a7_resource_grid",
+    "fig_a8_contact_distribution",
     "exceedance_marks",
     "fig_colour_key",
     "fig_c1_section",
@@ -981,6 +984,138 @@ def fig_b8_commercial_chance(
     ax.set_xlim(0, 105)
     ax.set_xlabel("Probability (%)")
     ax.set_title(f"B8 · Commercial chance vs location (MEFS {vsweep.mefs:.1f} MMboe)")
+    ax.legend(loc="lower right", fontsize=7.5)
+    fig.tight_layout()
+    return fig, ax
+
+
+def fig_a7_resource_grid(
+    ts: TrialSet, *, n_resource: int | None = None, n_depth: int | None = None,
+    current_entry: float | None = None, current_exit: float | None = None,
+    zlim: tuple[float, float] | None = None, log_counts: bool = True, dark: bool = False,
+):
+    """A7 for the export path. Twin of ``pfig_a7_resource_grid``.
+
+    Trials per resource-by-depth cell, in inferno on a log count scale. Cells rather
+    than contours because a count in a cell is discrete with hard zeros, and contour
+    interpolation invents values no trial supports.
+    """
+    from matplotlib.colors import LogNorm
+
+    from .interactive import suggest_grid
+
+    p = palette(dark)
+    res = np.asarray(ts.col("resource"), dtype=float)
+    contact = np.asarray(ts.col("contact"), dtype=float)
+    ok = (res > 0) & np.isfinite(res) & np.isfinite(contact)
+    res, contact = res[ok], contact[ok]
+    auto_r, auto_z = suggest_grid(res, contact)
+    nx, ny = int(n_resource or auto_r), int(n_depth or auto_z)
+
+    fig, ax = new_figure(figsize=(6.6, 5.4), dark=dark)
+    counts, xe, ye = np.histogram2d(res, contact, bins=(nx, ny))
+    shown = np.ma.masked_where(counts.T <= 0, counts.T)
+    mesh = ax.pcolormesh(
+        xe, ye, shown, cmap="inferno",
+        norm=LogNorm(vmin=1, vmax=max(2.0, float(counts.max()))) if log_counts else None,
+    )
+    fig.colorbar(mesh, ax=ax, label="trials per cell" + (" (log)" if log_counts else ""))
+
+    for depth, ls in ((current_entry, "--"), (current_exit, ":")):
+        if depth is not None:
+            ax.axhline(depth, color=p["well"], ls=ls, lw=1.4)
+
+    depth_axis(ax, zlim=zlim or (float(contact.min()), float(contact.max())))
+    ax.set_xlim(left=0)
+    ax.set_xlabel("Recoverable resource (MMboe)")
+    ax.set_title(f"A7 · Trials per resource–depth cell ({nx} × {ny})")
+    fig.tight_layout()
+    return fig, ax
+
+
+def fig_a8_contact_distribution(
+    ts: TrialSet, *, n_bins: int = 40, current_entry: float | None = None,
+    zlim: tuple[float, float] | None = None, dark: bool = False,
+):
+    """A8 for the export path. Twin of ``pfig_a8_contact_distribution``.
+
+    The contact distribution as a horizontal histogram with ``P(deeper than z)``
+    over it. Two x-axes, which is allowed here for the reason given in the plotly
+    twin: the depth axis still means exactly one thing.
+    """
+    p = palette(dark)
+    res = np.asarray(ts.col("resource"), dtype=float)
+    contact = np.asarray(ts.col("contact"), dtype=float)
+    contact = contact[(res > 0) & np.isfinite(contact)]
+    lo, hi = float(contact.min()), float(contact.max())
+
+    fig, ax = new_figure(figsize=(5.6, 5.6), dark=dark)
+    counts, edges = np.histogram(contact, bins=int(n_bins), range=(lo, hi))
+    centres = 0.5 * (edges[:-1] + edges[1:])
+
+    top = ax.twiny()
+    top.barh(centres, counts, height=(edges[1] - edges[0]) * 0.92,
+             color=colour("prospect", dark), alpha=0.55,
+             edgecolor=colour("prospect", dark), linewidth=0.4)
+    top.set_xlabel("trials per bin", fontsize=8)
+    top.set_xlim(left=0)
+
+    ordered = np.sort(contact)
+    deeper = 100.0 * (ordered.size - np.arange(ordered.size)) / ordered.size
+    ax.plot(deeper, ordered, color=colour("well_associated", dark), lw=2.2,
+            label="P(contact deeper than this)", zorder=5)
+    if current_entry is not None:
+        ax.axhline(current_entry, color=p["well"], ls="--", lw=1.4, zorder=6)
+
+    depth_axis(ax, zlim=zlim or (lo, hi))
+    top.set_ylim(ax.get_ylim())
+    ax.set_xlim(0, 105)
+    ax.set_xlabel("P(contact deeper than this depth)  (%)")
+    ax.set_title(f"A8 · Contact distribution and P(deeper) — {contact.size:,} trials")
+    ax.legend(loc="lower left", fontsize=7.5)
+    fig.tight_layout()
+    return fig, ax
+
+
+def fig_b9_chance_weighted(
+    vsweep: VolumeSweep, *, current_z: float | None = None,
+    zlim: tuple[float, float] | None = None, min_support: int = MIN_SUPPORT,
+    dark: bool = False,
+):
+    """B9 for the export path. Twin of ``pfig_b9_chance_weighted``.
+
+    ``P_well x mean volume`` against depth: a falling curve times a rising one, so
+    the product peaks somewhere in between and that depth maximises the expectation.
+    An expected value describes no outcome that can happen -- it ranks locations, it
+    does not forecast a volume.
+    """
+    p = palette(dark)
+    z = vsweep.z
+    fig, ax = new_figure(figsize=(5.8, 5.5), dark=dark)
+    pw = thin(vsweep.p_well, vsweep.n_discovery, min_support)
+    series = [("Proven — chance weighted",
+               thin(vsweep.proven_mean, vsweep.n_discovery, min_support), "tested")]
+    if vsweep.discovery_mean is not None:
+        series.append(("Well associated — chance weighted",
+                       thin(vsweep.discovery_mean, vsweep.n_discovery, min_support),
+                       "well_associated"))
+
+    for name, mean, role in series:
+        weighted = pw * mean
+        ax.plot(weighted, z, color=colour(role, dark), lw=2.2, label=name)
+        if np.any(np.isfinite(weighted)):
+            i = int(np.nanargmax(weighted))
+            ax.plot([weighted[i]], [z[i]], marker="*", ms=12,
+                    color=colour(role, dark), zorder=5)
+            ax.annotate(f"  {weighted[i]:.1f} at {z[i]:.0f} m", (weighted[i], z[i]),
+                        fontsize=7.5, color=colour(role, dark), va="center")
+    if current_z is not None:
+        ax.axhline(current_z, color=p["text"], ls="--", lw=1.0)
+
+    depth_axis(ax, zlim=zlim or (float(z.min()), float(z.max())))
+    ax.set_xlim(left=0)
+    ax.set_xlabel(r"$P_{well}\times$ mean volume  (MMboe, expected)")
+    ax.set_title("B9 · Chance-weighted resource vs location")
     ax.legend(loc="lower right", fontsize=7.5)
     fig.tight_layout()
     return fig, ax

@@ -59,7 +59,6 @@ from ..core.reservoir import thickness_from_pay
 from ..core.rose import commercial_chance, no_regrets
 from ..core.structure import AreaDepth
 from ..core.sweep import Sweep, VolumeSweep, run_sweep, run_volume_sweep
-from ..core.threshold import apply_min_column_height
 from ..io.adapters.base import TrialSet
 from ..viz import figures as F
 from ..viz.theme import new_figure
@@ -168,7 +167,6 @@ def tables(b: Bundle) -> dict[str, pd.DataFrame]:
         ("POS_prospect in force", f"{b.pos:.6f}", f"from {b.pos_source}"),
         ("Reference contour", b.case.reference, ""),
         ("Allocation scheme", b.case.scheme, ""),
-        ("Minimum column height", f"{b.case.min_column_height:.1f}", "m"),
         ("Trial file", b.case.dataset or "—", ""),
         ("Trials", f"{b.ts.n_trials:,}", ""),
         ("Trial fingerprint", fingerprint(b.ts), ""),
@@ -266,21 +264,6 @@ def tables(b: Bundle) -> dict[str, pd.DataFrame]:
             columns=["statistic", "value"],
         )
 
-    # --- minimum column height ---------------------------------------------
-    if b.ad is not None:
-        tm = apply_min_column_height(b.ts, b.ad, float(b.ad.apex_estimate()),
-                                     b.case.min_column_height)
-        out["Minimum column"] = pd.DataFrame(
-            [
-                ("Column height", b.case.min_column_height, "m below the derived apex"),
-                ("Minimum admissible contact", tm.min_contact_depth, "m TVDSS"),
-                ("Equivalent area", tm.min_area if tm.min_area is not None else np.nan, "km²"),
-                ("Binds on this data", float(tm.binds), "1 = yes"),
-                ("Trials excluded", float(tm.n_excluded), "count — mapping only, nothing filtered"),
-            ],
-            columns=["quantity", "value", "units"],
-        )
-
     # --- sweeps -------------------------------------------------------------
     out["Depth sweep"] = pd.DataFrame({
         "entry_depth_m": b.sweep.z,
@@ -350,7 +333,20 @@ def build_figures(b: Bundle, *, dark: bool = False) -> dict[str, object]:
     The caller owns the returned figures and must close them --
     :func:`pdf_bytes` and :func:`figures_zip` do; a dozen live figures per rerun
     is how a Streamlit session runs matplotlib out of memory.
+
+    Matplotlib's twenty-figure warning is lifted for the duration of this call. That
+    warning exists to catch figures leaked in a loop, and holding every figure at
+    once is precisely this function's contract -- the caller closes them, and
+    ``test_the_export_closes_the_figures_it_draws`` proves it does. Scoped here
+    rather than set globally, so a real leak anywhere else still warns.
     """
+    import matplotlib.pyplot as plt
+
+    with plt.rc_context({"figure.max_open_warning": 0}):
+        return _draw_export_figures(b, dark=dark)
+
+
+def _draw_export_figures(b: Bundle, *, dark: bool = False) -> dict[str, object]:
     c, ch, sc = b.case, b.chance, b.case.scheme
     figs: dict[str, object] = {}
 
@@ -369,6 +365,11 @@ def build_figures(b: Bundle, *, dark: bool = False) -> dict[str, object]:
     figs["B5_allocation_dumbbell"] = F.fig_b5_allocation_dumbbell(
         c.chance_table, ch.r_location, pos_prospect=b.pos, dark=dark)[0]
 
+    figs["A7_resource_grid"] = F.fig_a7_resource_grid(
+        b.ts, current_entry=c.entry, current_exit=c.exit, dark=dark)[0]
+    figs["A8_contact_distribution"] = F.fig_a8_contact_distribution(
+        b.ts, current_entry=c.entry, dark=dark)[0]
+
     if b.ad is not None:
         figs["A1_area_depth"] = F.fig_a1_area_depth(
             b.ad, current_entry=c.entry, current_exit=c.exit, dark=dark)[0]
@@ -382,7 +383,9 @@ def build_figures(b: Bundle, *, dark: bool = False) -> dict[str, object]:
         figs["C2_exceedance"] = F.fig_c2_exceedance(
             b.ts, b.groups, b.vc, pos_prospect=b.pos, p_well=ch.p_well,
             mefs=c.mefs, dark=dark)[0]
-        figs["A5_exceedance"] = F.fig_a5_exceedance(b.ts, b.groups, b.vc, mefs=c.mefs, dark=dark)[0]
+        figs["A5_exceedance"] = F.fig_a5_exceedance(
+            b.ts, b.groups, b.vc, mefs=c.mefs,
+            pos_prospect=b.pos, p_well=ch.p_well, dark=dark)[0]
         figs["A6_overlap"] = F.fig_a6_overlap(b.vc, b.groups, mefs=c.mefs, dark=dark)[0]
         figs["B0_section"] = F.fig_b0_section(
             b.ad, z_entry=c.entry, z_exit=c.exit, dark=dark)[0]
@@ -394,6 +397,8 @@ def build_figures(b: Bundle, *, dark: bool = False) -> dict[str, object]:
         figs["B6_inverse"] = F.fig_b6_inverse(b.vsweep, ts=b.ts, dark=dark)[0]
         figs["B7_frontier"] = F.fig_b7_frontier(b.vsweep, current_z=c.entry, dark=dark)[0]
         figs["B8_commercial_chance"] = F.fig_b8_commercial_chance(
+            b.vsweep, current_z=c.entry, dark=dark)[0]
+        figs["B9_chance_weighted"] = F.fig_b9_chance_weighted(
             b.vsweep, current_z=c.entry, dark=dark)[0]
     return figs
 

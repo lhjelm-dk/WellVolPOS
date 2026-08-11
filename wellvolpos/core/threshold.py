@@ -1,4 +1,12 @@
-"""The assessment minimum, expressed as a minimum column height.
+"""**Not surfaced in the app** (Lars, 2026-08-11): the minimum-column-height mapping
+was removed from tab ⑤ and from the export. The module is kept because decision 6 is
+a decision of record and the arithmetic here is tested and correct -- what was
+removed is a *panel*, not a finding -- and because applying the threshold rather
+than mapping it still needs a decision nobody has made: whether a sub-minimum trial
+becomes a chance failure (lowering POS) or leaves the population (renormalising it).
+Delete this module only along with that decision.
+
+The assessment minimum, expressed as a minimum column height.
 
 Hood (2024) argues the assessment minimum "can be effectively linked to seal
 capacity if based on a minimum column height and not a minimum hydrocarbon
