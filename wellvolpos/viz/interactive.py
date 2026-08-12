@@ -981,9 +981,16 @@ def pfig_a9_prospect_density(
         "Mean": float(np.mean(values)),
         "P10": float(np.percentile(values, 90.0)),
     }
-    for name, value in stats.items():
+    # **Staggered labels.** All four annotations sat at the same height, so on a
+    # right-skewed distribution -- where the mean crowds the P50, which is the whole
+    # point of the figure -- they overprinted into one illegible blob. Two levels,
+    # alternating in the order the rules are drawn, is enough to separate them
+    # whatever the spacing, and it costs no vertical space because the labels sit
+    # above the plot area either way.
+    for i, (name, value) in enumerate(stats.items()):
         _vline(fig, value, colour("prospect", dark) if name == "Mean" else p["muted"],
                "solid" if name == "Mean" else "dash", f"{name} {value:,.1f}")
+        fig.layout.annotations[-1].update(yshift=0 if i % 2 == 0 else -14)
     if mefs is not None:
         _vline(fig, mefs, colour("minimum", dark), "dot", "MEFS")
 

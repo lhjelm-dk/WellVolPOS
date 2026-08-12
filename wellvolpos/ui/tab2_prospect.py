@@ -148,39 +148,85 @@ def render(ctx: Ctx) -> None:
     st.divider()
     st.subheader("Prospect — the un-cut model")
     res_all = ts.col("resource")
-    s = group_summary(ts, groups)["prospect"]
-    # P99 and P1 in the petroleum orientation: P99 is exceeded 99 % of the time, so it
-    # is the *low* end. Taken over **all** trials including the chance failures, which
-    # is what makes the low end of a prospect distribution informative -- and why the
-    # note below has to be computed rather than written: it used to assert "P99 and P90
-    # are 0.00 here because 23.95 % of trials are chance failures", which is prospect
-    # A's number, printed unchanged above a prospect-B P99 of 9.65.
-    p99 = float(np.percentile(res_all, 1.0))
-    p1 = float(np.percentile(res_all, 99.0))
+    s = group_summary(ts, groups)["prospect_success"]
+    # **One kind of mean on this tab** (Lars, 2026-08-12). This strip used to be taken
+    # over *every* trial while the table under 2.3 was taken over the success cases,
+    # so the same tab showed a "Mean" of 10.31 and a "Pmean" of 13.56 one screen
+    # apart. Everything here is now the **success case**, which is what the solid
+    # curve on 2.3 draws and what its table reports; the risked reading is stated
+    # once, below, as the single number it is.
+    _succ = res_all[res_all > 0.0]
+    p99 = float(np.percentile(_succ, 1.0)) if _succ.size else float("nan")
+    p1 = float(np.percentile(_succ, 99.0)) if _succ.size else float("nan")
     c = st.columns(6)
     for col, label, value in zip(
-        c, ("P99", "P90", "P50", "Mean", "P10", "P1"),
+        c, ("P99", "P90", "P50", "Pmean", "P10", "P1"),
         (p99, s["p90"], s["p50"], s["mean"], s["p10"], p1),
     ):
         col.metric(label, f"{value:.2f}")
     _n_zero = int(np.count_nonzero(res_all <= 0.0))
     _f_zero = _n_zero / res_all.size if res_all.size else 0.0
-    if _n_zero:
-        _zero_note = (
-            f"**{_f_zero:.1%}** of trials are chance failures at exactly zero, so the low end "
-            "of this *prospect* distribution is dominated by the cases with no hydrocarbons at "
-            "all — which is why any percentile below that fraction reads 0.00."
-        )
-    else:
-        _zero_note = (
-            "This file carries **no** zero-volume trials, so every percentile here is a real "
-            "volume and the whole distribution is the success case. The geological chance is "
-            "then entirely in the chance table above, not in the trials."
-        )
-    st.caption(
-        "MMboe, petroleum orientation — P99 is the low end, exceeded 99 % of the time. "
-        "Taken over every trial, chance failures included. " + _zero_note
+    _risked = s["mean"] * chance.pos_prospect
+    _zero_note = (
+        f"This file carries **{_f_zero:.1%}** zero-volume trials — chance failures, which "
+        f"belong to POS and not to the shape of the distribution, so they are excluded here."
+        if _n_zero else
+        "This file carries **no** zero-volume trials, so the success case is the whole file "
+        "and the geological chance is entirely in the chance table above."
     )
+    st.caption(
+        f"MMboe, **success case** — conditional on the prospect working, which is where "
+        f"percentiles live: P99 is the low end, exceeded 99 % of the time. {_zero_note} "
+        f"The **risked** (unconditional) mean is the one number that folds the chance in: "
+        f"**{s['mean']:.2f} × {chance.pos_prospect:.1%} = {_risked:.2f} MMboe**, which is what a "
+        f"portfolio adds up and what no single outcome ever equals."
+    )
+
+    succ_contact = ts.col("contact")[res_all > 0.0]
+
+    # ---------------------------------------------- apex and minimum column height
+    # Asked for on 2026-08-12: show the apex and the minimum hydrocarbon column the
+    # trials imply, so the reader can inspect the extrapolation rather than inherit
+    # it silently. Decision 6 makes the apex derived, never entered -- it is A(z)'s
+    # shallow tail run out to zero area, and the trials do not contain the crest, so
+    # every column height quoted anywhere in this app carries this error.
+    if has_area:
+        _apex = float(ad.apex_estimate())
+        _shallowest = float(np.min(succ_contact)) if succ_contact.size else float("nan")
+        _deepest = float(np.max(succ_contact)) if succ_contact.size else float("nan")
+        _min_col = _shallowest - _apex
+        _max_col = _deepest - _apex
+        with st.expander(
+            f"Apex and column height — minimum {_min_col:,.0f} m of hydrocarbon column "
+            f"in this data set", expanded=False
+        ):
+            ac = st.columns(4)
+            ac[0].metric("Apex (derived)", f"{_apex:,.0f} m",
+                         help="Where A(z) extrapolates to zero productive area. Never an "
+                              "input — one apex per session, from one source (decision 6).")
+            ac[1].metric("Shallowest sampled contact", f"{_shallowest:,.0f} m",
+                         help="The shallowest hydrocarbon–water contact any successful "
+                              "trial produced.")
+            ac[2].metric("Minimum column height", f"{_min_col:,.0f} m",
+                         help="Shallowest contact − apex. The thinnest accumulation the "
+                              "trials actually contain.")
+            ac[3].metric("Maximum column height", f"{_max_col:,.0f} m",
+                         help="Deepest contact − apex, at the deepest trial.")
+            _gap = _shallowest - _apex
+            st.warning(
+                f"**The apex is an extrapolation, not a mapped depth.** The trials stop at "
+                f"{_shallowest:,.0f} m, so the top {_gap:,.0f} m of this closure is inferred "
+                f"from the shape of A(z) alone and no trial constrains it. Any minimum column "
+                f"height below **{_min_col:,.0f} m** is therefore outside the modelled range: "
+                f"it would not exclude a single trial, because there are none up there to "
+                f"exclude. Treat a column-height cut as binding only above that figure."
+            )
+            st.caption(
+                "This is the one number every column-height statement in the app inherits — "
+                "the minimum-flowable mapping, the map view's contours and the section's "
+                "crest all measure from this apex. It is shown here so the size of the "
+                "extrapolation is visible before any of them is quoted."
+            )
 
     if not has_area:
         st.warning(
@@ -193,7 +239,7 @@ def render(ctx: Ctx) -> None:
         # One depth range for the row, so A1 and A4 can be read straight across
         # at constant depth (non-negotiable 2). The map view is in plan view and
         # A5 has no depth axis, so neither joins the alignment.
-        succ_contact = ts.col("contact")[res_all > 0.0]
+
         zrow_prospect = row_zlim(
             (ad.shallowest, ad.deepest),
             (float(succ_contact.min()), float(succ_contact.max())),

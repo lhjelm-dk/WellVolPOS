@@ -116,11 +116,29 @@ def group_summary(ts: TrialSet, groups: Groups) -> dict[str, dict[str, float]]:
 
     Percentiles are reported in petroleum orientation: P90 is the value exceeded
     by 90 % of the group, P10 the value exceeded by 10 %.
+
+    **``prospect`` and ``prospect_success`` are different statistics and the
+    difference matters.** ``prospect`` spans every trial including the chance
+    failures, so on a file that has them it is already unconditional -- risking it
+    again double-counts the geological chance, which is this codebase's recurring
+    bug. ``prospect_success`` is the success case, and it is the one an expected
+    volume multiplies. On a file with no zero-volume trials the two coincide, which
+    is exactly why the error hid on one demo prospect and not the other.
     """
     res = ts.col("resource")
     out: dict[str, dict[str, float]] = {}
     for label, mask in (
+        # ``prospect`` is over **every** trial, chance failures included, so on a file
+        # that carries them it is already an *unconditional* statistic:
+        # 13.5612 x 0.7605 = 10.3133 on the reference data, exactly. That is the right
+        # thing for a KPI strip that says "over every trial" and the wrong thing to
+        # multiply by a chance -- which is what "Expected prospect volume" was doing,
+        # risking it a second time and reporting 7.84 where the answer is 10.31.
         ("prospect", np.ones_like(groups.success, dtype=bool)),
+        # ...so the **conditional** prospect statistic is carried separately and
+        # named. It is the success case: the distribution the percentiles belong to,
+        # and the only prospect mean it is correct to multiply by POS_prospect.
+        ("prospect_success", groups.success),
         ("discovery", groups.discovery),
         ("attic_dry_hole", groups.dry_with_attic),
         ("attic_incl_failures", groups.dry_with_attic | groups.chance_failure),

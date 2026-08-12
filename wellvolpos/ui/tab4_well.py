@@ -118,9 +118,16 @@ def render(ctx: Ctx) -> None:
         # ------------------------------------------------------ risked, and separate
         st.markdown("##### Expected volumes, in MMboe — risked, mean × chance")
         e = st.columns(3)
+        # **prospect_success, not prospect.** The plain `prospect` mean spans every
+        # trial including the chance failures, so it is already unconditional and
+        # multiplying it by POS_prospect risks it twice -- 7.84 where the answer is
+        # 10.31 on the reference data. Invisible on a file with no zero-volume trials,
+        # which is why it survived.
         e[0].metric("Expected prospect volume",
-                    f"{expected_volume(gs['prospect']['mean'], chance.pos_prospect):.2f}",
-                    help=f"Prospect mean × POS prospect ({chance.pos_prospect:.1%}).")
+                    f"{expected_volume(gs['prospect_success']['mean'], chance.pos_prospect):.2f}",
+                    help=f"Success-case prospect mean "
+                         f"({gs['prospect_success']['mean']:.2f}) × POS prospect "
+                         f"({chance.pos_prospect:.1%}).")
         e[1].metric("Expected well associated",
                     f"{expected_volume(gs['discovery']['mean'], chance.p_well):.2f}",
                     help=f"Discovery mean × P well ({chance.p_well:.1%}).")

@@ -125,7 +125,45 @@ def test_chance_decomposition(reduced):
 
 
 def test_group_summary_shape(reduced, groups):
+    """The two locked workbook values, and the set of groups reported.
+
+    ``prospect_success`` was added on 2026-08-12. The key *set* here is a shape
+    assertion rather than one of the fifteen locked values -- both of those still
+    hold below -- so extending it is an addition to the specification, not a
+    contradiction of it.
+    """
     s = group_summary(reduced, groups)
-    assert set(s) == {"prospect", "discovery", "attic_dry_hole", "attic_incl_failures"}
+    assert set(s) == {"prospect", "prospect_success", "discovery",
+                      "attic_dry_hole", "attic_incl_failures"}
     assert np.isclose(s["discovery"]["mean"], 16.520602897727272, atol=TOL)
     assert np.isclose(s["attic_incl_failures"]["mean"], 5.076377280604707, atol=TOL)
+
+
+def test_the_prospect_mean_is_already_risked_and_the_success_one_is_not(reduced, groups):
+    """The identity that makes double-risking an expected volume detectable.
+
+    ``prospect`` spans every trial, chance failures included, so it *is* the
+    success-case mean already multiplied by the trial file's own POS. Risking it
+    again is the recurring bug in this codebase, and it reported 7.84 MMboe on this
+    file where the answer is 10.31.
+
+    On a trial file with no zero-volume rows the two means coincide, which is exactly
+    why the error survived on one demo prospect and not the other -- so this is
+    asserted on the file that has them.
+    """
+    from wellvolpos.core import expected_volume
+
+    s = group_summary(reduced, groups)
+    res = reduced.col("resource")
+    pos_trials = float((res > 0).mean())
+    assert pos_trials < 1.0, "this test needs the file with chance failures"
+
+    # prospect == prospect_success x POS_trials, exactly.
+    assert np.isclose(s["prospect"]["mean"],
+                      s["prospect_success"]["mean"] * pos_trials, atol=TOL)
+    # So the expected volume, risked once, comes back to the all-trial mean.
+    assert np.isclose(expected_volume(s["prospect_success"]["mean"], pos_trials),
+                      s["prospect"]["mean"], atol=TOL)
+    # And risking the unconditional one again is measurably wrong.
+    wrong = expected_volume(s["prospect"]["mean"], pos_trials)
+    assert wrong < s["prospect"]["mean"] * 0.9
