@@ -254,14 +254,38 @@ def render(ctx: Ctx) -> None:
         )
 
         st.divider()
-        c1, c2 = st.columns(2)
-        with c1:
-            _chart(pfig_a6_overlap(vc, groups, ts=ts, mefs=mefs), key="a6")
-        with c2:
-            # A6 has no depth axis, so this row has only one depth-carrying
-            # panel and nothing to align it against; the section keeps its own
-            # full A(z) range.
-            _chart(pfig_b0_section(ad, z_entry=entry, z_exit=exit_, title="Live section"), key="live")
+        # **Separate figures, stacked** (Lars, 2026-08-12). They were side by side in
+        # two columns, which halved both and -- worse -- left the section with no
+        # index of its own, so the only way to refer to it was "the one next to A6".
+        # It is 4.3 now and A6 is 4.4.
+        _chart(pfig_b0_section(ad, z_entry=entry, z_exit=exit_, title="Live section"), key="live")
+        st.caption(
+            "**4.3 — the live section**, drawn from A(z) at the well you have chosen, and shaded "
+            "in the same three colours the volume classes use everywhere else. Width is "
+            "proportional to √(enclosed area) — a circular-closure proxy, so the *shape* is "
+            "illustrative and the x-axis claims no unit. The **depths on y are the real "
+            "quantity**."
+        )
+
+        st.divider()
+        a6_norm = st.radio(
+            "4.4 histogram scaling", ["density", "peak"], horizontal=True, key="w_a6_norm",
+            format_func=lambda k: {"density": "Density (area = 1 each)",
+                                   "peak": "Normalised to each own peak"}[k],
+            help=("Density is the honest default -- each class integrates to 1, so the areas "
+                  "are comparable. Normalising to the peak instead makes the *shapes* "
+                  "comparable when one class is far narrower than another, at the cost of the "
+                  "vertical axis no longer meaning anything absolute."),
+        )
+        a6_curves = st.checkbox(
+            "Overlay the exceedance curves from 4.2 (conditional only)", value=False,
+            key="w_a6_curves",
+            help=("The same four classes as cumulative curves, on a second x-axis in per cent. "
+                  "Conditional only: a risked curve beside an unrisked histogram would be two "
+                  "readings on one figure, which is the mistake 4.2 exists to keep apart."),
+        )
+        _chart(pfig_a6_overlap(vc, groups, ts=ts, mefs=mefs,
+                               normalise=a6_norm, show_exceedance=a6_curves), key="a6")
         st.caption(
             "A6 — Schneider et al.'s 'surprising overlap' between what a dry hole leaves in the "
             "attic and what a discovery proves. Live section — the closure shape from A(z), "

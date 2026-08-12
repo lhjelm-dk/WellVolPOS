@@ -27,7 +27,12 @@ import numpy as np
 
 from ..core.chance import ELEMENTS, SCHEME_LABELS, SHIPPED_SCHEMES, allocate
 from ..core.chance import waterfall_steps as chance_waterfall_steps
-from ..core.classes import READING_LABELS, VolumeClasses, risked_exceedance
+from ..core.classes import (
+    READING_LABELS,
+    VolumeClasses,
+    conditional_exceedance,
+    risked_exceedance,
+)
 from ..core.groups import Groups
 from ..core.reservoir import thickness_from_pay
 from ..core.stats import MIN_SUPPORT, thin
@@ -546,6 +551,7 @@ def fig_a5_exceedance(
 def fig_a6_overlap(
     vc: VolumeClasses, groups: Groups, *, ts: TrialSet | None = None,
     mefs: float | None = None, dark: bool = False, bins: int = 40,
+    normalise: str = "density", show_exceedance: bool = False,
 ):
     """A6 for the export path. Twin of ``pfig_a6_overlap``.
 
@@ -566,15 +572,38 @@ def fig_a6_overlap(
     ]
     hi = max([float(v.max()) for _n, v, _r in series if v.size] + [1.0])
     edges = np.linspace(0.0, hi, bins + 1)
+    if normalise not in ("density", "peak"):
+        raise ValueError(f"unknown normalise {normalise!r}; expected 'density' or 'peak'")
+    centres = 0.5 * (edges[:-1] + edges[1:])
     for name, values, role in series:
         if not values.size:
             continue
-        ax.hist(values, bins=edges, density=True, color=colour(role, dark),
-                alpha=0.45, label=f"{name} (n={values.size:,})")
+        counts, _ = np.histogram(values, bins=edges, density=True)
+        if normalise == "peak":
+            peak = float(counts.max())
+            counts = counts / peak if peak > 0 else counts
+        # Explicit bars, matching the plotly twin: histnorm has no peak option
+        # there, so re-binning separately would make the two disagree about edges.
+        ax.bar(centres, counts, width=float(edges[1] - edges[0]),
+               color=colour(role, dark), alpha=0.45,
+               label=f"{name} (n={values.size:,})")
+
+    if show_exceedance:
+        ax2 = ax.twinx()
+        for name, values, role in series:
+            if not values.size:
+                continue
+            v, pct = conditional_exceedance(values)
+            ax2.plot(v, pct, color=colour(role, dark), lw=2.0,
+                     label=f"{name} — P(exceed)")
+        ax2.set_ylim(0, 105)
+        ax2.set_ylabel("P(exceeding) — conditional (%)")
+
     if mefs is not None:
         ax.axvline(mefs, color=p["muted"], ls=":", lw=1.0)
     ax.set_xlabel("Recoverable resource (MMboe)")
-    ax.set_ylabel("Density")
+    ax.set_ylabel("Density (area = 1 per class)" if normalise == "density"
+                  else "Scaled to each class's own peak (not a density)")
     ax.set_title("A6 · Where the four volume classes overlap")
     ax.legend(loc="upper right", fontsize=6.5)
     fig.tight_layout()

@@ -122,15 +122,30 @@ def test_panels_in_a_row_share_one_plot_area(area_depth, sweep, vsweep, reduced)
     assert next(iter(margins))[-1] is False, "autoexpand must be off or a legend can shift the axes"
 
 
-def test_no_depth_figure_puts_its_legend_outside_the_axes(area_depth, sweep, vsweep, reduced):
-    """The other half of the same rule: an outside legend needs margin space
-    its row-mates do not have."""
+def test_every_legend_sits_below_the_x_axis_at_the_shared_height(
+    area_depth, sweep, vsweep, reduced
+):
+    """Legends go **below the x-axis title**, at one shared height (Lars, 2026-08-12).
+
+    They used to sit inside the axes, top-right, where they covered curves. Moving
+    them out is only safe because ``apply_plotly`` reserves the room on *every*
+    figure: ``autoexpand`` is off, so plotly will not grow a margin to fit a legend,
+    and a panel that acquired one would otherwise shrink its own plot area and take
+    the row out of level. Reserving it uniformly is what keeps a given depth on the
+    same pixel row across a row of panels.
+
+    So the assertion is not "inside the axes" any more -- it is "at ``LEGEND_Y``,
+    the shared constant". An arbitrary negative y would clip, or misalign a row.
+    """
+    from wellvolpos.viz.theme import LEGEND_Y
+
     for name, fig in _depth_figures(area_depth, sweep, vsweep, reduced).items():
         lg = fig.layout.legend
-        if lg.x is not None:
-            assert 0.0 <= lg.x <= 1.0, f"{name} legend x={lg.x} is outside the axes"
-        if lg.y is not None:
-            assert 0.0 <= lg.y <= 1.0, f"{name} legend y={lg.y} is outside the axes"
+        assert lg.y == LEGEND_Y, f"{name} legend y={lg.y}, expected {LEGEND_Y}"
+        assert lg.orientation == "h", f"{name} legend is not horizontal"
+        # ...and the margin actually reserves the space it now needs.
+        assert fig.layout.margin.b >= 100, f"{name} bottom margin {fig.layout.margin.b} is too small"
+        assert fig.layout.margin.autoexpand is False, name
 
 
 def test_repeated_depth_labels_can_be_suppressed_for_later_panels(sweep):
@@ -1139,9 +1154,16 @@ def test_no_colourbar_sits_outside_its_axes(reduced, vsweep):
     without a scale its colour says only "more or less"; B6 encodes ``P_well``, the
     entire cost side of the trade it exists to show. Neither had a readable scale.
 
-    So the rule is: a colourbar goes *inside* the axes, which means ``x`` and ``y`` in
-    [0, 1]. Cheap to assert, invisible to lose.
+    The fix was first "inside the axes"; on 2026-08-12 Lars asked for legends and
+    colourbars alike to sit **below the x-axis title**, which is better -- inside the
+    axes they covered data in whichever corner they were parked. It is safe because
+    ``apply_plotly`` reserves the bottom margin on every figure, so no panel grows
+    its own margin and takes the row out of level.
+
+    So the rule is now: a colourbar sits at ``COLOURBAR_Y``, the shared constant,
+    below the legend. Cheap to assert, invisible to lose.
     """
+    from wellvolpos.viz.theme import COLOURBAR_Y
     figs = {
         "A4": I.pfig_a4_resource_vs_depth(reduced, render="grid"),
         "B6": I.pfig_b6_inverse(vsweep, target=14.0, ts=reduced),
@@ -1154,6 +1176,7 @@ def test_no_colourbar_sits_outside_its_axes(reduced, vsweep):
                  if getattr(t, "colorbar", None) is not None and t.colorbar.x is not None]
         assert bars, f"{name}: expected a positioned colourbar"
         for cb in bars:
-            assert 0.0 <= cb.x <= 1.0, f"{name}: colourbar x={cb.x} is outside the axes"
-            assert cb.y is not None and 0.0 <= cb.y <= 1.0, \
-                f"{name}: colourbar y={cb.y} is outside the axes"
+            assert 0.0 <= cb.x <= 1.0, f"{name}: colourbar x={cb.x} is off the figure"
+            assert cb.y == COLOURBAR_Y, f"{name}: colourbar y={cb.y}, expected {COLOURBAR_Y}"
+            assert cb.orientation == "h", f"{name}: colourbar is not horizontal"
+        assert fig.layout.margin.b >= 100, f"{name}: bottom margin leaves no room"

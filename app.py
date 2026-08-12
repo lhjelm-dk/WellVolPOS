@@ -81,6 +81,7 @@ from wellvolpos.ui import tab2_prospect, tab3_where, tab4_well, tab5_report
 from wellvolpos.ui import tab6_guide
 from wellvolpos.ui.common import badge as _badge
 from wellvolpos.ui.loading import load as _load
+from wellvolpos.ui.tabstyle import inject as _inject_tab_style
 from wellvolpos.viz import (
     AREA_SCALES,
 )
@@ -195,6 +196,7 @@ tabs = st.tabs(
         "⑥ Theory & guide",
     ]
 )
+_inject_tab_style()
 
 with tabs[0]:
     st.subheader("Trial data")

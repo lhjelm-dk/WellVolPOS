@@ -69,7 +69,7 @@ LIGHT = {
     "minimum": "#e04b2f",          # red          -- a threshold volume
     "well_associated": "#b3a02f",  # olive        -- the discovery case
     "up_dip": "#4cb8e0",           # light blue   -- attic / up-dip / regret
-    "possible": "#ebe4bc",         # pale khaki   -- well associated, not tested
+    "possible": "#cf9a4e",         # tan          -- well associated, not tested
     "well": "#7a4bb8",             # violet       -- the well itself
 }
 
@@ -84,7 +84,7 @@ DARK = {
     "minimum": "#e8593f",
     "well_associated": "#d6c04a",
     "up_dip": "#86dbf5",
-    "possible": "#faf4dd",
+    "possible": "#e0ad63",
     "well": "#b184e6",
 }
 
@@ -145,6 +145,14 @@ to see. The transform touches the axis only -- every number the tool computes is
 in km2 regardless (non-negotiable 4).
 """
 
+
+#: Where the legend's top edge sits, in axis fractions -- negative is below the
+#: plot. Anything the reader must look up rather than read off the data goes here,
+#: under the x-axis title, so it never covers a curve. One constant so a legend and
+#: a colourbar cannot end up at different heights on two figures in a row.
+LEGEND_Y = -0.20
+#: Colourbars sit below the legend, same reasoning.
+COLOURBAR_Y = -0.34
 
 SEQUENTIAL_CMAP = "Blues"   # single hue, light -> dark; never a rainbow
 
@@ -254,7 +262,7 @@ def new_figure(nrows=1, ncols=1, figsize=(12, 6), dark=False, **kw):
 # One height for every panel, in pixels. Figures are kept individual rather
 # than merged into a subplot grid, so a row lines up only if each panel is the
 # same height and carries the same depth range -- see depth_axis_plotly.
-PANEL_HEIGHT = 470
+PANEL_HEIGHT = 560
 
 
 def apply_plotly(fig, dark: bool = False, height: int | None = PANEL_HEIGHT):
@@ -272,10 +280,17 @@ def apply_plotly(fig, dark: bool = False, height: int | None = PANEL_HEIGHT):
         # its plot area and the row stops being level even though every axis
         # carries the identical range. Fixed margins plus one PANEL_HEIGHT mean
         # a given depth lands on the same pixel row in every panel.
-        margin=dict(l=70, r=25, t=55, b=55, autoexpand=False),
+        # b=125 reserves room *below the x-axis title* for the legend and any
+        # colourbar (Lars, 2026-08-12). autoexpand stays off -- it is load-bearing,
+        # not tidiness: with it on, plotly grows the margins to fit whatever sits
+        # outside the axes, so one panel in a row acquiring a legend shrinks its
+        # plot area and the row stops being level even though every axis carries
+        # the identical range. Reserving the space on *every* figure instead keeps
+        # a given depth on the same pixel row in every panel.
+        margin=dict(l=70, r=25, t=55, b=125, autoexpand=False),
         legend=dict(
-            bgcolor="rgba(0,0,0,0)", borderwidth=0, font=dict(size=11),
-            yanchor="top", y=0.99, xanchor="right", x=0.99,
+            bgcolor="rgba(0,0,0,0)", borderwidth=0, font=dict(size=10),
+            orientation="h", yanchor="top", y=LEGEND_Y, xanchor="center", x=0.5,
         ),
         hovermode="closest",
     )

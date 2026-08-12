@@ -1,0 +1,61 @@
+"""A light fill per tab, so the six are told apart at a glance.
+
+Lars asked for this on 2026-08-12. The problem it solves is real: six tabs of
+plain text differ only by a label, and the label is the first thing that goes when
+someone is scrolling a long tab and loses their place.
+
+**The colours are navigation, not meaning.** They are deliberately *not* drawn from
+``theme.LIGHT``: every colour in that palette is a volume concept, and reusing one
+here would say a tab was "about" that volume. These are muted seaborn-ish pastels
+chosen only to be distinct from each other and pale enough that black label text
+stays legible on them -- which is why they carry no docstring claim about what any
+tab contains.
+
+Injected as CSS because Streamlit exposes no per-tab styling. It therefore depends on
+Streamlit's DOM, so it is isolated in its own module: if an upgrade changes the
+markup the tabs lose their tint and nothing else breaks.
+
+The selectors target **ARIA roles** -- ``[role="tablist"] [role="tab"]`` -- not
+baseweb's ``data-baseweb`` attributes. The first attempt used the latter and styled
+nothing at all, because this Streamlit renders tabs as ``div[role=tab]`` with no
+baseweb attribute. Roles are part of the accessibility contract and change far less
+often than internal component names.
+"""
+
+from __future__ import annotations
+
+import streamlit as st
+
+#: One pale fill per tab, in tab order. Seaborn's "pastel" family, lightened --
+#: distinct in hue *and* close in lightness, so no tab shouts louder than another.
+TAB_FILLS = (
+    "#dbe7f3",   # ① data, QC and risk      -- pale blue
+    "#e2eddc",   # ② prospect               -- pale green
+    "#fdeacd",   # ③ where to drill         -- pale amber
+    "#f7dcdc",   # ④ at this well           -- pale rose
+    "#e8e0f0",   # ⑤ risk & report          -- pale lilac
+    "#e9e6df",   # ⑥ theory & guide         -- warm grey
+)
+
+__all__ = ["TAB_FILLS", "inject"]
+
+
+def inject() -> None:
+    """Write the per-tab CSS. Call once, after ``st.tabs``."""
+    rules = [
+        '[role="tablist"] { gap: 4px !important; }',
+        '[role="tablist"] [role="tab"] {'
+        ' border-radius: 8px 8px 0 0 !important;'
+        ' padding: 8px 18px !important;'
+        ' border-bottom: none !important; }',
+        # Which tab is *active* is shown by weight and full saturation; the hue only
+        # says which tab it is. Two questions, two cues.
+        '[role="tablist"] [role="tab"][aria-selected="true"] p { font-weight: 700 !important; }',
+        '[role="tablist"] [role="tab"][aria-selected="false"] { opacity: 0.55 !important; }',
+    ]
+    for i, fill in enumerate(TAB_FILLS, start=1):
+        rules.append(
+            f'[role="tablist"] [role="tab"]:nth-child({i})'
+            f' {{ background-color: {fill} !important; }}'
+        )
+    st.markdown("<style>" + "\n".join(rules) + "</style>", unsafe_allow_html=True)

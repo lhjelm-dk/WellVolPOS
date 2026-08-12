@@ -30,6 +30,7 @@ from plotly.subplots import make_subplots
 from ..core.chance import ELEMENTS, SCHEME_LABELS, SHIPPED_SCHEMES, allocate
 from ..core.chance import waterfall_steps as chance_waterfall_steps
 from ..core.classes import (
+    conditional_exceedance,
     READING_DASH,
     READING_LABELS,
     VolumeClasses,
@@ -57,6 +58,7 @@ from .figures import (
     exceedance_marks,
 )
 from .theme import (
+    COLOURBAR_Y,
     AREA_SCALES,
     PANEL_HEIGHT,
     VALUE_CMAP,
@@ -464,7 +466,6 @@ def pfig_map_view(
             f"(deepest sampled contact {contours.depths[-1]:.0f} m)"
         ),
         xaxis_title="km east of apex (equivalent-circle radius — shape is illustrative)",
-        legend=dict(font=dict(size=9), yanchor="bottom", y=0.01, xanchor="left", x=0.01),
     )
     fig.update_xaxes(range=[-lim, lim], constrain="domain")
     # Equal aspect, so a contour enclosing twice the area looks twice the area.
@@ -674,8 +675,8 @@ def pfig_a4_resource_vs_depth(
         # empty corner here: deep contacts hold large volumes, so the mass runs
         # top-left to bottom-right and the cells past it are empty.
         colorbar=dict(title=dict(text="trials (log₁₀)", side="top"),
-                      orientation="h", x=0.98, xanchor="right", y=0.04,
-                      yanchor="bottom", len=0.3, thickness=10,
+                      orientation="h", x=0.5, xanchor="center", y=COLOURBAR_Y,
+                      yanchor="top", len=0.45, thickness=10,
                       tickfont=dict(size=9)),
         hovertemplate=("%{customdata:.0f} trials<br>%{x:.1f} MMboe at "
                        + DEPTH_HOVER + "<extra></extra>"),
@@ -812,7 +813,8 @@ def pfig_a5_exceedance(
 # ------------------------------------------------------------------- A6
 def pfig_a6_overlap(
     vc: VolumeClasses, groups: Groups, *, ts: TrialSet | None = None,
-    mefs: float | None = None, bins: int = 40,
+    mefs: float | None = None, bins: int = 40, normalise: str = "density",
+    show_exceedance: bool = False,
     dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
     """A6 -- Schneider et al.'s "surprising overlap", now against all four classes.
@@ -828,7 +830,28 @@ def pfig_a6_overlap(
     Opacity is lower with four series than it was with two: at 0.6 the fourth
     histogram hid the first, and the whole content of this figure is what shows
     through what.
+
+    ``normalise`` (Lars, 2026-08-12) chooses what the bars are comparable *in*:
+
+    ``"density"``
+        Each class integrates to 1. The honest default -- areas are comparable, so
+        "most of the attic mass sits below the proven P50" is a statement the figure
+        supports. A narrow class then towers over a broad one, which is correct and
+        sometimes unhelpful.
+    ``"peak"``
+        Each class scaled to its own maximum. Makes the *shapes* comparable when one
+        class is far narrower than another -- which is the usual case here, since
+        proven is carved out of well associated -- at the cost of the y-axis no longer
+        meaning anything absolute. Said out loud in the axis title, because a
+        density axis and a peak-scaled axis look identical and mean different things.
+
+    ``show_exceedance`` overlays the same four classes as **conditional** cumulative
+    curves on a second x-axis in per cent. Conditional only, deliberately: a risked
+    curve beside an unrisked histogram is two readings on one figure, which is the
+    confusion C2 exists to keep apart.
     """
+    if normalise not in ("density", "peak"):
+        raise ValueError(f"unknown normalise {normalise!r}; expected 'density' or 'peak'")
     p = palette(dark)
     series = [
         ("Prospect resource potential", ts.col("resource")[ts.col("resource") > 0]
@@ -840,23 +863,57 @@ def pfig_a6_overlap(
     hi = max([float(v.max()) for _n, v, _r in series if v.size] + [1.0])
     size = hi / bins
 
+    edges = np.linspace(0.0, hi, int(bins) + 1)
+    centres = 0.5 * (edges[:-1] + edges[1:])
+
     fig = go.Figure()
     for name, values, role in series:
         if not values.size:
             continue
-        fig.add_histogram(
-            x=values, name=f"{name} (n={values.size:,})", histnorm="probability density",
-            marker_color=colour(role, dark), opacity=0.45,
-            xbins=dict(start=0.0, end=hi, size=size),
-            hovertemplate=name + " %{x:.1f} MMboe<br>density %{y:.4f}<extra></extra>",
+        counts, _ = np.histogram(values, bins=edges, density=True)
+        if normalise == "peak":
+            peak = float(counts.max())
+            counts = counts / peak if peak > 0 else counts
+        # Explicit bars rather than add_histogram, because plotly's histnorm has no
+        # peak option and re-binning client-side would make the two modes disagree
+        # about where a bar edge is.
+        fig.add_bar(
+            x=centres, y=counts, name=f"{name} (n={values.size:,})",
+            marker=dict(color=colour(role, dark)), opacity=0.45,
+            width=float(edges[1] - edges[0]),
+            hovertemplate=name + " %{x:.1f} MMboe<br>%{y:.4f}<extra></extra>",
         )
+
+    if show_exceedance:
+        for name, values, role in series:
+            if not values.size:
+                continue
+            v, pct = conditional_exceedance(values)
+            fig.add_scatter(
+                x=v, y=pct, mode="lines", name=f"{name} — P(exceed)", xaxis="x", yaxis="y2",
+                line=dict(color=colour(role, dark), width=2.4),
+                hovertemplate=(name + "<br>%{y:.1f}% chance of exceeding %{x:.2f} MMboe"
+                               "<extra></extra>"),
+            )
+
     if mefs is not None:
         _vline(fig, mefs, p["muted"], "dot", "MEFS")
 
+    y_title = ("Density (area = 1 per class)" if normalise == "density"
+               else "Scaled to each class's own peak (not a density)")
     fig.update_layout(
         title="A6 · Where the four volume classes overlap", barmode="overlay",
-        xaxis_title="Recoverable resource (MMboe)", yaxis_title="Density",
+        xaxis_title="Recoverable resource (MMboe)", yaxis_title=y_title,
     )
+    if show_exceedance:
+        # A second **y** axis, which the no-dual-axis rule does allow here for the
+        # same reason A8 gets a second x: the rule is about a *depth* axis meaning
+        # one thing, and neither axis here carries a depth. Both families are read
+        # against the same x, which is the volume.
+        fig.update_layout(yaxis2=dict(
+            title="P(exceeding) — conditional (%)", overlaying="y", side="right",
+            range=[0, 105], showgrid=False,
+        ))
     apply_plotly(fig, dark, height)
     return fig
 
@@ -1418,8 +1475,8 @@ def pfig_b6_inverse(
             # reaches: the requirement runs top-left to bottom-right.
             colorbar=dict(
                 title=dict(text="P<sub>well</sub> (%)", side="top"),
-                orientation="h", x=0.02, xanchor="left", y=0.13, yanchor="bottom",
-                len=0.28, thickness=10, tickfont=dict(size=9),
+                orientation="h", x=0.5, xanchor="center", y=COLOURBAR_Y,
+                yanchor="top", len=0.45, thickness=10, tickfont=dict(size=9),
             ),
         ),
         name=f"Required entry \u2014 for a target {stat_label} volume",

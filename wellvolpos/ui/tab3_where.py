@@ -187,11 +187,10 @@ def _location_sweep_tab(ctx: Ctx):
     with c2:
         _chart(pfig_a3_chance_decomposition(
                 sweep, pos_prospect=pos, pos_trials=pos_trials, current_z=entry,
-                zlim=zrow_sweep, show_depth_labels=False,
-            ), key="a3")
+                zlim=zrow_sweep), key="a3")
     with c3:
         _chart(pfig_b3_uncertainty_reduction(
-                sweep, current_z=entry, zlim=zrow_sweep, show_depth_labels=False
+                sweep, current_z=entry, zlim=zrow_sweep
             ), key="b3")
     st.caption(
         f"Haskett (2003) optimum: {sweep.reduction_optimum:.0f}% expected uncertainty reduction "
@@ -213,11 +212,11 @@ def _location_sweep_tab(ctx: Ctx):
         _chart(pfig_b0_section(ad, z_entry=entry, z_exit=exit_, zlim=zrow_sweep), key="b0")
     with d2:
         _chart(pfig_b1_volume_split(
-                vsweep, current_z=entry, zlim=zrow_sweep, show_depth_labels=False
+                vsweep, current_z=entry, zlim=zrow_sweep
             ), key="b1")
     with d3:
         _chart(pfig_b2_chance_vs_regret(
-                vsweep, current_z=entry, zlim=zrow_sweep, show_depth_labels=False
+                vsweep, current_z=entry, zlim=zrow_sweep
             ), key="b2")
     # Both conditional groups, because they thin at opposite ends: the discovery
     # group fails down-dip, the dry-with-attic group up-dip where almost nothing

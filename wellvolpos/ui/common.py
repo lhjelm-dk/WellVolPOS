@@ -12,6 +12,7 @@ import streamlit as st
 
 from ..viz.theme import PANEL_HEIGHT
 from .context import Ctx
+from .numbering import renumber_title
 
 #: C2 is a *stacked composite*, not a panel in a row. At the shared panel height
 #: both of its halves were squashed to the point where the braces collided with
@@ -26,7 +27,13 @@ def badge(level: str) -> str:
 
 
 def chart(fig, key: str, height: int = PANEL_HEIGHT):
-    """Render a project figure with the two settings a row's alignment needs.
+    """Renumber a figure by its tab, then render it.
+
+    The renumbering happens here because ``chart`` is the one place every figure
+    passes through *and* already knows its key -- so no figure function has to be
+    told which tab it is on, and ``ui/numbering.py`` stays the single source of the
+    mapping. See that module for why the letter codes survive in the code while the
+    numbers appear on screen.
 
     ``height`` is pinned rather than left at Streamlit's default of ``"content"``:
     on ``"content"`` each chart is sized from its own contents, so panels in a
@@ -38,6 +45,9 @@ def chart(fig, key: str, height: int = PANEL_HEIGHT):
     which is exactly the drift between the two backends that CLAUDE.md's
     "both driven from viz/theme.py" rule exists to prevent.
     """
+    title = getattr(getattr(fig.layout, "title", None), "text", None)
+    if title:
+        fig.update_layout(title=dict(text=renumber_title(title, key)))
     return st.plotly_chart(fig, width="stretch", height=height, theme=None, key=key)
 
 
