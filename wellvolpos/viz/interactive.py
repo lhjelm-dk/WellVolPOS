@@ -27,7 +27,13 @@ import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-from ..core.chance import ELEMENTS, SCHEME_LABELS, SHIPPED_SCHEMES, allocate
+from ..core.chance import (
+    ELEMENT_LABELS,
+    ELEMENTS,
+    SCHEME_LABELS,
+    SHIPPED_SCHEMES,
+    allocate,
+)
 from ..core.chance import waterfall_steps as chance_waterfall_steps
 from ..core.classes import (
     conditional_exceedance,
@@ -60,11 +66,15 @@ from .figures import (
 )
 from .theme import (
     FAN_POS_LEVELS,
+    BAND_PANEL_HEIGHT,
+    VOLUME_SCALES,
+    concept_shades,
     depth_shades,
     log_tick_text,
     log_ticks,
-    probit,
-    probit_axis_plotly,
+    probability_axis_plotly,
+    probability_axis_range,
+    probability_coords,
     AREA_SCALES,
     PANEL_HEIGHT,
     VALUE_CMAP,
@@ -1339,7 +1349,7 @@ def pfig_b5_allocation_dumbbell(
         rows=1, cols=len(schemes), shared_yaxes=True, horizontal_spacing=0.04,
         subplot_titles=[SCHEME_LABELS.get(s, s) for s in schemes],
     )
-    names = [e.capitalize() for e in ELEMENTS]
+    names = [ELEMENT_LABELS[e] for e in ELEMENTS]
 
     for i, scheme in enumerate(schemes, start=1):
         revised, _ = allocate(elements, r, scheme)
@@ -2078,9 +2088,11 @@ def pfig_b11_pos_sensitivity(
 
 def pfig_b12_banded_percentiles(
     bp: BandedPercentiles, *, mefs: float | None = None, show_proven: bool = True,
-    show_mean: bool = True, dark: bool = False, height: int | None = PANEL_HEIGHT,
+    show_mean: bool = False, probability_scale: str = "probit",
+    volume_scale: str = "log", dark: bool = False,
+    height: int | None = BAND_PANEL_HEIGHT,
 ):
-    """B12 -- resource percentiles within contact-depth bands, on log-probit axes.
+    """B12 -- resource percentiles within contact-depth bands.
 
     Schneider et al. (2023) Figure 9 with its parameterisation changed, at Lars's
     request (2026-08-12): the poster draws one distribution per **productive-area
@@ -2092,59 +2104,71 @@ def pfig_b12_banded_percentiles(
     **Solid is the whole resource; dotted is the part this well would prove.** Dotted
     rather than dashed on purpose: dashed already means *unconditional (risked)*
     everywhere else in this app, and both families here are conditional. The dotted
-    family is taken over each band's **discovery** trials only, never over the band's
-    dry ones -- a mixed distribution would carry zeros onto a logarithmic axis, where
-    a zero cannot be drawn and would silently become "the smallest thing on the plot".
-    Bands entirely above the well entry therefore have no dotted curve at all, which
-    is the correct statement: nothing is proven there.
+    family is taken over each band's **discovery** trials only, and the well entry is
+    always a band boundary so no band mixes the two populations. Bands entirely above
+    the entry therefore have no dotted curve at all, which is the correct statement:
+    nothing is proven there.
 
-    Colour carries **depth**, light to dark, from the single-hue sequential scale --
-    its sanctioned use, since depth is an ordered quantity. The volume *concept* is
-    carried by line style instead, because it has only two values and style separates
-    them without ambiguity. This is the one figure where the palette's concept
-    colours are not the encoding, and the reason is that the family variable is the
-    thing the reader must order.
+    **Two colour ramps, one per concept, each ordered by depth.** Blues for the total
+    and the palette's mauve for the proven part, light to dark with increasing depth.
+    Both families came from the same blue scale at first and Lars reported the
+    consequence -- *"they are both blues now"* -- because line style alone cannot
+    separate two families whose members interleave. So the concept sits in the hue,
+    where the palette puts it, and the depth ordering sits in the lightness.
 
-    **The straightness of a curve is a claim about its shape.** Log-probit makes a
-    lognormal a straight line, so a family that is straight and parallel says the
-    bands differ by a scale factor and nothing else; curvature says the shape itself
-    changes with depth. On the demo prospects the within-band means land near P46-P49
-    -- almost symmetric -- which says most of the prospect total's skew is
-    *structural*, coming from where the contact lands rather than from the rock
-    properties inside any one outcome.
+    **The straightness of a curve is a claim about its shape.** With
+    ``probability_scale="probit"`` a lognormal is a straight line, so a family that is
+    straight and parallel says the bands differ by a scale factor and nothing else,
+    while curvature says the shape itself changes with depth. ``"linear"`` puts the
+    probability back on its own even scale, which is the honest one for reading a
+    chance off the axis and the one to check a probit reading against.
+    ``volume_scale`` is the same choice on x: log compares *proportions* between
+    bands, linear compares absolute MMboe. All four combinations are legitimate and
+    both axis titles say which is on.
 
-    ``mefs`` draws the threshold as a vertical rule, and then every band's crossing
-    of it is read straight off the probability axis: that crossing is
+    On the demo prospects the within-band means land near P46-P49 -- almost symmetric
+    -- which says most of the prospect total's skew is *structural*, coming from where
+    the contact lands rather than from the rock properties inside any one outcome.
+
+    ``mefs`` draws the threshold as a vertical rule, and then every band's crossing of
+    it is read straight off the probability axis: that crossing is
     ``P(resource > MEFS | contact in this band)``. Reference line only -- it never
     truncates a distribution (Longley 2026).
 
     Exempt from non-negotiable 2 like A5, A6, B4, B5 and B7: depth is the family
     here, not an axis.
     """
+    if volume_scale not in VOLUME_SCALES:
+        raise ValueError(
+            f"unknown volume scale {volume_scale!r}; expected one of {VOLUME_SCALES}"
+        )
     p = palette(dark)
     fig = go.Figure()
-    shades = depth_shades(len(bp.bands), dark)
-    y = probit(np.asarray(bp.percentiles, dtype=float))
+    n_bands = len(bp.bands)
+    total_shades = depth_shades(n_bands, dark)
+    proven_shades = concept_shades("tested", n_bands, dark)
+    y = probability_coords(np.asarray(bp.percentiles, dtype=float), probability_scale)
     pct_txt = [f"P{q}" for q in bp.percentiles]
 
-    for band, shade in zip(bp.bands, shades):
+    for band, shade, pshade in zip(bp.bands, total_shades, proven_shades):
         group = band.label
         fig.add_scatter(
             x=band.total, y=y, mode="lines+markers",
             name=f"{band.label}  (n {band.n})",
             legendgroup=group,
-            line=dict(color=shade, width=2.0),
+            line=dict(color=shade, width=2.4),
             marker=dict(color=shade, size=6),
             customdata=pct_txt,
-            hovertemplate=(f"contact {band.label} · n {band.n}"
+            hovertemplate=(f"contact {band.label} - n {band.n}"
                            "<br>%{customdata} total %{x:.1f} MMboe<extra></extra>"),
         )
         if show_mean and np.isfinite(band.total_mean_p):
             fig.add_scatter(
-                x=[band.total_mean], y=[float(probit(band.total_mean_p))],
+                x=[band.total_mean],
+                y=[float(probability_coords(band.total_mean_p, probability_scale))],
                 mode="markers", showlegend=False, legendgroup=group,
-                marker=dict(color=shade, size=10, symbol="diamond-open",
-                            line=dict(color=shade, width=1.6)),
+                marker=dict(color=shade, size=11, symbol="diamond-open",
+                            line=dict(color=shade, width=1.8)),
                 hovertemplate=(f"contact {band.label}<br>mean total %{{x:.1f}} MMboe"
                                f"<br>exceeded {band.total_mean_p:.0f} % of the time"
                                "<extra></extra>"),
@@ -2153,58 +2177,83 @@ def pfig_b12_banded_percentiles(
             fig.add_scatter(
                 x=band.proven, y=y, mode="lines+markers",
                 showlegend=False, legendgroup=group,
-                line=dict(color=shade, width=1.6, dash="dot"),
+                line=dict(color=pshade, width=1.8, dash="dot"),
                 marker=dict(color=p["surface"], size=5,
-                            line=dict(color=shade, width=1.4)),
+                            line=dict(color=pshade, width=1.5)),
                 customdata=pct_txt,
-                hovertemplate=(f"contact {band.label} · {band.n_discovery} discoveries"
+                hovertemplate=(f"contact {band.label} - {band.n_discovery} discoveries"
                                "<br>%{customdata} proven %{x:.1f} MMboe<extra></extra>"),
             )
+            if show_mean and np.isfinite(band.proven_mean_p):
+                fig.add_scatter(
+                    x=[band.proven_mean],
+                    y=[float(probability_coords(band.proven_mean_p, probability_scale))],
+                    mode="markers", showlegend=False, legendgroup=group,
+                    marker=dict(color=pshade, size=9, symbol="diamond-open",
+                                line=dict(color=pshade, width=1.6)),
+                    hovertemplate=(f"contact {band.label}<br>mean proven %{{x:.1f}} MMboe"
+                                   f"<br>exceeded {band.proven_mean_p:.0f} % of the time"
+                                   "<extra></extra>"),
+                )
 
-    # Two style keys rather than doubling the legend: the bands are already named
-    # once each, and what a reader needs is what solid and dotted mean.
+    # Two style keys rather than doubling the legend: the bands are already named once
+    # each, and what a reader needs from a second entry is what solid and dotted mean.
+    # Drawn in a mid shade of each family's own ramp, so the key carries the hue
+    # distinction it exists to explain.
+    mid = max(n_bands // 2, 0)
     fig.add_scatter(
         x=[None], y=[None], mode="lines", name="total resource (solid)",
-        line=dict(color=p["text_secondary"], width=2.0),
+        line=dict(color=total_shades[mid], width=2.4),
     )
     if show_proven:
         fig.add_scatter(
             x=[None], y=[None], mode="lines", name="proven at this well (dotted)",
-            line=dict(color=p["text_secondary"], width=1.6, dash="dot"),
+            line=dict(color=proven_shades[mid], width=1.8, dash="dot"),
         )
     if show_mean:
         fig.add_scatter(
             x=[None], y=[None], mode="markers", name="mean, at its own probability",
-            marker=dict(color=p["text_secondary"], size=10, symbol="diamond-open"),
+            marker=dict(color=p["text_secondary"], size=11, symbol="diamond-open"),
         )
-    if mefs:
-        # **log10, not the value.** Plotly shapes take axis *coordinates*, and on a
-        # log axis a coordinate is the exponent -- so x=103 meant 10^103 and stretched
-        # the axis to 10^96 with every curve crushed into the left edge. Traces are
-        # not affected, which is what made it look like a data problem rather than an
-        # axis one; the matplotlib twin was correct throughout because axvline takes
-        # the value.
-        _vline(fig, float(np.log10(mefs)), colour("mefs", dark), "dash",
-               f"MEFS {mefs:g}")
-
+    log = volume_scale == "log"
     fig.update_layout(
         title=("B12 · Resource by contact-depth band "
                f"({BAND_MODE_LABELS[bp.mode]}, well {bp.z_entry:.0f}-{bp.z_exit:.0f} m)"),
-        xaxis_title="Resource (MMboe) · log scale",
+        xaxis_title=("Resource (MMboe) · log scale" if log
+                     else "Resource (MMboe) · linear scale"),
     )
-    lo, hi = bp.volume_range
-    ticks = log_ticks(lo, hi)
-    fig.update_xaxes(type="log", tickmode="array", tickvals=ticks,
-                     ticktext=log_tick_text(ticks))
+    if log:
+        ticks = log_ticks(*bp.volume_range)
+        fig.update_xaxes(type="log", tickmode="array", tickvals=ticks,
+                         ticktext=log_tick_text(ticks))
+    else:
+        fig.update_xaxes(type="linear", tickmode="auto", rangemode="tozero")
+    if mefs:
+        # **A trace, not `add_vline`.** On a log x-axis the shape API put this rule at
+        # 2.9 MMboe with a stored coordinate of 103, and passing log10(103) instead
+        # put it hard against the plot's left edge -- two wrong answers from two
+        # plausible conventions. A trace is in data coordinates by definition, which
+        # is why every curve here was right the whole time, so the rule and its label
+        # are drawn as one. Nothing a later axis change does can reinterpret it.
+        y_lo, y_hi = probability_axis_range(probability_scale)
+        fig.add_scatter(
+            x=[float(mefs), float(mefs)], y=[y_lo, y_hi], mode="lines+text",
+            line=dict(color=colour("mefs", dark), width=1.2, dash="dash"),
+            # Labelled *below* the top point, not above it: above puts the text
+            # outside the plot area, where the fixed margins clip it away.
+            text=["", f"MEFS {mefs:g}"], textposition="bottom left",
+            textfont=dict(size=10, color=colour("mefs", dark)),
+            showlegend=False, hoverinfo="skip",
+        )
     apply_plotly(fig, dark, height)
-    probit_axis_plotly(fig)
+    probability_axis_plotly(fig, probability_scale)
     return fig
 
 
 # ------------------------------------------------------------------- B7
 def pfig_b7_frontier(
     vsweep: VolumeSweep, *, current_z: float | None = None, min_support: int = MIN_SUPPORT,
-    label_every: int = 4, volume_scale: str = "linear",
+    label_every: int = 4, chance_scale: str = "linear",
     dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
     """B7 -- the trade-off frontier: chance against volume, parametric in depth.
@@ -2230,22 +2279,20 @@ def pfig_b7_frontier(
     proposal is written against. The proven mean is drawn beside it as a lighter
     line, since the two answer "what would I find" and "what would I have proven".
 
-    ``volume_scale`` switches the volume axis between ``"linear"`` and ``"log"``
-    (Lars, 2026-08-12). Both readings are worth having and they are not cosmetic
-    variants of each other:
-
-    * **linear** shows the *absolute* rate of exchange -- how many MMboe a point of
-      chance buys -- which is what a well proposal argues about.
-    * **log** shows the *proportional* one. On a closure whose volume spans an order
-      of magnitude across the swept range, the shallow end of a linear frontier is
-      crushed into the axis and the trade there is unreadable; on a log axis a
-      straight segment means a constant *percentage* of volume per point of chance.
+    ``chance_scale`` switches the **chance** axis between ``"linear"`` and ``"log"``
+    (Lars, 2026-08-12; it was on the volume axis until then). The log axis runs
+    **1 % to 110 %**, and the reason it is the more useful of the two is where the
+    interesting locations are: a linear chance axis spends most of its height on the
+    shallow end, where the frontier is nearly flat, and compresses every deep location
+    into the bottom centimetre. On a log axis a fixed vertical distance is a fixed
+    *proportional* loss of chance, so halving P_well looks the same wherever it
+    happens -- which is what "buying volume with chance" actually costs.
 
     The axis title says which is on, because a frontier that looks straight means
     different things in the two and there is no other cue.
     """
-    if volume_scale not in ("linear", "log"):
-        raise ValueError(f"unknown volume_scale {volume_scale!r}; expected 'linear' or 'log'")
+    if chance_scale not in ("linear", "log"):
+        raise ValueError(f"unknown chance_scale {chance_scale!r}; expected 'linear' or 'log'")
     p = palette(dark)
     fig = go.Figure()
     n_disc = vsweep.n_discovery
@@ -2296,23 +2343,25 @@ def pfig_b7_frontier(
     if vsweep.mefs is not None:
         _vline(fig, vsweep.mefs, colour("minimum", dark), "dot", "MEFS")
 
-    log = volume_scale == "log"
+    log = chance_scale == "log"
     fig.update_layout(
         title=(f"B7 · Chance against volume — the location trade-off "
                f"({reference_label(vsweep.reference)})"),
-        xaxis_title=("Mean resource (MMboe, log scale — a straight segment is a "
-                     "constant % per point of chance)" if log else
-                     "Mean resource (MMboe, linear scale)"),
-        yaxis_title="P_well  (%)",
+        xaxis_title="Mean resource (MMboe)",
+        yaxis_title=("P_well  (%, log scale 1–110 — equal steps are equal "
+                     "*proportional* loss of chance)" if log else "P_well  (%)"),
     )
+    fig.update_xaxes(rangemode="tozero")
     if log:
-        # rangemode="tozero" is meaningless on a log axis and plotly warns; the
-        # range comes from the data instead. MEFS and the frontier are all positive
-        # here, so nothing is lost.
-        fig.update_xaxes(type="log")
+        # A plotly log-axis *range* is given in log10, like a shape coordinate. 1 %
+        # is the floor rather than zero because a log axis has no zero, and a swept
+        # location whose P_well rounds to zero has nothing to contribute to a
+        # trade-off curve anyway.
+        fig.update_yaxes(type="log",
+                         range=[float(np.log10(1.0)), float(np.log10(110.0))],
+                         autorange=False)
     else:
-        fig.update_xaxes(rangemode="tozero")
-    fig.update_yaxes(range=[0, 105])
+        fig.update_yaxes(type="linear", range=[0, 110])
     apply_plotly(fig, dark, height)
     return fig
 

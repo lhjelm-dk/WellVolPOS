@@ -33,6 +33,9 @@ from ..core import (
     volume_target_curve,
 )
 from ..viz import (
+    PROBABILITY_SCALES,
+    VOLUME_SCALES,
+    TALL_PANEL_HEIGHT,
     level_row,
     pfig_a2_outcome_tree,
     pfig_a3_chance_decomposition,
@@ -117,8 +120,11 @@ def _inverse_section(vsweep, ts, mefs):
     # Two panels, one depth axis. The spread was briefly its own figure (B10);
     # merged back on 2026-08-11 so the requirement and the range around it are one
     # glance, with each panel keeping its own honest x-axis.
+    # A quarter taller (Lars, 2026-08-12): the leader lines, the bootstrap band and a
+    # five-deep contact family all share one pair of axes, and at row height they
+    # crowd each other.
     _chart(pfig_b6_inverse(vsweep, target=target, ts=ts, mefs=mefs,
-                           statistic=stat), key="b6")
+                           statistic=stat, height=TALL_PANEL_HEIGHT), key="b6")
     # The worked sentence first, in the app's live numbers, because "how do I read
     # this" is the question B6 kept failing to answer (Lars, 2026-08-11).
     _worked = ""
@@ -133,7 +139,7 @@ def _inverse_section(vsweep, ts, mefs):
         )
     st.caption(
         _worked
-        + "The workbook's H38–H40 block as a curve. Marker colour is P_well at that depth — the "
+        + "**The proven-volume relation, read backwards.** Marker colour is P_well at that depth — the "
         "cost side of the trade — because a second y-axis is not allowed and the trade is the "
         "point. The shaded band is the bootstrap interval on the proven mean, inverted through "
         "the same curve, so it widens down-dip where the discovery group thins. The level is "
@@ -150,8 +156,8 @@ def _inverse_section(vsweep, ts, mefs):
         "*equally likely everywhere inside it* and filling to the extremes claimed that of the "
         "whole range. It is wide even so, and that is the content — Rose's Figure 4, "
         "*“The EUR of 9.4 MMBO is associated with productive areas from 200 to 1500 acres.”* The "
-        "workbook's own `BA` column averages those contacts into one number and calls it a "
-        "required depth; an average over that range is not one.\n\n"
+        "conventional shortcut is to average those contacts into one number and call it the "
+        "required depth; an average over a range that wide is not a requirement.\n\n"
         "**The two families do not measure the same thing, which is why both axis titles name "
         "both readings.** For the coloured curve, x is a *target mean proven volume over the "
         "discovery group* and y is a *required entry depth*. For the grey lines, x is the *total "
@@ -219,8 +225,8 @@ def _location_sweep_tab(ctx: Ctx):
     st.caption(
         "**3.4 — how much of your answer is the chance table?** Every thin grey curve is "
         "`P_well` against depth for a different `POS_prospect`, a decile at a time; the heavy "
-        "one is the POS actually in force. The workbook draws all one hundred percentiles — "
-        "unreadable, and neighbouring curves differ by a hundredth.\n\n"
+        "one is the POS actually in force. Deciles rather than every percentile: neighbours "
+        "would differ by a hundredth and the fan would read as a smear.\n\n"
         "**They are all the same shape, scaled vertically**, and that is the content rather "
         "than a shortcoming of the drawing. `P_well = POS_prospect × r_location(z)`, and only "
         "the second factor moves with depth — so revising the chance table and moving the well "
@@ -295,14 +301,16 @@ def _location_sweep_tab(ctx: Ctx):
     tb1, tb2 = st.columns(2)
     with tb1:
         b7_scale = st.radio(
-            f"{fig_ref('{b7}')} volume axis", ["linear", "log"], horizontal=True, key="w_b7_scale",
+            f"{fig_ref('{b7}')} chance axis", ["linear", "log"], horizontal=True,
+            key="w_b7_scale",
             format_func=lambda k: {"linear": "Linear", "log": "Log"}[k],
-            help=("Linear shows the absolute rate of exchange — how many MMboe a point "
-                  "of chance buys. Log shows the proportional one, which is the readable "
-                  "choice when volume spans an order of magnitude across the swept range "
-                  "and the shallow end is crushed into the axis."),
+            help=("The chance axis, not the volume one (Lars, 2026-08-12). Linear shows "
+                  "the absolute rate of exchange — how many MMboe a point of chance "
+                  "buys. Log runs 1 % to 110 % and spreads the low-chance end out, "
+                  "which is where the deep locations sit and where a linear axis "
+                  "compresses the whole trade into the bottom centimetre."),
         )
-        _chart(pfig_b7_frontier(vsweep, current_z=entry, volume_scale=b7_scale), key="b7")
+        _chart(pfig_b7_frontier(vsweep, current_z=entry, chance_scale=b7_scale), key="b7")
     with tb2:
         _chart(pfig_b8_commercial_chance(vsweep, current_z=entry, zlim=zrow_sweep), key="b8")
     _chart(pfig_b9_chance_weighted(vsweep, current_z=entry, zlim=zrow_sweep), key="b9")
@@ -317,14 +325,13 @@ def _location_sweep_tab(ctx: Ctx):
         f"{fig_ref('{b7}')} to say how big the prize is."
     )
     st.caption(
-        f"**{fig_ref('{b7}')}** is the workbook's *Well POS vs. Well to be tested Mean Resource*, "
-        f"and it is the "
+        f"**{fig_ref('{b7}')}** is the "
         "most direct statement of what this tool is about: moving the well down-dip **buys volume "
         "with chance**. Read it as an efficient frontier — up and to the right is better and "
         "unavailable — with the depth labels giving the rate of exchange in metres. Neither axis is "
         "a depth, so this figure is exempt from the depth rule.\n\n"
-        f"**{fig_ref('{b8}')}** puts the workbook's two MEFS charts on one pair of axes, because "
-        f"the difference "
+        f"**{fig_ref('{b8}')}** puts the conditional and the unconditional MEFS probability on one "
+        f"pair of axes, because the difference "
         "between them *is* the content. `Pmcfs(well)` **rises** down-dip — a deeper well finds a "
         "bigger accumulation — and is **conditional** on a discovery. `P_well` **falls** down-dip. "
         "Their product `Pc(well) = P_well × Pmcfs(well)` is **unconditional**: the chance of a "
@@ -356,15 +363,19 @@ def _band_section(ctx: Ctx):
         # An explicit setting, not a default buried in code (non-negotiable 5): the
         # two modes answer the same question about different populations, and which
         # one is on screen changes the depth interval in every legend entry.
+        # Equal depth interval is the default (Lars, 2026-08-12) -- the intervals are
+        # then the same thing a structural section is contoured on, so a band can be
+        # pointed at on a map. Equal count buys uniform statistical support instead.
         mode = st.radio(
             "Band the contacts by", list(BAND_MODES), horizontal=True, key="w_b12_mode",
+            index=list(BAND_MODES).index("equal_width"),
             format_func=lambda k: BAND_MODE_LABELS[k],
             help=(
-                "Equal trial count gives every band the same number of trials, so the "
-                "percentile ladder is uniformly supported and the intervals vary. Equal "
-                "depth interval is easier to read against a structural section, but the "
-                "contact distribution is not uniform, so the shallow and deep bands come "
-                "out thin and the ladder is gated by the thinnest of them."
+                "Equal depth interval is easier to read against a structural section, "
+                "but the contact distribution is not uniform, so the shallow and deep "
+                "bands come out thin and the percentile ladder is gated by the thinnest "
+                "of them. Equal trial count gives every band the same number of trials, "
+                "so the ladder is uniformly supported and the intervals vary instead."
             ),
         )
     with cb2:
@@ -377,7 +388,31 @@ def _band_section(ctx: Ctx):
                                        key="w_b12_int")
     with cb3:
         show_proven = st.checkbox("Proven at this well", True, key="w_b12_proven")
-        show_mean = st.checkbox("Mean markers", True, key="w_b12_mean")
+        # Off by default (Lars, 2026-08-12): with two families drawn the diamonds are
+        # the third thing on a crowded figure, and the mean is in the table anyway.
+        show_mean = st.checkbox("Mean markers", False, key="w_b12_mean")
+
+    # Both axes are switchable, and the four combinations are not cosmetic variants
+    # of one another -- see the figure's docstring. Explicit settings, and the axis
+    # titles carry whichever is on, because a curve that looks straight means
+    # something different in each.
+    cs1, cs2 = st.columns(2)
+    prob_scale = cs1.radio(
+        "Probability axis", list(PROBABILITY_SCALES), horizontal=True,
+        key="w_b12_pscale",
+        format_func=lambda k: {"probit": "Probit", "linear": "Linear 0-100 %"}[k],
+        help=("Probit stretches the tails so that a lognormal plots as a straight "
+              "line — which turns the shape of a distribution into something you can "
+              "check against a ruler. Linear puts the probability back on its own "
+              "even scale, which is the honest one for reading a chance off the axis."),
+    )
+    vol_scale = cs2.radio(
+        "Resource axis", list(VOLUME_SCALES), horizontal=True, key="w_b12_vscale",
+        format_func=lambda k: {"log": "Log", "linear": "Linear"}[k],
+        help=("Log compares the bands by *proportion* — equal spacing means an equal "
+              "ratio — and keeps the shallow bands readable when the deep ones are an "
+              "order of magnitude larger. Linear compares them in absolute MMboe."),
+    )
 
     try:
         bp = banded_percentiles(
@@ -388,8 +423,9 @@ def _band_section(ctx: Ctx):
         st.warning(str(exc))
         return
 
-    _chart(pfig_b12_banded_percentiles(bp, mefs=mefs, show_proven=show_proven,
-                                       show_mean=show_mean), key="b12")
+    _chart(pfig_b12_banded_percentiles(
+        bp, mefs=mefs, show_proven=show_proven, show_mean=show_mean,
+        probability_scale=prob_scale, volume_scale=vol_scale), key="b12")
 
     dropped = ""
     if bp.n_bands_dropped:
@@ -409,12 +445,18 @@ def _band_section(ctx: Ctx):
         "trials with discoveries and the bands above the entry have no dotted curve at all: "
         f"nothing is proven there.{peel}"
         "\n\n"
-        "**The axes are log–probit, so a lognormal is a straight line.** A family that is straight "
-        "and parallel says the bands differ by a scale factor and nothing else; curvature says the "
-        "shape itself changes with depth. The open diamond is each band's **mean at its own "
-        "exceedance probability** — a mean is not a percentile, and drawing it at the probability "
-        "it actually has is what lets it share these axes. Percentiles are exceedance throughout: "
-        "P99 is a small volume, P1 a large one."
+        "**Blues for the total, mauve for the proven part**, each running light to dark with "
+        "increasing depth — so the *concept* is in the hue and the *depth ordering* is in the "
+        "lightness. Both families were blue at first, which made a solid and its own dotted twin "
+        "read as one curve."
+        "\n\n"
+        "**On a probit probability axis a lognormal is a straight line.** A family that is "
+        "straight and parallel says the bands differ by a scale factor and nothing else; "
+        "curvature says the shape itself changes with depth. Switch the axis to linear to read a "
+        "chance off it directly, and the resource axis between log (compare *proportions*) and "
+        "linear (compare absolute MMboe). Percentiles are exceedance throughout: P99 is a small "
+        "volume, P1 a large one, and the optional open diamond is each band's **mean at its own "
+        "exceedance probability**, because a mean is not a percentile."
         "\n\n"
         f"Ladder drawn: {ladder} — a percentile is only reported where at least two trials fall "
         "beyond it, gated once on the thinnest series so that every band reports the same points."

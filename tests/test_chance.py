@@ -171,9 +171,9 @@ def test_waterfall_reports_r_separately_only_under_the_none_scheme():
 def test_waterfall_attaches_the_penalty_to_the_elements_a_scheme_weights():
     steps = waterfall_steps(TABLE, 0.6017094, 0.7605, "all_to_trap")
     carriers = [lab.split(" ")[0] for lab, _, role in steps if role == "location"]
-    assert carriers == ["Trap"]
+    assert carriers == ["Closure"]
 
     steps = waterfall_steps(TABLE, 0.6017094, 0.7605, "equal_cube_root")
     carriers = [lab.split(" ")[0] for lab, _, role in steps if role == "location"]
-    assert carriers == ["Charge", "Trap", "Retention"]      # reservoir exempt
+    assert carriers == ["Charge", "Closure", "Retention"]   # reservoir exempt
     assert "Reservoir" not in carriers

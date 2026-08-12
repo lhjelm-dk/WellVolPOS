@@ -25,12 +25,12 @@ R = 0.5625
 
 
 def test_it_reproduces_the_workbook_summary_to_the_printed_digits():
-    """The target: charge 74.3 %, trap 82.6 %, reservoir 60 % (exempt), retention
+    """The target: charge 74.3 %, closure 82.6 %, reservoir 60 % (exempt), retention
     66.0 %, multiplying to a well POS of 24.3 % with a correction factor of 0.826."""
     s = risk_summary(ELEMENTS, R, scheme="equal_cube_root")
     at_well = {r["Chance element"]: r[SUMMARY_COLUMNS[2]] for r in s.as_records()}
     assert at_well["Charge"] == pytest.approx(0.7429, abs=5e-4)
-    assert at_well["Trap"] == pytest.approx(0.8255, abs=5e-4)
+    assert at_well["Closure"] == pytest.approx(0.8255, abs=5e-4)
     assert at_well["Reservoir"] == pytest.approx(0.60, abs=5e-4)
     assert at_well["Retention"] == pytest.approx(0.6604, abs=5e-4)
     assert s.prospect_pos == pytest.approx(0.432)
@@ -45,7 +45,7 @@ def test_the_correction_factor_is_the_cube_root_because_reservoir_is_exempt():
     assert s.correction_factor == pytest.approx(R ** (1 / 3), abs=1e-9)
     carries = {r["Chance element"]: r["Carries the location penalty"] for r in s.as_records()}
     assert carries["Reservoir"] is False
-    assert all(carries[k] for k in ("Charge", "Trap", "Retention"))
+    assert all(carries[k] for k in ("Charge", "Closure", "Retention"))
 
 
 @pytest.mark.parametrize("scheme", SHIPPED_SCHEMES)
@@ -153,7 +153,8 @@ def test_the_play_is_risked_element_by_element():
     number cannot be argued about element by element the way a column can."""
     s = risk_summary(ELEMENTS, R, play_elements=PLAY)
     at_play = {r["Chance element"]: r[SUMMARY_COLUMNS[0]] for r in s.as_records()}
-    assert at_play == {"Charge": 0.90, "Trap": 0.95, "Reservoir": 1.00, "Retention": 0.90}
+    assert at_play == {"Charge": 0.90, "Closure": 0.95, "Reservoir": 1.00,
+                       "Retention": 0.90}
     assert s.play_chance == pytest.approx(0.90 * 0.95 * 1.00 * 0.90)
 
 

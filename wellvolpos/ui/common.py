@@ -26,7 +26,7 @@ def badge(level: str) -> str:
     return {"pass": "✅", "warn": "⚠️", "fail": "⛔"}[level]
 
 
-def chart(fig, key: str, height: int = PANEL_HEIGHT):
+def chart(fig, key: str, height: int | None = None):
     """Renumber a figure by its tab, then render it.
 
     The renumbering happens here because ``chart`` is the one place every figure
@@ -40,6 +40,15 @@ def chart(fig, key: str, height: int = PANEL_HEIGHT):
     row end up different heights and a shared depth range still does not put a
     given depth on the same pixel row.
 
+    Left unset it takes the **figure's own** ``layout.height``, which is where
+    ``theme.apply_plotly`` and ``theme.level_row`` have already put the answer --
+    including the extra space a tall legend needs. It used to default to
+    ``PANEL_HEIGHT`` instead, which silently squashed every figure that had asked
+    for more room: 3.11 and 3.12 came back at 560 px having requested 700, because
+    the Streamlit container height wins over the layout's. Callers that pass a
+    height still override, and the row callers that pass ``int(fig.layout.height)``
+    now say the same thing twice harmlessly.
+
     ``theme=None`` keeps ``wellvolpos.viz.theme`` authoritative. Streamlit's own
     plotly theme otherwise restyles fonts, title and template on top of ours,
     which is exactly the drift between the two backends that CLAUDE.md's
@@ -48,6 +57,8 @@ def chart(fig, key: str, height: int = PANEL_HEIGHT):
     title = getattr(getattr(fig.layout, "title", None), "text", None)
     if title:
         fig.update_layout(title=dict(text=renumber_title(title, key)))
+    if height is None:
+        height = int(getattr(fig.layout, "height", None) or PANEL_HEIGHT)
     return st.plotly_chart(fig, width="stretch", height=height, theme=None, key=key)
 
 

@@ -106,6 +106,7 @@ CO_OCCURRING = {
     "B1 volume split": ("tested", "possible", "up_dip", "muted"),
     "B2 chance vs regret": ("well_associated", "tested", "up_dip", "muted"),
     "B4 waterfall": ("well_associated", "muted"),
+    "B12 bands": ("prospect", "tested", "minimum"),
     "map view": ("up_dip", "prospect", "tested"),
 }
 
@@ -272,6 +273,14 @@ PANEL_HEIGHT = 560
 
 #: Vertical space one row of horizontal legend entries takes, in px, measured off
 #: the rendered app rather than guessed.
+#: A quarter taller than a row panel, for the two figures Lars asked for more room
+#: on (2026-08-12): 3.11, whose leader lines and five-deep contact family need the
+#: vertical space to stay legible, and 3.12, which stacks up to ten curve families
+#: on one pair of axes. Not a general default -- PANEL_HEIGHT still means "the height
+#: a row of depth panels shares", and a row must stay a row.
+TALL_PANEL_HEIGHT = int(PANEL_HEIGHT * 1.25)
+BAND_PANEL_HEIGHT = TALL_PANEL_HEIGHT
+
 LEGEND_ROW_PX = 21
 #: Room for the x-axis title and tick labels, below which the legend starts.
 AXIS_FOOT_PX = 62
@@ -544,6 +553,95 @@ def probit_axis(ax, *, ylabel="Exceedance probability", ticks=PROBIT_TICKS):
     ax.set_ylim(float(probit(min(ticks))) - PROBIT_PAD,
                 float(probit(max(ticks))) + PROBIT_PAD)
     return ax
+
+
+#: How the exceedance probability axis may be scaled. Probit is the default because
+#: it turns a lognormal into a straight line, which is a claim a reader can check
+#: with a ruler; linear is offered because a probability *is* linear and the probit
+#: distortion has to be earned rather than assumed.
+PROBABILITY_SCALES = ("probit", "linear")
+
+#: How a volume axis may be scaled, where the figure offers the choice.
+VOLUME_SCALES = ("log", "linear")
+
+
+def probability_coords(p, scale: str = "probit"):
+    """Plot coordinates for an exceedance probability in percent, under ``scale``."""
+    if scale not in PROBABILITY_SCALES:
+        raise ValueError(
+            f"unknown probability scale {scale!r}; expected one of {PROBABILITY_SCALES}"
+        )
+    return probit(p) if scale == "probit" else np.asarray(p, dtype=float)
+
+
+def probability_axis_plotly(fig, scale: str = "probit", *,
+                            title="Exceedance probability", ticks=PROBIT_TICKS):
+    """Rule a plotly y-axis as an exceedance probability, probit or linear."""
+    if scale == "probit":
+        return probit_axis_plotly(fig, title=f"{title} · probit scale", ticks=ticks)
+    fig.update_yaxes(
+        title=f"{title} (%)", tickmode="array",
+        tickvals=list(range(0, 101, 10)),
+        ticktext=[f"{t}" for t in range(0, 101, 10)],
+        range=[0, 102], autorange=False,
+    )
+    return fig
+
+
+def probability_axis(ax, scale: str = "probit", *,
+                     ylabel="Exceedance probability", ticks=PROBIT_TICKS):
+    """The matplotlib twin of :func:`probability_axis_plotly`."""
+    if scale == "probit":
+        return probit_axis(ax, ylabel=f"{ylabel} · probit scale", ticks=ticks)
+    ax.set_ylabel(f"{ylabel} (%)")
+    ax.set_yticks(list(range(0, 101, 10)))
+    ax.set_yticklabels([str(t) for t in range(0, 101, 10)])
+    ax.set_ylim(0, 102)
+    return ax
+
+
+def probability_axis_range(scale: str = "probit", *, ticks=PROBIT_TICKS):
+    """The (low, high) plot coordinates a probability axis spans, under ``scale``.
+
+    Needed by anything drawn *across* the axis rather than on it -- a reference rule
+    given as a trace, for instance, which has to know where the axis ends because a
+    trace has no equivalent of a shape's "span the whole plot".
+    """
+    if scale == "probit":
+        return (float(probit(min(ticks))) - PROBIT_PAD,
+                float(probit(max(ticks))) + PROBIT_PAD)
+    return (0.0, 102.0)
+
+
+def concept_shades(role: str, n: int, dark: bool = False, *,
+                   lo: float = 0.28, hi: float = 1.0):
+    """``n`` hex colours ramping light to dark **through a palette role's own hue**.
+
+    For a figure that has to order a quantity (depth, here) within *each* of two
+    volume concepts. One sequential ramp per concept keeps the concept in the hue,
+    where the palette puts it, and the ordering in the lightness -- which is what
+    :data:`SEQUENTIAL_CMAP` does for a single family and cannot do for two.
+
+    Both families were drawn from ``SEQUENTIAL_CMAP`` at first and Lars reported the
+    obvious consequence: *"they are both blues now"*. Line style alone does not
+    separate two families whose members interleave.
+    """
+    import matplotlib as mpl
+
+    base = colour(role, dark)
+    p = palette(dark)
+    # Light end: the role's colour blended most of the way to the page; dark end:
+    # blended towards black. Built from the role rather than hand-picked, so a
+    # palette change carries through and the hue cannot drift from the concept.
+    light = mpl.colors.to_rgb(p["surface"])
+    mid = np.asarray(mpl.colors.to_rgb(base), dtype=float)
+    dark_end = mid * 0.45
+    cmap = mpl.colors.LinearSegmentedColormap.from_list(
+        f"{role}_ramp", [light, tuple(mid), tuple(dark_end)]
+    )
+    if n <= 1:
+        return [mpl.colors.to_hex(cmap(0.6))]
+    return [mpl.colors.to_hex(cmap(t)) for t in np.linspace(lo, hi * 0.85, int(n))]
 
 
 def depth_shades(n: int, dark: bool = False, *, lo: float = 0.32, hi: float = 0.95):

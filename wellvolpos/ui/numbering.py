@@ -90,13 +90,15 @@ def renumber_title(title: str, key: str) -> str:
     number = FIGURE_NUMBERS.get(key)
     if not number or not title:
         return title
-    head, sep, rest = title.partition("·")
-    if sep:
-        # Replace a leading code only if it looks like one: a letter then digits and
-        # nothing else. Anything longer is a title whose first clause is prose.
-        stripped = head.strip()
-        if 2 <= len(stripped) <= 3 and stripped[0].isalpha() and stripped[1:].isdigit():
-            return f"{number} {sep}{rest}"
+    # The separator is matched loosely -- middot, hyphen, dash or colon -- rather
+    # than only "·". Rewriting one figure's title with a hyphen was enough to make
+    # this prepend instead of replace, and the result was "3.12 · B12 - Resource by
+    # ...", which shows the reader the very code the renumbering exists to retire.
+    # A leading code is a letter and one or two digits and nothing else; anything
+    # longer is a title whose first clause is prose.
+    m = re.match(r"\s*([A-Za-z]\d{1,2})\s*[·\-–—:]\s*(.+)", title, re.S)
+    if m:
+        return f"{number} · {m.group(2)}"
     return f"{number} · {title}"
 
 

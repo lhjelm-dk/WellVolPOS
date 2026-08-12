@@ -16,8 +16,8 @@ Two published conventions differ in where the location factor is referenced:
 
 * **Crest / apex** (Milkov 2021, and the source workbook): ``P_well = POS`` only
   at the very top of the structure.
-* **P90 area** (Rose; Schneider et al. 2023 Eq. 1): trap chance is conventionally
-  assessed as the confidence the trap holds at least the P90 area, to stay
+* **P90 area** (Rose; Schneider et al. 2023 Eq. 1): closure chance is conventionally
+  assessed as the confidence the closure holds at least the P90 area, to stay
   consistent with POS being the chance of the P99 EUR. So ``P_well = POS`` for
   any well at or up-dip of that contour, and the factor is normalised by 0.90.
 
@@ -37,6 +37,21 @@ import numpy as np
 from ..io.adapters.base import TrialSet
 
 ELEMENTS = ("charge", "trap", "reservoir", "retention")
+
+#: Element key -> the name shown to a reader. **Closure**, not "trap" (Lars,
+#: 2026-08-12): what the element assesses is whether a mapped closure with a seal
+#: exists, and "trap" reads as the trapping *mechanism* or as a verb.
+#:
+#: The keys stay ``trap`` on purpose. This project's rule is that behaviour branches
+#: on stable keys and never on label text -- rewording user copy must not be able to
+#: change which number the app uses -- and a case saved before the rename still has
+#: to load. So the wording lives here and nowhere else.
+ELEMENT_LABELS = {
+    "charge": "Charge",
+    "trap": "Closure",
+    "reservoir": "Reservoir",
+    "retention": "Retention",
+}
 
 
 class ReferenceContour(str, Enum):
@@ -77,7 +92,7 @@ def r_location(
     if reference is ReferenceContour.CREST:
         return raw, None
 
-    # Rose: normalise by the percentile at which trap chance was assessed, and
+    # Rose: normalise by the percentile at which closure chance was assessed, and
     # hold the factor at 1.0 for any location up-dip of that contour.
     ref_depth = float(np.percentile(contact[succ], (1.0 - reference_percentile) * 100.0))
     return float(min(1.0, raw / reference_percentile)), ref_depth
@@ -114,8 +129,8 @@ SCHEMES: dict[str, dict[str, float]] = {
 
 SCHEME_LABELS = {
     "none": "None — report r separately (Milkov 2021)",
-    "equal_cube_root": "Equal cube-root (source workbook)",
-    "all_to_trap": "All to trap (Rose, Eq. 1)",
+    "equal_cube_root": "Equal cube-root — charge, closure, retention",
+    "all_to_trap": "All to closure (Rose, Eq. 1)",
     "custom": "Custom weights",
 }
 
@@ -164,7 +179,7 @@ def allocate(
     to 1. Every scheme returns the *same* ``P_well`` -- only the attribution
     differs, which is why the figures say so explicitly. Spreading a single
     number across four elements presents it differently; it does not add
-    information about charge or trap.
+    information about charge or closure.
 
     Returns ``(revised_elements, warnings)``.
     """
@@ -176,7 +191,7 @@ def allocate(
         revised[el] = base * (r ** w.get(el, 0.0)) if r > 0 else 0.0
         if revised[el] < floor and base >= floor:
             warnings.append(
-                f"{el.capitalize()} falls from {base:.2f} to {revised[el]:.2f}, below the {floor:.2f} "
+                f"{ELEMENT_LABELS[el]} falls from {base:.2f} to {revised[el]:.2f}, below the {floor:.2f} "
                 f"floor. An allocation is a presentation of one number, not a re-assessment — "
                 f"check this is still geologically sayable."
             )
@@ -205,7 +220,7 @@ def cube_root_factor(r: float) -> float:
 
     Equals ``r ** (1/3)``. Because chance factors are multiplicative, their
     natural additive space is logarithmic -- so a cube root is an equal split of
-    the location log-risk across three elements (charge, trap, retention), with
+    the location log-risk across three elements (charge, closure, retention), with
     reservoir exempt. The exemption is right: the contact distribution is a
     fill / spill / retention / charge statement, not a reservoir-presence one.
     """
@@ -254,10 +269,10 @@ def waterfall_steps(
     for el in ELEMENTS:
         base = float(elements.get(el, 1.0))
         prod_elements *= base
-        steps.append((el.capitalize(), base, "chance"))
+        steps.append((ELEMENT_LABELS[el], base, "chance"))
         wi = float(w.get(el, 0.0))
         if wi > 0.0:
-            steps.append((f"{el.capitalize()} · r^{wi:.2f}", float(r ** wi), "location"))
+            steps.append((f"{ELEMENT_LABELS[el]} · r^{wi:.2f}", float(r ** wi), "location"))
 
     if prod_elements > 0.0 and abs(prod_elements - pos_prospect) > 1e-12:
         steps.append(("POS reconciliation", pos_prospect / prod_elements, "reconcile"))
@@ -284,7 +299,8 @@ class RiskSummary:
     Reproduces the summary block Lars keeps in the workbook, and it exists because
     **the two halves come from different places and at different times**:
 
-    * ``charge``, ``trap``, ``reservoir`` and ``retention`` are **inputs** --
+    * ``charge``, ``trap`` (shown as *Closure*), ``reservoir`` and ``retention``
+      are **inputs** --
       judgements about the prospect, made before anyone picks a location and
       unchanged by picking one. They belong with the data and the risking
       convention, which is why the chance table lives in tab ①.
@@ -344,7 +360,7 @@ def risk_summary(
     numbers, for the reason CLAUDE.md gives after the B4 defect.
 
     **The play is risked element by element** (Lars, 2026-08-11), not as a single
-    number: ``play_elements`` carries a chance for each of charge, trap, reservoir
+    number: ``play_elements`` carries a chance for each of charge, closure, reservoir
     and retention *at the play level*, and ``elements`` carries the same four
     **conditional on the play working**. Eight inputs, two levels, and the first
     column of the table stops being a constant.
@@ -384,7 +400,7 @@ def risk_summary(
         # element's play)".
         at_play = play_elements.get(name, play_scalar if not play_elements else 1.0)
         rows.append({
-            "Chance element": name.capitalize(),
+            "Chance element": ELEMENT_LABELS.get(name, name.capitalize()),
             SUMMARY_COLUMNS[0]: float(at_play),
             SUMMARY_COLUMNS[1]: given_play,
             SUMMARY_COLUMNS[2]: float(at_well[name]),

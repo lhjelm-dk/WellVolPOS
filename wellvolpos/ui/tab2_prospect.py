@@ -18,6 +18,7 @@ import pandas as pd
 import streamlit as st
 
 from ..core import (
+    ELEMENT_LABELS,
     ELEMENTS,
     class_percentiles,
     group_summary,
@@ -69,7 +70,8 @@ def render(ctx: Ctx) -> None:
     ec = st.columns(4)
     for i, el in enumerate(ELEMENTS):
         ec[i].number_input(
-            el.capitalize(), 0.01, 1.0, CHANCE_DEFAULTS[el], 0.01, key=f"w_chance_{el}",
+            ELEMENT_LABELS[el], 0.01, 1.0, CHANCE_DEFAULTS[el], 0.01,
+            key=f"w_chance_{el}",
             help=CHANCE_HELP[el],
         )
     st.markdown("**The play — the same four elements, one level up**")
@@ -83,7 +85,7 @@ def render(ctx: Ctx) -> None:
     pc = st.columns(4)
     for i, el in enumerate(ELEMENTS):
         pc[i].number_input(
-            f"{el.capitalize()} (play)", 0.01, 1.0, PLAY_DEFAULTS[el], 0.01,
+            f"{ELEMENT_LABELS[el]} (play)", 0.01, 1.0, PLAY_DEFAULTS[el], 0.01,
             key=f"w_play_{el}", help=PLAY_HELP[el],
         )
     _cond = float(np.prod(list(elements.values())))
@@ -128,7 +130,7 @@ def render(ctx: Ctx) -> None:
             )
             st.warning(
                 "Not yet implemented. Reading the zeros as geometric means they are *charged* "
-                "trials with no trapped column above the crest, so they belong in the "
+                "trials with no hydrocarbon column above the crest, so they belong in the "
                 "denominator of r_location — which conditions on `resource > 0` and therefore "
                 "currently drops them. Until that is built, this option behaves like "
                 "'success-case only' and r_location is not what this reading requires."
@@ -139,10 +141,12 @@ def render(ctx: Ctx) -> None:
     st.subheader("Prospect — the un-cut model")
     res_all = ts.col("resource")
     s = group_summary(ts, groups)["prospect"]
-    # P99 and P1 in the petroleum orientation: P99 is exceeded 99 % of the time,
-    # so it is the *low* end. On this file P99 is 0.00 because 23.95 % of trials
-    # are chance failures at exactly zero — which is the honest answer and worth
-    # seeing next to the mean.
+    # P99 and P1 in the petroleum orientation: P99 is exceeded 99 % of the time, so it
+    # is the *low* end. Taken over **all** trials including the chance failures, which
+    # is what makes the low end of a prospect distribution informative -- and why the
+    # note below has to be computed rather than written: it used to assert "P99 and P90
+    # are 0.00 here because 23.95 % of trials are chance failures", which is prospect
+    # A's number, printed unchanged above a prospect-B P99 of 9.65.
     p99 = float(np.percentile(res_all, 1.0))
     p1 = float(np.percentile(res_all, 99.0))
     c = st.columns(6)
@@ -151,11 +155,23 @@ def render(ctx: Ctx) -> None:
         (p99, s["p90"], s["p50"], s["mean"], s["p10"], p1),
     ):
         col.metric(label, f"{value:.2f}")
+    _n_zero = int(np.count_nonzero(res_all <= 0.0))
+    _f_zero = _n_zero / res_all.size if res_all.size else 0.0
+    if _n_zero:
+        _zero_note = (
+            f"**{_f_zero:.1%}** of trials are chance failures at exactly zero, so the low end "
+            "of this *prospect* distribution is dominated by the cases with no hydrocarbons at "
+            "all — which is why any percentile below that fraction reads 0.00."
+        )
+    else:
+        _zero_note = (
+            "This file carries **no** zero-volume trials, so every percentile here is a real "
+            "volume and the whole distribution is the success case. The geological chance is "
+            "then entirely in the chance table above, not in the trials."
+        )
     st.caption(
         "MMboe, petroleum orientation — P99 is the low end, exceeded 99 % of the time. "
-        "P99 and P90 are 0.00 here because 23.95 % of trials are chance failures at exactly zero: "
-        "the low end of the *prospect* distribution is dominated by the cases with no hydrocarbons "
-        "at all."
+        "Taken over every trial, chance failures included. " + _zero_note
     )
 
     if not has_area:
@@ -252,53 +268,48 @@ def render(ctx: Ctx) -> None:
             f"sits below the row rather than in it."
         )
 
-        # The numbers behind A5, in both readings (Lars, 2026-08-11). One row per
-        # case and statistic, long-form rather than a wide grid, so that every cell
-        # is labelled and nothing has to be inferred from a column header.
+        # One wide row rather than six long ones (Lars, 2026-08-12). The long form
+        # gave every cell a label, but it spent six rows and two probability columns
+        # saying what the percentile names already say -- an unrisked P90 reads 90 %
+        # by definition, and the risked one is that times a chance printed in the
+        # same table. So the chance is stated once and the rest is the volume ladder,
+        # which is the thing a reader actually copies out.
         st.markdown(fig_ref("**The numbers behind {a5}**"))
-        # Prospect only, matching the figure above it. The other three cases are
-        # well results and moved to tab ④ with the rest of them; leaving them here
-        # was the same leftover as A5's missing chance -- the well was taken out of
-        # the figures on this tab but not out of the numbers under them.
-        _a5_cases = [
-            ("Prospect recoverable resource", res_all[res_all > 0], chance.pos_prospect),
-        ]
-        _rows = []
-        for _name, _values, _ch in _a5_cases:
-            _s = class_percentiles(_values, _ch)
-            for _stat in ("P99", "P90", "P50", "Pmean", "P10", "P1"):
-                if _stat == "Pmean":
-                    _vol, _cond = _s["mean"], _s["mean_at"] / 100.0
-                else:
-                    _q = int(_stat[1:])
-                    _vol, _cond = _s[f"p{_q}"], _q / 100.0
-                _rows.append({
-                    "case": _name,
-                    "statistic": _stat,
-                    "volume (MMboe)": _vol,
-                    "probability — unrisked": _cond,
-                    "probability — risked": _cond * _ch,
-                })
+        _a5_stats = class_percentiles(res_all[res_all > 0], chance.pos_prospect)
+        _row = {
+            "case": "Prospect recoverable resource",
+            "prospect POS": chance.pos_prospect,
+            "P99": _a5_stats["p99"],
+            "P90": _a5_stats["p90"],
+            "P50": _a5_stats["p50"],
+            "Pmean": _a5_stats["mean"],
+            "P10": _a5_stats["p10"],
+            "P1": _a5_stats["p1"],
+        }
+        _vol_cols = {
+            c: st.column_config.NumberColumn(f"{c} (MMboe)", format="%.2f")
+            for c in ("P99", "P90", "P50", "Pmean", "P10", "P1")
+        }
         st.dataframe(
-            pd.DataFrame(_rows), hide_index=True, width="stretch",
+            pd.DataFrame([_row]), hide_index=True, width="stretch",
             column_config={
-                "volume (MMboe)": st.column_config.NumberColumn(format="%.2f"),
-                "probability — unrisked": st.column_config.NumberColumn(format="percent"),
-                "probability — risked": st.column_config.NumberColumn(format="percent"),
+                "prospect POS": st.column_config.NumberColumn(format="percent"),
+                **_vol_cols,
             },
         )
         st.caption(
-            "**Unrisked** is the conditional reading: the chance of exceeding that volume "
-            "*given the case happens*, which is why P90 reads 90 % and P50 reads 50 % — that is "
-            "the definition of a percentile, and it is the distribution the industry quotes. "
-            "**Risked** is the unconditional one: the same volume, multiplied by the chance the "
-            f"case happens at all. Solid curves in {fig_ref('{a5}')} are the unrisked reading, "
-            f"dashed are the "
-            "risked one.\n\n"
-            "**Pmean is not a percentile.** It is the arithmetic mean, and its unrisked "
-            "probability is wherever it happens to fall on the curve — above P50 on a "
-            "right-skewed distribution. That is why it gets its own row rather than sitting "
-            "between P50 and P10 as if it were one of them."
+            "**Volumes are conditional** — the success case, given the prospect works. That is "
+            "where percentiles live and it is the distribution the industry quotes: an unrisked "
+            "P90 is exceeded 90 % of the time *by definition*. To get the unconditional "
+            f"(risked) probability of any of them, multiply by the prospect POS beside it — "
+            f"**{chance.pos_prospect:.1%}** — which is what the dashed curve above already does. "
+            "The volumes themselves do not change between the two readings; only the probability "
+            "attached to them does."
+            "\n\n"
+            "**Pmean is not a percentile.** It is the arithmetic mean, and on this distribution it "
+            f"is exceeded {_a5_stats['mean_at']:.0f} % of the time rather than 50 % — above the "
+            "P50, as it must be on a right-skewed distribution. It sits at the end of the ladder "
+            "rather than between P50 and P10 so that it cannot be read as one of them."
         )
 
         st.divider()

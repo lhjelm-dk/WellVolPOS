@@ -174,7 +174,7 @@ def render(ctx: Ctx) -> None:
     # ---- the risk summary: the entered table times the computed location factor
     st.subheader("Risk summary — the chance table, at this well")
     st.caption(
-        "**Why this is here and the chance table is in tab ②.** Charge, trap, reservoir and "
+        "**Why this is here and the chance table is in tab ②.** Charge, closure, reservoir and "
         "retention are *inputs*: judgements about the prospect, made before anyone picks a "
         "location and unchanged by picking one. The location factor `r_location` is *computed*, "
         "from the trial file and this well's entry depth. Only once both exist can they be "

@@ -80,6 +80,10 @@ from wellvolpos.ui import Ctx
 from wellvolpos.ui import tab2_prospect, tab3_where, tab4_well, tab5_report
 from wellvolpos.ui import tab6_guide
 from wellvolpos.ui.common import badge as _badge
+# One copy of the chance-table defaults, in the module that owns the conventions.
+# app.py had its own duplicate pair plus two help dicts nothing read -- left over
+# from the tab split, and two copies of a default is a drift waiting to happen.
+from wellvolpos.ui.conventions import CHANCE_DEFAULTS, PLAY_DEFAULTS
 from wellvolpos.ui.loading import load as _load
 from wellvolpos.ui.tabstyle import inject as _inject_tab_style
 from wellvolpos.viz import (
@@ -121,28 +125,6 @@ CONVENTION_PROVENANCE = {
 }
 
 st.set_page_config(page_title="WellVolPOS", layout="wide", page_icon="🛢")
-
-#: Chance-table defaults (Lars, 2026-08-11). They were 1.0 each, which made
-#: POS_prospect 1.0 and hid the whole conditional/unconditional distinction on the
-#: default demo -- every risked curve coincided with its conditional twin. These
-#: multiply to 0.432, so the app now opens with a POS worth reasoning about.
-CHANCE_DEFAULTS = {"charge": 0.90, "trap": 1.00, "reservoir": 0.60, "retention": 0.80}
-#: Play-level defaults. 1.00 throughout, because a segment assessed on its own has
-#: no play risk above it -- the user opts in by lowering one.
-PLAY_DEFAULTS = {el: 1.00 for el in ("charge", "trap", "reservoir", "retention")}
-PLAY_HELP = {
-    "charge": "Chance the play has a working source and migration system at all.",
-    "trap": "Chance the play develops trapping geometries and a regional seal.",
-    "reservoir": "Chance the play's reservoir interval is present and of quality regionally.",
-    "retention": "Chance accumulations in this play are retained rather than lost regionally.",
-}
-CHANCE_HELP = {
-    "charge": "Chance that hydrocarbons were generated and migrated into the trap.",
-    "trap": "Chance that a valid trap geometry and seal exist.",
-    "reservoir": "Chance of effective reservoir presence and quality. **Exempt from the "
-                 "location penalty**: a well that misses the column still saw the rock.",
-    "retention": "Chance the accumulation was retained rather than lost after charge.",
-}
 
 #: C2 carries the nesting braces below its zero line, so it needs more room than a
 #: panel in a row. Its own constant rather than a multiple of PANEL_HEIGHT, because
@@ -485,7 +467,7 @@ if qc.blocked:
 # keys, so changing one triggers a rerun and this read sees the new value at the top
 # of it -- there is no lag and no second copy of the state.
 #
-# Charge, trap, reservoir and retention are judgements about the prospect: made
+# Charge, closure, reservoir and retention are judgements about the prospect: made
 # before anyone picks a location and unchanged by picking one. The location factor is
 # *computed* from the trials and the well's depth, so the summary that multiplies the
 # two can only be assembled afterwards -- and that summary is in tab ⑤. Keeping the

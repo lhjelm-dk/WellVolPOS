@@ -64,6 +64,9 @@ from .interactive import (
 )
 from .theme import (
     PANEL_HEIGHT,
+    PROBABILITY_SCALES,
+    TALL_PANEL_HEIGHT,
+    VOLUME_SCALES,
     level_row,
     apply,
     apply_plotly,

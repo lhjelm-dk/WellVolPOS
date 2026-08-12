@@ -41,13 +41,13 @@ PLAY_DEFAULTS = {el: 1.00 for el in ("charge", "trap", "reservoir", "retention")
 
 PLAY_HELP = {
     "charge": "Chance the play has a working source and migration system at all.",
-    "trap": "Chance the play develops trapping geometries and a regional seal.",
+    "trap": "Chance the play develops mapped closures and a regional seal.",
     "reservoir": "Chance the play's reservoir interval is present and of quality regionally.",
     "retention": "Chance accumulations in this play are retained rather than lost regionally.",
 }
 CHANCE_HELP = {
-    "charge": "Chance that hydrocarbons were generated and migrated into the trap.",
-    "trap": "Chance that a valid trap geometry and seal exist.",
+    "charge": "Chance that hydrocarbons were generated and migrated into the closure.",
+    "trap": "Chance that a valid closure and an effective seal exist.",
     "reservoir": "Chance of effective reservoir presence and quality. **Exempt from the "
                  "location penalty**: a well that misses the column still saw the rock.",
     "retention": "Chance the accumulation was retained rather than lost after charge.",

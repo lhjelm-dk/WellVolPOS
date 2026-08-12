@@ -27,7 +27,13 @@ import numpy as np
 from matplotlib.lines import Line2D
 from matplotlib.ticker import NullFormatter
 
-from ..core.chance import ELEMENTS, SCHEME_LABELS, SHIPPED_SCHEMES, allocate
+from ..core.chance import (
+    ELEMENT_LABELS,
+    ELEMENTS,
+    SCHEME_LABELS,
+    SHIPPED_SCHEMES,
+    allocate,
+)
 from ..core.chance import waterfall_steps as chance_waterfall_steps
 from ..core.classes import (
     READING_LABELS,
@@ -53,11 +59,13 @@ from ..core.sweep import (
 from ..io.adapters.base import TrialSet
 from .theme import (
     FAN_POS_LEVELS,
+    VOLUME_SCALES,
+    concept_shades,
     depth_shades,
     log_tick_text,
     log_ticks,
-    probit,
-    probit_axis,
+    probability_axis,
+    probability_coords,
     AREA_SCALES,
     SEQUENTIAL_CMAP,
     VALUE_CMAP,
@@ -1108,7 +1116,7 @@ def fig_b5_allocation_dumbbell(
         ax.grid(True, axis="x", lw=0.6, alpha=0.6)
 
     axes[0].set_yticks(y)
-    axes[0].set_yticklabels([e.capitalize() for e in ELEMENTS])
+    axes[0].set_yticklabels([ELEMENT_LABELS[e] for e in ELEMENTS])
     axes[0].legend(loc="lower right", fontsize=7)
     fig.suptitle("B5 · Allocation dumbbell", fontsize=9.5, fontweight="bold", color=p["text"])
     fig.tight_layout()
@@ -1159,56 +1167,77 @@ def fig_b11_pos_sensitivity(
 
 def fig_b12_banded_percentiles(
     bp: BandedPercentiles, *, mefs: float | None = None, show_proven: bool = True,
-    show_mean: bool = True, dark: bool = False,
+    show_mean: bool = False, probability_scale: str = "probit",
+    volume_scale: str = "log", dark: bool = False,
 ):
     """B12 for the export path. Twin of ``pfig_b12_banded_percentiles``.
 
     See that docstring for the argument: solid is the whole resource in a
-    contact-depth band, dotted is what this well would prove in it, colour carries
-    depth from the sequential scale, and straightness on log-probit axes is
-    lognormality. Depth is the family rather than an axis, so this figure is exempt
+    contact-depth band and dotted is what this well would prove in it, each family
+    carries its own colour ramp ordered by depth, and straightness on log-probit axes
+    is lognormality. Depth is the family rather than an axis, so this figure is exempt
     from non-negotiable 2.
     """
+    if volume_scale not in VOLUME_SCALES:
+        raise ValueError(
+            f"unknown volume scale {volume_scale!r}; expected one of {VOLUME_SCALES}"
+        )
     p = palette(dark)
-    fig, ax = new_figure(figsize=(6.6, 5.4), dark=dark)
-    shades = depth_shades(len(bp.bands), dark)
-    y = probit(np.asarray(bp.percentiles, dtype=float))
+    fig, ax = new_figure(figsize=(6.6, 6.8), dark=dark)
+    n_bands = len(bp.bands)
+    total_shades = depth_shades(n_bands, dark)
+    proven_shades = concept_shades("tested", n_bands, dark)
+    y = probability_coords(np.asarray(bp.percentiles, dtype=float), probability_scale)
 
-    for band, shade in zip(bp.bands, shades):
+    for band, shade, pshade in zip(bp.bands, total_shades, proven_shades):
         ax.plot(band.total, y, color=shade, lw=1.8, marker="o", ms=4,
                 label=f"{band.label}  (n {band.n})")
         if show_mean and np.isfinite(band.total_mean_p):
-            ax.plot([band.total_mean], [float(probit(band.total_mean_p))],
+            ax.plot([band.total_mean],
+                    [float(probability_coords(band.total_mean_p, probability_scale))],
                     color=shade, marker="D", mfc="none", ms=7, mew=1.4, ls="none")
         if show_proven and band.proven is not None:
-            ax.plot(band.proven, y, color=shade, lw=1.4, ls=":", marker="o", ms=3.5,
+            ax.plot(band.proven, y, color=pshade, lw=1.5, ls=":", marker="o", ms=3.5,
                     mfc=p["surface"])
+            if show_mean and np.isfinite(band.proven_mean_p):
+                ax.plot([band.proven_mean],
+                        [float(probability_coords(band.proven_mean_p, probability_scale))],
+                        color=pshade, marker="D", mfc="none", ms=6, mew=1.3, ls="none")
 
     handles, labels = ax.get_legend_handles_labels()
-    key = [Line2D([], [], color=p["text_secondary"], lw=1.8, label="total resource (solid)")]
+    mid = max(n_bands // 2, 0)
+    key = [Line2D([], [], color=total_shades[mid], lw=1.8,
+                  label="total resource (solid)")]
     if show_proven:
-        key.append(Line2D([], [], color=p["text_secondary"], lw=1.4, ls=":",
+        key.append(Line2D([], [], color=proven_shades[mid], lw=1.5, ls=":",
                           label="proven at this well (dotted)"))
     if show_mean:
         key.append(Line2D([], [], color=p["text_secondary"], marker="D", mfc="none",
                           ls="none", ms=7, label="mean, at its own probability"))
     if mefs:
         ax.axvline(float(mefs), color=colour("mefs", dark), ls="--", lw=1.0)
+
+    log = volume_scale == "log"
+    if log:
+        ax.set_xscale("log")
+        # Plain numbers, 1-2-5 per decade, shared with the plotly half from
+        # theme.log_ticks: matplotlib's default "4 x 10^0" is a physicist's notation
+        # for an axis carrying MMboe, and the two backends must not label it
+        # differently.
+        ticks = log_ticks(*bp.volume_range)
+        ax.set_xticks(ticks)
+        ax.set_xticklabels(log_tick_text(ticks))
+        ax.xaxis.set_minor_formatter(NullFormatter())
+        ax.set_xlabel("Resource (MMboe) · log scale")
+    else:
+        ax.set_xscale("linear")
+        ax.set_xlim(left=0.0)
+        ax.set_xlabel("Resource (MMboe) · linear scale")
+    if mefs:
         ax.annotate(f"MEFS {mefs:g}", (float(mefs), ax.get_ylim()[1]),
                     xytext=(3, -3), textcoords="offset points", fontsize=7,
                     va="top", color=colour("mefs", dark))
-
-    ax.set_xscale("log")
-    # Plain numbers on the log axis: matplotlib's default "4 x 10^0" is a physicist's
-    # notation and this axis carries MMboe, which a reader wants to read as 4, 10, 20.
-    # Ticked at 1-2-5 per decade and nowhere else -- labelling every minor decade
-    # step ran the numbers into each other on prospect B's 3.6-420 MMboe range.
-    _ticks = log_ticks(*bp.volume_range)
-    ax.set_xticks(_ticks)
-    ax.set_xticklabels(log_tick_text(_ticks))
-    ax.xaxis.set_minor_formatter(NullFormatter())
-    ax.set_xlabel("Resource (MMboe) · log scale")
-    probit_axis(ax)
+    probability_axis(ax, probability_scale)
     ax.set_title("B12 · Resource by contact-depth band "
                  f"({BAND_MODE_LABELS[bp.mode]}, well {bp.z_entry:.0f}-{bp.z_exit:.0f} m)")
     ax.grid(True, which="both", lw=0.6, alpha=0.7)
@@ -1219,14 +1248,17 @@ def fig_b12_banded_percentiles(
 
 def fig_b7_frontier(
     vsweep: VolumeSweep, *, current_z: float | None = None, min_support: int = MIN_SUPPORT,
-    label_every: int = 4, volume_scale: str = "linear", dark: bool = False,
+    label_every: int = 4, chance_scale: str = "linear", dark: bool = False,
 ):
     """B7, for the export path. Twin of ``pfig_b7_frontier``.
 
     Chance against volume, parametric in depth: the trade-off the whole tool is
-    about, from the 2018 macro workbook's *"Well POS vs. Well to be tested Mean
-    Resource"*. Neither axis carries a depth, so depth appears as labels along the
-    curve and this figure joins A5, A6, B4 and B5 in the depth-rule exemption.
+    about. Neither axis carries a depth, so depth appears as labels along the curve
+    and this figure joins A5, A6, B4 and B5 in the depth-rule exemption.
+
+    ``chance_scale`` puts the log option on the **chance** axis, running 1-110 %,
+    where it belongs: a linear chance axis spends its height on the shallow end and
+    compresses every deep location into the bottom centimetre.
     """
     p = palette(dark)
     fig, ax = new_figure(figsize=(6.4, 5.4), dark=dark)
@@ -1256,19 +1288,23 @@ def fig_b7_frontier(
     if vsweep.mefs is not None:
         ax.axvline(vsweep.mefs, color=colour("minimum", dark), ls=":", lw=1.0)
 
-    if volume_scale not in ("linear", "log"):
-        raise ValueError(f"unknown volume_scale {volume_scale!r}; expected 'linear' or 'log'")
-    if volume_scale == "log":
-        # No left=0 on a log axis. Everything plotted here is positive, so nothing
-        # is lost; the range comes from the data.
-        ax.set_xscale("log")
+    if chance_scale not in ("linear", "log"):
+        raise ValueError(f"unknown chance_scale {chance_scale!r}; expected 'linear' or 'log'")
+    ax.set_xlim(left=0)
+    ax.set_xlabel("Mean resource (MMboe)")
+    if chance_scale == "log":
+        # 1 % is the floor rather than zero, because a log axis has no zero and a
+        # location whose P_well rounds to nothing has nothing to contribute to a
+        # trade-off curve. Plain percent labels, not exponents.
+        ax.set_yscale("log")
+        ax.set_ylim(1.0, 110.0)
+        ax.set_yticks([1, 2, 5, 10, 20, 50, 100])
+        ax.set_yticklabels(["1", "2", "5", "10", "20", "50", "100"])
+        ax.yaxis.set_minor_formatter(NullFormatter())
+        ax.set_ylabel(r"$P_{well}$  (%, log 1–110)")
     else:
-        ax.set_xlim(left=0)
-    ax.set_ylim(0, 105)
-    ax.set_xlabel("Mean resource (MMboe, log scale — a straight segment is a "
-                  "constant % per point of chance)" if volume_scale == "log"
-                  else "Mean resource (MMboe, linear scale)")
-    ax.set_ylabel(r"$P_{well}$  (%)")
+        ax.set_ylim(0, 110)
+        ax.set_ylabel(r"$P_{well}$  (%)")
     ax.set_title(f"B7 · Chance against volume ({reference_label(vsweep.reference)})")
     ax.grid(True, lw=0.6, alpha=0.7)
     ax.legend(loc="lower left", fontsize=7.5)

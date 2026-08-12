@@ -104,7 +104,7 @@ def render(ctx: Ctx) -> None:
         e[2].metric("Expected proven",
                     f"{expected_volume(cs['proven']['mean'], chance.p_well):.2f}")
         st.caption(
-            "MMboe. **Expected** volumes are mean × chance — the source workbook's "
+            "MMboe. **Expected** volumes are mean × chance — a *risked mean* — "
             "\"'Risked' Pmean\" column. They are what a portfolio adds up, and they describe no "
             "outcome that can happen: this well either finds something near "
             f"{gs['discovery']['mean']:.1f} or it finds nothing. Quote them beside the chance and "

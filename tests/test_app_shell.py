@@ -97,3 +97,82 @@ def test_the_units_verdict_appears_in_the_qc_report(fresh):
     declares nothing says what was assumed instead."""
     body = " ".join(e.value for e in fresh.markdown)
     assert "declares no units" in body or "Units confirmed" in body
+
+
+def _all_text(at) -> str:
+    """Every string the app put on screen, in one blob -- widget labels included.
+
+    The labels matter here: the risk elements are named *only* in a
+    ``number_input`` label, so a check that reads markdown alone cannot see them.
+    """
+    parts = []
+    for group in (at.markdown, at.caption, at.subheader, at.header, at.warning,
+                  at.info, at.success, at.error):
+        parts += [e.value for e in group if isinstance(e.value, str)]
+    for name in ("number_input", "slider", "radio", "checkbox", "selectbox",
+                 "text_input", "multiselect"):
+        for e in getattr(at, name, []):
+            label = getattr(e, "label", None)
+            if isinstance(label, str):
+                parts.append(label)
+    return "\n".join(parts)
+
+
+def test_no_unresolved_figure_placeholder_reaches_the_reader(fresh):
+    """``ref()`` resolves ``{b2}`` to a number -- unless the string is never passed
+    through it, and then the reader is shown the brace form.
+
+    That happened: the guide's references block ended with *"{b2}'s regret curve is
+    the place they would land"*, because it is a plain triple-quoted string and the
+    wrap around it had been left off. A placeholder is silent when it works and
+    obvious when it does not, which is exactly the kind of thing worth a test.
+    """
+    import re
+
+    from wellvolpos.ui.numbering import FIGURE_NUMBERS
+
+    text = _all_text(fresh)
+    stray = {m.group(1) for m in re.finditer(r"\{([a-z][a-z0-9_]*)\}", text)
+             if m.group(1) in FIGURE_NUMBERS}
+    assert not stray, f"unresolved figure placeholders on screen: {sorted(stray)}"
+
+
+def test_no_legacy_letter_code_is_shown_to_the_reader(fresh):
+    """Figures are numbered by tab now. ``B6`` told a reader nothing about where it
+    lived, and the letters survive only in the code, the export keys and this
+    project's own notes -- never on screen."""
+    import re
+
+    # Two codes on screen are *not* figure references and must survive:
+    #
+    #   * Rose's prospect **segment A2**, in the guide's discussion of his poster --
+    #     his label for one of his segments, nothing to do with our outcome tree.
+    #   * the guide's paragraph explaining that the exported figure files and this
+    #     project's own notes still carry the letters. A reader who unzips the
+    #     figures and finds B6_inverse.svg is better off having been told.
+    #
+    # Listed rather than pattern-matched, so a *new* stray code fails instead of
+    # being swallowed by a loose exception.
+    allowed = ("segment A2", 'about "B6" by letter')
+    text = _all_text(fresh)
+    for phrase in allowed:
+        text = text.replace(phrase, "")
+    # Word-boundary matched, so "A1" is caught but "MMboe" and "P90" are not.
+    codes = sorted({m.group(0)
+                    for m in re.finditer(r"\b(?:A[0-9]|B(?:1[0-2]|[0-9])|C[12])\b", text)})
+    assert not codes, f"legacy figure codes on screen: {codes}"
+
+
+def test_the_risk_elements_are_named_closure_not_trap(fresh):
+    """Lars, 2026-08-12: *Closure* is the better term for what the element assesses.
+
+    The dict keys stay ``trap`` -- behaviour must never depend on label text -- so
+    this checks the half that is visible.
+    """
+    import re
+
+    text = _all_text(fresh)
+    assert "Closure" in text, "the risk element is not labelled Closure anywhere"
+    # "trapezoid" is an integration rule and stays; the geological sense must be gone.
+    stray = re.findall(r"\btrap(?!ezoid)\w*", text, re.I)
+    assert not stray, f"'trap' still shown to the reader: {sorted(set(stray))}"

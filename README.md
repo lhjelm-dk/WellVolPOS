@@ -129,7 +129,7 @@ default buried in the code:
   dataset the Rose convention is a flat 1.11× uplift at every depth plus a cap
   up-dip of the P90-area contour.
 - **Risk-element allocation** — none (report `r` separately), equal cube-root
-  (the workbook's), or all-to-trap (Rose). All three give the *same* `P_well`;
+  equal cube root, or all-to-closure (Rose). All three give the *same* `P_well`;
   only the attribution differs.
 - **Assessment minimum** — a minimum column height below the apex, with the
   equivalent area and volume percentile displayed beside it.

@@ -16,7 +16,7 @@ from wellvolpos.core.bands import (
 )
 from wellvolpos.viz.figures import fig_b12_banded_percentiles
 from wellvolpos.viz.interactive import pfig_b12_banded_percentiles
-from wellvolpos.viz.theme import PROBIT_TICKS, probit
+from wellvolpos.viz.theme import PROBIT_TICKS, probability_axis_range, probit
 
 from .conftest import ENTRY, EXIT
 
@@ -231,21 +231,41 @@ def test_probit_puts_p99_above_p1():
     assert probit(99) > probit(50) > probit(1)
     assert np.isclose(probit(50), 0.0)
 
-def test_a_reference_line_on_a_log_axis_is_given_as_log10(bp):
-    """Plotly shape coordinates are *axis* coordinates, and on a log axis that is
-    the exponent -- so passing the volume itself put the MEFS rule at 10^103 and
-    stretched the axis to 10^96, with every curve crushed into the left edge.
+def test_the_mefs_rule_is_a_trace_so_a_log_axis_cannot_move_it(bp):
+    """Measured, not reasoned about: ``add_vline`` on a log axis put this rule at
+    2.9 MMboe while its stored coordinate said 103, and passing ``log10(mefs)``
+    instead put it against the plot's left edge. Two wrong answers from two
+    plausible conventions.
 
-    Traces are unaffected, which is exactly why it read as a data problem rather
-    than an axis one, and the matplotlib twin was right all along because
-    ``axvline`` takes the value. Any future rule on a log axis has the same trap.
+    A trace is in data coordinates by definition -- which is why every *curve* here
+    was correct throughout while the reference line was not -- so the rule is drawn
+    as a two-point trace with its label attached. This asserts that, in both volume
+    scales, because the failure only showed in one of them.
     """
     mefs = 15.0
-    fig = pfig_b12_banded_percentiles(bp, mefs=mefs)
-    shapes = [sh for sh in fig.layout.shapes if sh.x0 is not None]
-    assert shapes, "expected the MEFS rule as a shape"
-    for sh in shapes:
-        assert np.isclose(10.0 ** float(sh.x0), mefs, rtol=1e-9)
     lo, hi = bp.volume_range
-    for sh in shapes:
-        assert np.log10(lo) - 1 < float(sh.x0) < np.log10(hi) + 1
+    for scale in ("log", "linear"):
+        fig = pfig_b12_banded_percentiles(bp, mefs=mefs, volume_scale=scale)
+        rules = [t for t in fig.data
+                 if t.x is not None and len(t.x) == 2
+                 and np.allclose(np.asarray(t.x, dtype=float), mefs)]
+        assert len(rules) == 1, f"{scale}: expected exactly one MEFS rule trace"
+        rule = rules[0]
+        assert lo / 2.0 < float(rule.x[0]) < hi * 2.0, scale
+        assert any("MEFS" in (s or "") for s in rule.text), \
+            f"{scale}: the rule carries no label"
+        assert rule.showlegend is False, f"{scale}: the rule should not take a legend row"
+        # No shape at all any more, so nothing is left to be reinterpreted.
+        assert not [s for s in fig.layout.shapes if s.x0 is not None], scale
+
+
+def test_the_mefs_rule_spans_the_whole_probability_axis(bp):
+    """A rule that stops short reads as a curve rather than as a threshold."""
+    for scale in ("probit", "linear"):
+        fig = pfig_b12_banded_percentiles(bp, mefs=15.0, probability_scale=scale)
+        lo, hi = probability_axis_range(scale)
+        rule = next(t for t in fig.data
+                    if t.x is not None and len(t.x) == 2
+                    and np.allclose(np.asarray(t.x, dtype=float), 15.0))
+        assert np.isclose(min(rule.y), lo) and np.isclose(max(rule.y), hi), scale
+        assert list(fig.layout.yaxis.range) == [lo, hi], scale

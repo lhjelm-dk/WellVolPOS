@@ -44,11 +44,14 @@ resource range describe something no single borehole can capture. Quoting them a
 well proposal overstates both the chance and the volume — which is the argument this whole
 tool is built to make.
 
-The source workbook computed `1 − PERCENTRANK(all contacts, entry)`, which *already*
-contains the chance failures, and then multiplied by a separately entered POS. That is
-right only when the entered POS is 1.0, which it happened to be. A chance table of 0.60
-would have produced a well POS about 40 % too low. Reading the workbook showed the same
-conflation in **206 cells**, not one.
+**The mistake this separation exists to prevent.** It is tempting to read
+`P(contact deeper than the entry)` off *all* the trials and multiply that by an entered
+POS. But the trials already contain the chance failures — GeoX writes them in as
+zero-volume rows — so that percentile *is already risked*, and multiplying it again
+counts the geological chance twice. The error hides completely while the entered POS is
+1.0 and appears the moment it is not: at a chance table of 0.60 the well POS comes out
+about 40 % too low. `r_location` is therefore measured over the **success cases only**,
+and the chance is applied once, separately.
         """
     )
 
@@ -168,7 +171,7 @@ is assumed.
     ev = expected_volume(gs["discovery"]["mean"], chance.p_well)
     st.markdown(
         f"""
-The workbook's *&ldquo;Risked&rdquo; Pmean* column, and this app's **Expected** metrics, are
+A **risked** or **expected** mean — this app's **Expected** metrics — is
 mean × chance: **{gs['discovery']['mean']:.2f} × {chance.p_well:.1%} = {ev:.2f} MMboe**.
 
 That is the only volume figure here that is **additive across prospects** — two success-case
@@ -278,11 +281,11 @@ stands, and it is worth knowing which is which before quoting either.
    implicit.
 2. **Quote `P_well` and the well-associated volume** for a well decision; show the prospect
    figures as the contrast, not the headline.
-3. **Say which "proven" you mean.** The workbook's *PROVEN mean at well* is 14.78 MMboe —
-   the mean total resource of trials whose contact falls between entry and exit. This app's
-   proven mean is 16.04 MMboe — the per-trial **wedge** split across all discovery trials
-   (15.76 before the apportionment moved from map area to the wedge). Both are here; the word
-   collides.
+3. **Say which "proven" you mean.** The word carries two different numbers and both are
+   in this app. One is the mean *total* resource of the trials whose contact happens to fall
+   between entry and exit — 14.78 MMboe on prospect A, reported as *tested by the well*. The
+   other is the per-trial **wedge** split, averaged over every discovery trial — 16.04 MMboe,
+   the headline proven mean. Neither is wrong; quoting one under the other's name is.
 4. **Distrust the deep end of any swept curve.** Conditional groups thin down-dip; steps
    resting on fewer than 30 trials are left undrawn rather than shown as firmly as the rest.
 5. **Treat the apex as an extrapolation.** It comes from A(z)'s shallow tail, because the
@@ -302,7 +305,10 @@ stands, and it is worth knowing which is which before quoting either.
         "*through* another rather than read directly, it says so."
     )
     st.markdown(
-        """
+        # Wrapped so the {b2} placeholder in the closing paragraph resolves. It was
+        # left literal, and the reader was shown "{b2}'s regret curve".
+        ref(
+            """
 **Read in full — the PDFs are in `Papers/`**
 
 | Work | What it contributes here |
@@ -336,9 +342,10 @@ to get — and {b2}'s regret curve is the place they would land.
 ---
 
 **Two provenance notes.** Prospect A's demo data is fictional and safe to publish.
-Prospect B is extracted from the 2018 macro workbook and its publication status has
-**not** been confirmed — treat it as the licensee's until it has. The source workbook
-remains the specification either way: `tests/test_excel_parity.py` locks fifteen of its
-values and was written before any other code.
+Prospect B comes from an internal study and its publication status has **not** been
+confirmed — treat it as the licensee's until it has. Either way the numbers are held to a
+fixed specification: a parity suite locks fifteen reference values and was written before
+any other code in this tool.
         """
+        )
     )
