@@ -22,6 +22,7 @@ from ..report import export as export_mod
 from ..report.case import Case, fingerprint
 from .common import chart as _chart, split_caveat
 from .context import Ctx
+from .numbering import ref as fig_ref
 
 
 def _current_case(ctx: Ctx) -> Case:
@@ -166,7 +167,8 @@ def render(ctx: Ctx) -> None:
     if risking_convention == "trials_risked" and abs(pos_from_table - pos) > 1e-9:
         st.info(
             f"The table above multiplies to {pos_from_table:.4f}, but the trials imply "
-            f"{pos:.4f} and the convention says the trials are authoritative. B4 therefore "
+            f"{pos:.4f} and the convention says the trials are authoritative. {fig_ref('{b4}')} "
+            f"therefore "
             f"carries a named reconciliation step; it is not a rounding error."
         )
     # ---- the risk summary: the entered table times the computed location factor
@@ -215,7 +217,8 @@ def render(ctx: Ctx) -> None:
             f"number as `POS_prospect × r_location` = {chance.pos_prospect:.4f} × "
             f"{chance.r_location:.4f}, by construction rather than by coincidence.\n\n"
             f"**Allocation is a convention, not a fact.** All three shipped schemes give the same "
-            f"P_well; only the split across elements differs, which is what B5 below shows. This "
+            f"P_well; only the split across elements differs, which is what {fig_ref('{b5}')} below "
+            f"shows. This "
             f"table uses **{SCHEME_LABELS.get(scheme, scheme)}**, set in the sidebar.\n\n"
             f"The *Play* column is 1.00 throughout: this tool assesses **one prospect segment** "
             f"from one trial file (decision 10) and models no play level above it."
@@ -230,9 +233,10 @@ def render(ctx: Ctx) -> None:
     with c2:
         _chart(pfig_b5_allocation_dumbbell(elements, chance.r_location, pos_prospect=pos), key="b5")
     st.caption(
-        "B4 decomposes the POS in use through the location factor at the current entry, under "
+        f"{fig_ref('{b4}')} decomposes the POS in use through the location factor at the current entry, under "
         "the sidebar's allocation scheme; hatched steps are location, solid are geological "
-        "chance, and the total is P_well by construction. B5 shows all three shipped schemes "
+        f"chance, and the total is P_well by construction. {fig_ref('{b5}')} shows all three "
+        f"shipped schemes "
         "side by side — every scheme gives the same P_well (the dotted rule); only the "
         "attribution across elements differs, and reservoir is exempt under all of them."
     )

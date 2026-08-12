@@ -44,6 +44,7 @@ from datetime import datetime, timezone
 
 import pandas as pd
 
+from ..core.bands import banded_percentiles
 from ..core.chance import (
     ChanceResult,
     ReferenceContour,
@@ -396,6 +397,13 @@ def _draw_export_figures(b: Bundle, *, dark: bool = False) -> dict[str, object]:
         figs["A6_overlap"] = F.fig_a6_overlap(b.vc, b.groups, mefs=c.mefs, dark=dark)[0]
         figs["B0_section"] = F.fig_b0_section(
             b.ad, z_entry=c.entry, z_exit=c.exit, dark=dark)[0]
+        # Banded percentiles: needs the classes, so it lives with the split figures
+        # rather than with the sweeps. Drawn at the shipped defaults -- the app's
+        # band mode and count are view controls, not settings the Case carries, and
+        # a figure in an export has to be reproducible from the Case alone.
+        figs["B12_banded_percentiles"] = F.fig_b12_banded_percentiles(
+            banded_percentiles(b.ts, b.groups, b.vc, z_entry=c.entry, z_exit=c.exit),
+            mefs=c.mefs, dark=dark)[0]
     if b.vsweep is not None:
         figs["B1_volume_split"] = F.fig_b1_volume_split(
             b.vsweep, current_z=c.entry, dark=dark)[0]

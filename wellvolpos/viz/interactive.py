@@ -36,6 +36,7 @@ from ..core.classes import (
     VolumeClasses,
     risked_exceedance,
 )
+from ..core.bands import BAND_MODE_LABELS, BandedPercentiles
 from ..core.groups import Groups
 from ..core.reservoir import thickness_from_pay
 from ..core.stats import MIN_SUPPORT, thin
@@ -59,6 +60,11 @@ from .figures import (
 )
 from .theme import (
     FAN_POS_LEVELS,
+    depth_shades,
+    log_tick_text,
+    log_ticks,
+    probit,
+    probit_axis_plotly,
     AREA_SCALES,
     PANEL_HEIGHT,
     VALUE_CMAP,
@@ -93,6 +99,7 @@ __all__ = [
     "pfig_b8_commercial_chance",
     "pfig_b9_chance_weighted",
     "pfig_b11_pos_sensitivity",
+    "pfig_b12_banded_percentiles",
     "pfig_a8_contact_distribution",
     "pfig_a9_prospect_density",
     "suggest_grid",
@@ -2063,6 +2070,134 @@ def pfig_b11_pos_sensitivity(
     apply_plotly(fig, dark, height)
     depth_axis_plotly(fig, zlim or (float(sweep.z.min()), float(sweep.z.max())),
                       show_ticklabels=show_depth_labels)
+    return fig
+
+
+
+# ------------------------------------------------------------------- B12
+
+def pfig_b12_banded_percentiles(
+    bp: BandedPercentiles, *, mefs: float | None = None, show_proven: bool = True,
+    show_mean: bool = True, dark: bool = False, height: int | None = PANEL_HEIGHT,
+):
+    """B12 -- resource percentiles within contact-depth bands, on log-probit axes.
+
+    Schneider et al. (2023) Figure 9 with its parameterisation changed, at Lars's
+    request (2026-08-12): the poster draws one distribution per **productive-area
+    increment**, this draws one per **contact-depth interval**. Area is a
+    deterministic function of contact depth here (``AreaDepth`` fits it at
+    R2 = 0.9999999987), so the two band the same trials -- but only depth bands can
+    be read against a well, because a depth is what the well actually chooses.
+
+    **Solid is the whole resource; dotted is the part this well would prove.** Dotted
+    rather than dashed on purpose: dashed already means *unconditional (risked)*
+    everywhere else in this app, and both families here are conditional. The dotted
+    family is taken over each band's **discovery** trials only, never over the band's
+    dry ones -- a mixed distribution would carry zeros onto a logarithmic axis, where
+    a zero cannot be drawn and would silently become "the smallest thing on the plot".
+    Bands entirely above the well entry therefore have no dotted curve at all, which
+    is the correct statement: nothing is proven there.
+
+    Colour carries **depth**, light to dark, from the single-hue sequential scale --
+    its sanctioned use, since depth is an ordered quantity. The volume *concept* is
+    carried by line style instead, because it has only two values and style separates
+    them without ambiguity. This is the one figure where the palette's concept
+    colours are not the encoding, and the reason is that the family variable is the
+    thing the reader must order.
+
+    **The straightness of a curve is a claim about its shape.** Log-probit makes a
+    lognormal a straight line, so a family that is straight and parallel says the
+    bands differ by a scale factor and nothing else; curvature says the shape itself
+    changes with depth. On the demo prospects the within-band means land near P46-P49
+    -- almost symmetric -- which says most of the prospect total's skew is
+    *structural*, coming from where the contact lands rather than from the rock
+    properties inside any one outcome.
+
+    ``mefs`` draws the threshold as a vertical rule, and then every band's crossing
+    of it is read straight off the probability axis: that crossing is
+    ``P(resource > MEFS | contact in this band)``. Reference line only -- it never
+    truncates a distribution (Longley 2026).
+
+    Exempt from non-negotiable 2 like A5, A6, B4, B5 and B7: depth is the family
+    here, not an axis.
+    """
+    p = palette(dark)
+    fig = go.Figure()
+    shades = depth_shades(len(bp.bands), dark)
+    y = probit(np.asarray(bp.percentiles, dtype=float))
+    pct_txt = [f"P{q}" for q in bp.percentiles]
+
+    for band, shade in zip(bp.bands, shades):
+        group = band.label
+        fig.add_scatter(
+            x=band.total, y=y, mode="lines+markers",
+            name=f"{band.label}  (n {band.n})",
+            legendgroup=group,
+            line=dict(color=shade, width=2.0),
+            marker=dict(color=shade, size=6),
+            customdata=pct_txt,
+            hovertemplate=(f"contact {band.label} · n {band.n}"
+                           "<br>%{customdata} total %{x:.1f} MMboe<extra></extra>"),
+        )
+        if show_mean and np.isfinite(band.total_mean_p):
+            fig.add_scatter(
+                x=[band.total_mean], y=[float(probit(band.total_mean_p))],
+                mode="markers", showlegend=False, legendgroup=group,
+                marker=dict(color=shade, size=10, symbol="diamond-open",
+                            line=dict(color=shade, width=1.6)),
+                hovertemplate=(f"contact {band.label}<br>mean total %{{x:.1f}} MMboe"
+                               f"<br>exceeded {band.total_mean_p:.0f} % of the time"
+                               "<extra></extra>"),
+            )
+        if show_proven and band.proven is not None:
+            fig.add_scatter(
+                x=band.proven, y=y, mode="lines+markers",
+                showlegend=False, legendgroup=group,
+                line=dict(color=shade, width=1.6, dash="dot"),
+                marker=dict(color=p["surface"], size=5,
+                            line=dict(color=shade, width=1.4)),
+                customdata=pct_txt,
+                hovertemplate=(f"contact {band.label} · {band.n_discovery} discoveries"
+                               "<br>%{customdata} proven %{x:.1f} MMboe<extra></extra>"),
+            )
+
+    # Two style keys rather than doubling the legend: the bands are already named
+    # once each, and what a reader needs is what solid and dotted mean.
+    fig.add_scatter(
+        x=[None], y=[None], mode="lines", name="total resource (solid)",
+        line=dict(color=p["text_secondary"], width=2.0),
+    )
+    if show_proven:
+        fig.add_scatter(
+            x=[None], y=[None], mode="lines", name="proven at this well (dotted)",
+            line=dict(color=p["text_secondary"], width=1.6, dash="dot"),
+        )
+    if show_mean:
+        fig.add_scatter(
+            x=[None], y=[None], mode="markers", name="mean, at its own probability",
+            marker=dict(color=p["text_secondary"], size=10, symbol="diamond-open"),
+        )
+    if mefs:
+        # **log10, not the value.** Plotly shapes take axis *coordinates*, and on a
+        # log axis a coordinate is the exponent -- so x=103 meant 10^103 and stretched
+        # the axis to 10^96 with every curve crushed into the left edge. Traces are
+        # not affected, which is what made it look like a data problem rather than an
+        # axis one; the matplotlib twin was correct throughout because axvline takes
+        # the value.
+        _vline(fig, float(np.log10(mefs)), colour("mefs", dark), "dash",
+               f"MEFS {mefs:g}")
+
+    fig.update_layout(
+        title=("B12 · Resource by contact-depth band "
+               f"({BAND_MODE_LABELS[bp.mode]}, well {bp.z_entry:.0f}-{bp.z_exit:.0f} m)"),
+        xaxis_title="Resource (MMboe) · log scale",
+    )
+    lo, hi = bp.volume_range
+    ticks = log_ticks(lo, hi)
+    fig.update_xaxes(type="log", tickmode="array", tickvals=ticks,
+                     ticktext=log_tick_text(ticks))
+    apply_plotly(fig, dark, height)
+    probit_axis_plotly(fig)
     return fig
 
 

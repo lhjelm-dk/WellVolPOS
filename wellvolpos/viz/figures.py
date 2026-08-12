@@ -24,6 +24,8 @@ from __future__ import annotations
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.lines import Line2D
+from matplotlib.ticker import NullFormatter
 
 from ..core.chance import ELEMENTS, SCHEME_LABELS, SHIPPED_SCHEMES, allocate
 from ..core.chance import waterfall_steps as chance_waterfall_steps
@@ -33,6 +35,7 @@ from ..core.classes import (
     conditional_exceedance,
     risked_exceedance,
 )
+from ..core.bands import BAND_MODE_LABELS, BandedPercentiles
 from ..core.groups import Groups
 from ..core.reservoir import thickness_from_pay
 from ..core.stats import MIN_SUPPORT, thin
@@ -50,6 +53,11 @@ from ..core.sweep import (
 from ..io.adapters.base import TrialSet
 from .theme import (
     FAN_POS_LEVELS,
+    depth_shades,
+    log_tick_text,
+    log_ticks,
+    probit,
+    probit_axis,
     AREA_SCALES,
     SEQUENTIAL_CMAP,
     VALUE_CMAP,
@@ -1145,6 +1153,66 @@ def fig_b11_pos_sensitivity(
                  f"({reference_label(sweep.reference)})")
     ax.grid(True, lw=0.6, alpha=0.7)
     ax.legend(loc="lower right", fontsize=7.5)
+    fig.tight_layout()
+    return fig, ax
+
+
+def fig_b12_banded_percentiles(
+    bp: BandedPercentiles, *, mefs: float | None = None, show_proven: bool = True,
+    show_mean: bool = True, dark: bool = False,
+):
+    """B12 for the export path. Twin of ``pfig_b12_banded_percentiles``.
+
+    See that docstring for the argument: solid is the whole resource in a
+    contact-depth band, dotted is what this well would prove in it, colour carries
+    depth from the sequential scale, and straightness on log-probit axes is
+    lognormality. Depth is the family rather than an axis, so this figure is exempt
+    from non-negotiable 2.
+    """
+    p = palette(dark)
+    fig, ax = new_figure(figsize=(6.6, 5.4), dark=dark)
+    shades = depth_shades(len(bp.bands), dark)
+    y = probit(np.asarray(bp.percentiles, dtype=float))
+
+    for band, shade in zip(bp.bands, shades):
+        ax.plot(band.total, y, color=shade, lw=1.8, marker="o", ms=4,
+                label=f"{band.label}  (n {band.n})")
+        if show_mean and np.isfinite(band.total_mean_p):
+            ax.plot([band.total_mean], [float(probit(band.total_mean_p))],
+                    color=shade, marker="D", mfc="none", ms=7, mew=1.4, ls="none")
+        if show_proven and band.proven is not None:
+            ax.plot(band.proven, y, color=shade, lw=1.4, ls=":", marker="o", ms=3.5,
+                    mfc=p["surface"])
+
+    handles, labels = ax.get_legend_handles_labels()
+    key = [Line2D([], [], color=p["text_secondary"], lw=1.8, label="total resource (solid)")]
+    if show_proven:
+        key.append(Line2D([], [], color=p["text_secondary"], lw=1.4, ls=":",
+                          label="proven at this well (dotted)"))
+    if show_mean:
+        key.append(Line2D([], [], color=p["text_secondary"], marker="D", mfc="none",
+                          ls="none", ms=7, label="mean, at its own probability"))
+    if mefs:
+        ax.axvline(float(mefs), color=colour("mefs", dark), ls="--", lw=1.0)
+        ax.annotate(f"MEFS {mefs:g}", (float(mefs), ax.get_ylim()[1]),
+                    xytext=(3, -3), textcoords="offset points", fontsize=7,
+                    va="top", color=colour("mefs", dark))
+
+    ax.set_xscale("log")
+    # Plain numbers on the log axis: matplotlib's default "4 x 10^0" is a physicist's
+    # notation and this axis carries MMboe, which a reader wants to read as 4, 10, 20.
+    # Ticked at 1-2-5 per decade and nowhere else -- labelling every minor decade
+    # step ran the numbers into each other on prospect B's 3.6-420 MMboe range.
+    _ticks = log_ticks(*bp.volume_range)
+    ax.set_xticks(_ticks)
+    ax.set_xticklabels(log_tick_text(_ticks))
+    ax.xaxis.set_minor_formatter(NullFormatter())
+    ax.set_xlabel("Resource (MMboe) · log scale")
+    probit_axis(ax)
+    ax.set_title("B12 · Resource by contact-depth band "
+                 f"({BAND_MODE_LABELS[bp.mode]}, well {bp.z_entry:.0f}-{bp.z_exit:.0f} m)")
+    ax.grid(True, which="both", lw=0.6, alpha=0.7)
+    ax.legend(handles=handles + key, loc="lower left", fontsize=6.5)
     fig.tight_layout()
     return fig, ax
 

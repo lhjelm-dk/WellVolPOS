@@ -47,6 +47,7 @@ from __future__ import annotations
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.special import ndtri
 
 # --------------------------------------------------------------- palette
 # The hues follow Lars's teaching figure; the *lightness* of each was then tuned
@@ -490,3 +491,96 @@ def reference_label(reference) -> str:
     """``'crest-referenced'`` / ``'P90-area-referenced'`` from an enum or a string."""
     value = getattr(reference, "value", reference)
     return REFERENCE_SHORT.get(str(value), str(value))
+
+# --------------------------------------------------------- log-probit axes
+#: The exceedance percentiles the probit grid is ruled at. Fixed, and deliberately
+#: *not* the ladder a given figure ends up drawing (see
+#: :func:`wellvolpos.core.bands.supported_percentiles`): two figures with
+#: different trial counts must still share a y grid, or they cannot be compared.
+PROBIT_TICKS = (99, 95, 90, 75, 50, 25, 10, 5, 1)
+
+#: A little beyond the outermost tick, so P99 and P1 are not on the frame.
+PROBIT_PAD = 0.4
+
+
+def probit(p):
+    """Probit coordinate of a probability in *percent*.
+
+    ``ndtri`` is the inverse standard-normal CDF, the same spelling
+    :mod:`wellvolpos.io.synthetic` uses. Straightness on a log-probit plot is
+    lognormality, which is the whole reason for the transform: it turns a
+    distributional claim into a question about a ruler.
+    """
+    a = np.clip(np.asarray(p, dtype=float) / 100.0, 1e-6, 1 - 1e-6)
+    return ndtri(a)
+
+
+def probit_axis_plotly(fig, *, title="Exceedance probability", ticks=PROBIT_TICKS):
+    """Rule a plotly y-axis as an exceedance-probability probit scale.
+
+    P99 sits at the top and P1 at the bottom, because a **P90 is a small volume**
+    under this project's exceedance convention -- so volume increasing rightward
+    makes every curve descend. Schneider et al. (2023) Figure 9 runs the other
+    way, on cumulative-less-than percentiles; it is the same distribution read
+    from the other end, and the axis title says which is on screen.
+    """
+    fig.update_yaxes(
+        title=title,
+        tickmode="array",
+        tickvals=[float(probit(t)) for t in ticks],
+        ticktext=[f"P{t}" for t in ticks],
+        range=[float(probit(min(ticks))) - PROBIT_PAD,
+               float(probit(max(ticks))) + PROBIT_PAD],
+        autorange=False,
+    )
+    return fig
+
+
+def probit_axis(ax, *, ylabel="Exceedance probability", ticks=PROBIT_TICKS):
+    """The matplotlib twin of :func:`probit_axis_plotly`."""
+    ax.set_ylabel(ylabel)
+    ax.set_yticks([float(probit(t)) for t in ticks])
+    ax.set_yticklabels([f"P{t}" for t in ticks])
+    ax.set_ylim(float(probit(min(ticks))) - PROBIT_PAD,
+                float(probit(max(ticks))) + PROBIT_PAD)
+    return ax
+
+
+def depth_shades(n: int, dark: bool = False, *, lo: float = 0.32, hi: float = 0.95):
+    """``n`` hex colours from the sequential scale, shallow (light) to deep (dark).
+
+    The sanctioned use of :data:`SEQUENTIAL_CMAP`: depth here is a *quantity* with
+    an order, so one hue light-to-dark is exactly right and a categorical cycle
+    would be exactly wrong. Sampling starts at ``lo`` rather than at 0 because
+    the pale end of a single-hue scale is invisible on white.
+
+    Drawn from matplotlib rather than from plotly's copy of the same scale so the
+    two backends cannot pick different blues for the same band.
+    """
+    import matplotlib as mpl
+
+    cmap = mpl.colormaps[SEQUENTIAL_CMAP]
+    if n <= 1:
+        return [mpl.colors.to_hex(cmap(hi))]
+    return [mpl.colors.to_hex(cmap(t)) for t in np.linspace(lo, hi, int(n))]
+
+def log_ticks(lo: float, hi: float, *, subs=(1.0, 2.0, 5.0)):
+    """Tick values for a logarithmic *volume* axis: 1-2-5 per decade, as plain numbers.
+
+    Both backends label a log axis badly by default and badly in different ways --
+    matplotlib writes ``4 x 10^0``, which is a physicist's notation for an axis
+    carrying MMboe, and plotly labels every minor decade step, which ran the numbers
+    into each other across prospect B's 3.6-420 MMboe range. Shared from here so the
+    two cannot drift, since a figure and its export twin disagreeing about the ticks
+    is the same defect as disagreeing about the data.
+    """
+    lo, hi = float(min(lo, hi)), float(max(lo, hi))
+    d0 = int(np.floor(np.log10(lo))) - 1
+    d1 = int(np.ceil(np.log10(hi))) + 1
+    vals = [s * 10.0 ** d for d in range(d0, d1 + 1) for s in subs]
+    return [v for v in vals if lo / 2.0 <= v <= hi * 2.0]
+
+
+def log_tick_text(vals):
+    """Plain labels for :func:`log_ticks` -- no exponents, no trailing zeros."""
+    return [f"{v:g}" for v in vals]

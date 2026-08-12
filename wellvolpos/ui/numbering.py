@@ -46,6 +46,7 @@ FIGURE_NUMBERS = {
     "b8": "3.9",
     "b9": "3.10",
     "b6": "3.11",
+    "b12": "3.12",
     # ④ At this well
     "c1": "4.1",
     "c2": "4.2",
@@ -63,6 +64,7 @@ LEGACY_CODE = {
     "a1": "A1", "a2": "A2", "a3": "A3", "a4": "A4", "a5": "A5", "a6": "A6",
     "a8": "A8", "a9": "A9", "b0": "B0", "b1": "B1", "b2": "B2", "b3": "B3",
     "b4": "B4", "b5": "B5", "b6": "B6", "b7": "B7", "b8": "B8", "b9": "B9",
+    "b11": "B11", "b12": "B12",
     "c1": "C1", "c2": "C2",
 }
 
@@ -120,7 +122,7 @@ FIGURE_GUIDE = {
            "volumes are identical between the two; only the probability attached to them "
            "changes, and the risked one is what a portfolio adds up."),
     "a9": ("prospect resource density",
-           "The same distribution 2.3 draws as a curve, drawn as a shape. Where the mass "
+           "The same distribution {a5} draws as a curve, drawn as a shape. Where the mass "
            "sits, how long the tail is, and how far the mean sits from the P50."),
     "a8": ("contact distribution and P(deeper)",
            "The HCWC distribution read back out of the trials, with the inverse cumulative "
@@ -168,6 +170,11 @@ FIGURE_GUIDE = {
            "the target all the way down. The grey family is the spread of contacts consistent "
            "with the same volume, on borrowed axes, so where the two families cross means "
            "nothing."),
+    "b12": ("resource by contact-depth band",
+            "One resource distribution per contact-depth interval, on log-probit axes where a "
+            "lognormal is a straight line. Solid is the whole resource in the band, dotted is "
+            "what this well would prove in it — so where the dotted curve peels away from the "
+            "solid one is where going deeper stops buying proven volume."),
     "c1": ("the structure, with the volume classes",
            "Where each volume sits in the structure at this well. Read as a pair with 4.2."),
     "c2": ("the same volumes as exceedance curves",

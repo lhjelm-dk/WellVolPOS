@@ -41,6 +41,7 @@ from .conventions import (
 )
 from .common import chart as _chart, split_caveat
 from .context import Ctx
+from .numbering import ref as fig_ref
 
 
 def render(ctx: Ctx) -> None:
@@ -159,7 +160,8 @@ def render(ctx: Ctx) -> None:
 
     if not has_area:
         st.warning(
-            "No productive-area column in this export — the map view, A1, A4 and A5 need it "
+            f"No productive-area column in this export — the map view, {fig_ref('{a1}')}, "
+            f"{fig_ref('{a4}')} and {fig_ref('{a5}')} need it "
             "and are skipped."
         )
     else:
@@ -210,21 +212,23 @@ def render(ctx: Ctx) -> None:
                 zlim=zrow_prospect,
             ), key="a4")
         st.caption(
-            f"**A1** now carries the reservoir too: top reservoir is A(z), and the base is that "
+            f"**{fig_ref('{a1}')}** now carries the reservoir too: top reservoir is A(z), and the base is that "
             f"curve shifted down by the thickness back-calculated from pay — drawn four times, "
             f"P90/P50/mean/P10, because that thickness is a distribution and one base line "
             f"implied a surface the trials do not support. The three shaded classes are the same "
-            f"colours C2 uses below. **A4**'s grid default is "
+            f"colours {fig_ref('{c2}')} uses below. **{fig_ref('{a4}')}**'s grid default is "
             f"{_auto_r} × {_auto_z} from Freedman–Diaconis per axis; counts are on a log scale "
             f"either way, because the modal cell holds two orders of magnitude more trials than "
             f"the tails and the tails are where a location question lives.\n\n"
-            f"A1 and A4 are stacked rather than side by side, and still share one depth range "
+            f"{fig_ref('{a1}')} and {fig_ref('{a4}')} are stacked rather than side by side, and "
+            f"still share one depth range "
             f"({zrow_prospect[0]:.0f}–{zrow_prospect[1]:.0f} m TVDSS) — so they read straight "
             f"**down** at constant depth instead of across, which costs nothing because neither "
             f"needs the other's x-axis and buys both of them full width. Both draw the mean thick "
             f"and the P90/P50/P10 family "
             f"thin and grey — the mean is the number that gets quoted, and on a skewed distribution "
-            f"it is not the P50. A4 uses success trials only: the chance-failure zeros belong to "
+            f"it is not the P50. {fig_ref('{a4}')} uses success trials only: the chance-failure "
+            f"zeros belong to "
             f"POS, not to the shape of the resource distribution."
         )
 
@@ -238,7 +242,7 @@ def render(ctx: Ctx) -> None:
                 ts, groups, vc, mefs=mefs, pos_prospect=chance.pos_prospect,
             ), key="a5")
         st.caption(
-            f"**A5 — the prospect's resource, both readings.** The **solid** curve is "
+            f"**{fig_ref('{a5}')} — the prospect's resource, both readings.** The **solid** curve is "
             f"*conditional*: the success case, given the prospect works. It starts at 100 % and "
             f"it is where the percentiles live — that is what anyone means by \"the P50\". The "
             f"**dashed** curve is *unconditional* (risked): the same volumes with POS_prospect "
@@ -251,7 +255,7 @@ def render(ctx: Ctx) -> None:
         # The numbers behind A5, in both readings (Lars, 2026-08-11). One row per
         # case and statistic, long-form rather than a wide grid, so that every cell
         # is labelled and nothing has to be inferred from a column header.
-        st.markdown("**The numbers behind A5**")
+        st.markdown(fig_ref("**The numbers behind {a5}**"))
         # Prospect only, matching the figure above it. The other three cases are
         # well results and moved to tab ④ with the rest of them; leaving them here
         # was the same leftover as A5's missing chance -- the well was taken out of
@@ -288,7 +292,8 @@ def render(ctx: Ctx) -> None:
             "*given the case happens*, which is why P90 reads 90 % and P50 reads 50 % — that is "
             "the definition of a percentile, and it is the distribution the industry quotes. "
             "**Risked** is the unconditional one: the same volume, multiplied by the chance the "
-            "case happens at all. Solid curves in A5 are the unrisked reading, dashed are the "
+            f"case happens at all. Solid curves in {fig_ref('{a5}')} are the unrisked reading, "
+            f"dashed are the "
             "risked one.\n\n"
             "**Pmean is not a percentile.** It is the arithmetic mean, and its unrisked "
             "probability is wherever it happens to fall on the curve — above P50 on a "
@@ -300,8 +305,10 @@ def render(ctx: Ctx) -> None:
         _chart(pfig_a9_prospect_density(ts, mefs=mefs), key="a9")
         _a9_vals = res_all[res_all > 0]
         st.caption(
-            f"**A9** — the same distribution A5 draws as a curve, drawn as a shape. A5 answers "
-            f"*how likely is at least this much*; A9 answers *where does the mass actually sit*, "
+            f"**{fig_ref('{a9}')}** — the same distribution {fig_ref('{a5}')} draws as a curve, "
+            f"drawn as a shape. {fig_ref('{a5}')} answers "
+            f"*how likely is at least this much*; {fig_ref('{a9}')} answers *where does the mass "
+            f"actually sit*, "
             f"which is the question a long right tail makes hard to read off a cumulative curve. "
             f"The **mean is drawn thicker than the P50** because on a right-skewed resource "
             f"distribution they are different numbers and the mean is the one that gets quoted — "
@@ -313,10 +320,12 @@ def render(ctx: Ctx) -> None:
         st.divider()
         _chart(pfig_a8_contact_distribution(ts), key="a8")
         st.caption(
-            "**A8** — the contact distribution recovered from the trials, and `P(contact deeper "
+            f"**{fig_ref('{a8}')}** — the contact distribution recovered from the trials, and "
+            f"`P(contact deeper "
             "than this depth)` over it. Read a depth off the y-axis and the line gives the "
             "fraction of success trials whose contact lies below it, which **is** `r_location` at "
-            "that entry, crest-referenced. So A8 is A3's raw material shown as a distribution "
+            f"that entry, crest-referenced. So {fig_ref('{a8}')} is {fig_ref('{a3}')}'s raw "
+            f"material shown as a distribution "
             "instead of as a chance curve, and the two agree at every depth by construction. "
             "This distribution is what the HCWC Builder produces and GeoX consumes; every "
             "location result in this tool ultimately rests on its shape."

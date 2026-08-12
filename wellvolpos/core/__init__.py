@@ -1,3 +1,13 @@
+from .bands import (
+    BAND_MODES,
+    BAND_MODE_LABELS,
+    BAND_PERCENTILES,
+    BandedPercentiles,
+    DEFAULT_N_BANDS,
+    DepthBand,
+    banded_percentiles,
+    supported_percentiles,
+)
 from .chance import (
     RiskSummary,
     SUMMARY_COLUMNS,
@@ -70,6 +80,8 @@ from .threshold import (
 )
 
 __all__ = [
+    "BAND_MODES", "BAND_MODE_LABELS", "BAND_PERCENTILES", "DEFAULT_N_BANDS",
+    "BandedPercentiles", "DepthBand", "banded_percentiles", "supported_percentiles",
     "AreaDepth", "group_trials", "group_summary", "split_trials", "class_summary",
     "check_area_pay_correlation",
     "class_percentiles",

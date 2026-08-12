@@ -30,6 +30,7 @@ from .figures import (
     fig_a9_prospect_density,
     fig_b9_chance_weighted,
     fig_b11_pos_sensitivity,
+    fig_b12_banded_percentiles,
 )
 from .interactive import (
     AREA_SCALES,
@@ -53,6 +54,7 @@ from .interactive import (
     pfig_a9_prospect_density,
     pfig_b9_chance_weighted,
     pfig_b11_pos_sensitivity,
+    pfig_b12_banded_percentiles,
     suggest_grid,
     pfig_c1_section,
     pfig_c2_exceedance,

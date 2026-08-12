@@ -20,7 +20,11 @@ import numpy as np
 import streamlit as st
 
 from ..core import (
+    BAND_MODES,
+    BAND_MODE_LABELS,
+    DEFAULT_N_BANDS,
     MIN_SUPPORT,
+    banded_percentiles,
     describe_support,
     TARGET_STATISTIC_LABELS,
     TARGET_STATISTICS,
@@ -41,6 +45,7 @@ from ..viz import (
     pfig_b8_commercial_chance,
     pfig_b9_chance_weighted,
     pfig_b11_pos_sensitivity,
+    pfig_b12_banded_percentiles,
     row_zlim,
 )
 from .common import chart as _chart, split_caveat
@@ -96,7 +101,7 @@ def _inverse_section(vsweep, ts, mefs):
         lo_t, hi_t, default_t, max((hi_t - lo_t) / 100.0, 0.01),
         help=(
             "The proven volume the well must establish, measured by the statistic chosen "
-            "above. B6 returns the shallowest entry depth from which that statistic stays "
+            f"above. {fig_ref('{b6}')} returns the shallowest entry depth from which that statistic stays "
             "at or above it all the way down — a guarantee rather than a first touch, "
             "because the sampled curve dips where the discovery group is small. The range "
             "covers only well-supported volumes."
@@ -225,13 +230,14 @@ def _location_sweep_tab(ctx: Ctx):
     )
     st.caption(
         f"Haskett (2003) optimum: {sweep.reduction_optimum:.0f}% expected uncertainty reduction "
-        f"at entry {sweep.z_optimum:.1f} m TVDSS. A2's exit is a hypothetical entry + "
+        f"at entry {sweep.z_optimum:.1f} m TVDSS. {fig_ref('{a2}')}'s exit is a hypothetical entry + "
         f"{sweep.z_gap:.0f} m, swept alongside entry — it does not affect r_location or P_well. "
         f"All panels share {zrow_sweep[0]:.0f}–{zrow_sweep[1]:.0f} m TVDSS."
     )
 
     if not has_area:
-        st.warning("No productive-area column in this export — B0, B1 and B2 need it and are skipped.")
+        st.warning(fig_ref("No productive-area column in this export — {b0}, {b1} and {b2} "
+                           "need it and are skipped."))
         return
 
     st.divider()
@@ -256,8 +262,10 @@ def _location_sweep_tab(ctx: Ctx):
     sup_disc = describe_support(vsweep.n_discovery, vsweep.z, name="discovery")
     sup_dry = describe_support(vsweep.n_dry, vsweep.z, name="dry-with-attic")
     st.caption(
-        f"B1/B2 sweep entry with a fixed {vsweep.z_gap:.0f} m entry-to-exit spacing, on the same "
-        f"depth range as the row above. B2's dotted rule marks where those two particular curves "
+        f"{fig_ref('{b1}')}/{fig_ref('{b2}')} sweep entry with a fixed {vsweep.z_gap:.0f} m "
+        f"entry-to-exit spacing, on the same "
+        f"depth range as the row above. {fig_ref('{b2}')}'s dotted rule marks where those two "
+        f"particular curves "
         f"meet — it is not a risked comparison, since P_well is unconditional and the regret "
         f"curve is conditional on a dry *and* charged outcome. {sup_disc.message()} "
         f"{sup_dry.message()}"
@@ -299,21 +307,24 @@ def _location_sweep_tab(ctx: Ctx):
         _chart(pfig_b8_commercial_chance(vsweep, current_z=entry, zlim=zrow_sweep), key="b8")
     _chart(pfig_b9_chance_weighted(vsweep, current_z=entry, zlim=zrow_sweep), key="b9")
     st.caption(
-        "**B9 — the targeting tool.** `P_well × mean volume`, swept: a falling curve times a "
+        f"**{fig_ref('{b9}')} — the targeting tool.** `P_well × mean volume`, swept: a falling curve times a "
         "rising one, so it peaks somewhere in between and that depth maximises the expectation. "
         "It is drawn for the proven volume and for the whole well-associated volume, which peak "
         "in different places — the gap between those two stars is the exit depth's doing.\n\n"
         "**An expected value describes no outcome that can happen.** The well finds something "
         "near the success-case mean or it finds nothing; it never finds the chance-weighted "
-        "number. Use B9 to *rank* locations and B1 or B7 to say how big the prize is."
+        f"number. Use {fig_ref('{b9}')} to *rank* locations and {fig_ref('{b1}')} or "
+        f"{fig_ref('{b7}')} to say how big the prize is."
     )
     st.caption(
-        "**B7** is the workbook's *Well POS vs. Well to be tested Mean Resource*, and it is the "
+        f"**{fig_ref('{b7}')}** is the workbook's *Well POS vs. Well to be tested Mean Resource*, "
+        f"and it is the "
         "most direct statement of what this tool is about: moving the well down-dip **buys volume "
         "with chance**. Read it as an efficient frontier — up and to the right is better and "
         "unavailable — with the depth labels giving the rate of exchange in metres. Neither axis is "
         "a depth, so this figure is exempt from the depth rule.\n\n"
-        "**B8** puts the workbook's two MEFS charts on one pair of axes, because the difference "
+        f"**{fig_ref('{b8}')}** puts the workbook's two MEFS charts on one pair of axes, because "
+        f"the difference "
         "between them *is* the content. `Pmcfs(well)` **rises** down-dip — a deeper well finds a "
         "bigger accumulation — and is **conditional** on a discovery. `P_well` **falls** down-dip. "
         "Their product `Pc(well) = P_well × Pmcfs(well)` is **unconditional**: the chance of a "
@@ -325,5 +336,115 @@ def _location_sweep_tab(ctx: Ctx):
     _inverse_section(vsweep, ts, mefs)
 
 
+
+@st.fragment
+def _band_section(ctx: Ctx):
+    """B12, in its own fragment.
+
+    Its controls only change how the same trials are cut, so re-running either sweep
+    for them would be pure waste -- and the banding itself is a couple of
+    ``np.percentile`` calls, so this redraws instantly.
+    """
+    st.divider()
+    st.subheader("Resource by contact-depth band")
+    ts, groups, vc = ctx.ts, ctx.groups, ctx.vc
+    entry, exit_, mefs = ctx.entry, ctx.exit_, ctx.mefs
+    split_caveat(ctx)
+
+    cb1, cb2, cb3 = st.columns([1.4, 1, 1])
+    with cb1:
+        # An explicit setting, not a default buried in code (non-negotiable 5): the
+        # two modes answer the same question about different populations, and which
+        # one is on screen changes the depth interval in every legend entry.
+        mode = st.radio(
+            "Band the contacts by", list(BAND_MODES), horizontal=True, key="w_b12_mode",
+            format_func=lambda k: BAND_MODE_LABELS[k],
+            help=(
+                "Equal trial count gives every band the same number of trials, so the "
+                "percentile ladder is uniformly supported and the intervals vary. Equal "
+                "depth interval is easier to read against a structural section, but the "
+                "contact distribution is not uniform, so the shallow and deep bands come "
+                "out thin and the ladder is gated by the thinnest of them."
+            ),
+        )
+    with cb2:
+        if mode == "equal_count":
+            n_bands = st.number_input("Bands", 3, 10, DEFAULT_N_BANDS, 1, key="w_b12_n")
+            interval = None
+        else:
+            n_bands = DEFAULT_N_BANDS
+            interval = st.number_input("Interval (m)", 10.0, 400.0, 50.0, 10.0,
+                                       key="w_b12_int")
+    with cb3:
+        show_proven = st.checkbox("Proven at this well", True, key="w_b12_proven")
+        show_mean = st.checkbox("Mean markers", True, key="w_b12_mean")
+
+    try:
+        bp = banded_percentiles(
+            ts, groups, vc, z_entry=entry, z_exit=exit_, mode=mode,
+            n_bands=int(n_bands), interval_m=interval,
+        )
+    except ValueError as exc:
+        st.warning(str(exc))
+        return
+
+    _chart(pfig_b12_banded_percentiles(bp, mefs=mefs, show_proven=show_proven,
+                                       show_mean=show_mean), key="b12")
+
+    dropped = ""
+    if bp.n_bands_dropped:
+        dropped = (f" {bp.n_bands_dropped} band(s) held fewer than {MIN_SUPPORT} trials "
+                   "and are not drawn.")
+    peel = _peel_note(bp) if show_proven else ""
+    ladder = ", ".join("P" + str(q) for q in bp.percentiles)
+    st.caption(
+        f"**{fig_ref('{b12}')} — the prospect cut by where the contact lands.** Schneider's "
+        "Figure 9 with the parameterisation changed: he draws one distribution per "
+        "*productive-area increment*, this draws one per **contact-depth interval**. Area is a "
+        "deterministic function of contact depth here, so the two band the same trials — but a "
+        "depth is what a well chooses, and an area is not."
+        "\n\n"
+        "**Solid is the whole resource in the band; dotted is the part this well would prove.** "
+        f"The well entry — **{entry:.0f} m** — is always a band boundary, so no band mixes dry "
+        "trials with discoveries and the bands above the entry have no dotted curve at all: "
+        f"nothing is proven there.{peel}"
+        "\n\n"
+        "**The axes are log–probit, so a lognormal is a straight line.** A family that is straight "
+        "and parallel says the bands differ by a scale factor and nothing else; curvature says the "
+        "shape itself changes with depth. The open diamond is each band's **mean at its own "
+        "exceedance probability** — a mean is not a percentile, and drawing it at the probability "
+        "it actually has is what lets it share these axes. Percentiles are exceedance throughout: "
+        "P99 is a small volume, P1 a large one."
+        "\n\n"
+        f"Ladder drawn: {ladder} — a percentile is only reported where at least two trials fall "
+        "beyond it, gated once on the thinnest series so that every band reports the same points."
+        f"{dropped} The MEFS rule is a reference line: each band's crossing of it *is* "
+        "`P(resource > MEFS | contact in that band)`, read straight off the probability axis. It "
+        "never truncates a distribution."
+    )
+
+
+def _peel_note(bp) -> str:
+    """One sentence naming what a deeper contact costs in *proof*.
+
+    The figure's decision content, put in numbers rather than left to the eye: the
+    total keeps growing down-dip and the proven part does not, so the ratio at the
+    P50 falls. Compared between the shallowest and deepest bands that have a proven
+    curve at all.
+    """
+    withp = [b for b in bp.bands if b.proven is not None and b.proven.size]
+    if len(withp) < 2 or 50 not in bp.percentiles:
+        return ""
+    i = bp.percentiles.index(50)
+    shallow, deep = withp[0], withp[-1]
+    f_shallow = float(shallow.proven[i]) / float(shallow.total[i])
+    f_deep = float(deep.proven[i]) / float(deep.total[i])
+    return (f" At the P50 this well proves **{f_shallow:.0%}** of the {shallow.label} "
+            f"band's resource but only **{f_deep:.0%}** of the {deep.label} band's — the "
+            "widening gap between the two families is what a deeper contact costs in "
+            "*proof*, on top of what it already cost in chance.")
+
+
 def render(ctx: Ctx) -> None:
     _location_sweep_tab(ctx)
+    _band_section(ctx)

@@ -130,10 +130,10 @@ def render(ctx: Ctx) -> None:
     )
 
     if not has_area:
-        st.warning(
-            "No productive-area column in this export — the proven/possible split, A6 and the "
-            "live section need it and are skipped."
-        )
+        st.warning(fig_ref(
+            "No productive-area column in this export — the proven/possible split, {a6} and "
+            "the live section need it and are skipped."
+        ))
     else:
         st.divider()
         st.markdown("### Volume classes")
@@ -242,8 +242,9 @@ def render(ctx: Ctx) -> None:
                 f"The chance column counts trials: {int(stats[1][1]['n']):,} of {ts.n_trials:,} "
                 f"are well associated, so **{_counts_chance:.1%}** — the *file's* chance. The app is "
                 f"using **P_well = {chance.p_well:.1%}**, because the risking convention in tab ② "
-                f"says the chance comes from the chance table rather than from the trials. C1's "
-                f"dashed curves and every figure use P_well; this column is the raw count."
+                f"says the chance comes from the chance table rather than from the trials. "
+                f"{fig_ref('{c1}')}'s dashed curves and every figure use P_well; this column is "
+                f"the raw count."
             )
         st.divider()
         # Two figures, one above the other (Lars, 2026-08-11). They were one stacked
@@ -344,7 +345,7 @@ def render(ctx: Ctx) -> None:
             f"argument. The other two are the same overlap read from each side."
         )
         st.caption(
-            "A6 — Schneider et al.'s 'surprising overlap' between what a dry hole leaves in the "
+            f"{fig_ref('{a6}')} — Schneider et al.'s 'surprising overlap' between what a dry hole leaves in the "
             "attic and what a discovery proves. Live section — the closure shape from A(z), "
             "colour-keyed to what the well now standing at entry/exit would prove."
         )
