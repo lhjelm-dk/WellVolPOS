@@ -542,3 +542,65 @@ def test_the_geometric_reading_is_carried_but_is_not_a_threshold_curve(reduced, 
     assert ok.any()
     v = vs.p_well_exits_in_hc[ok]
     assert np.all((v >= 0.0) & (v <= 1.0))
+
+
+def test_uncertainty_reduction_conditions_on_success_like_r_location_does(reduced):
+    """The parent range must exclude the chance failures.
+
+    Taken over every trial, a file with 23.9 % zero-volume rows has a parent P90 of
+    exactly 0.00, which inflates the parent P10-P90 range from 13.46 to 19.42 MMboe.
+    What the curve then mostly measures is "we learned it was not a chance failure" --
+    which a well at *any* depth tells you equally, so it carries no location signal at
+    all, and it dominated the one that does.
+
+    Measured on this file, the difference is 92 m of recommended depth and nearly a
+    factor of two in the headline percentage:
+
+        parent over all trials     optimum 3417.2 m, 50.4 %, P(deeper) = 0.734
+        parent over success cases  optimum 3510.9 m, 26.3 %, P(deeper) = 0.486
+
+    Conditioned, it lands on the **median success contact** -- the even split, which
+    is what a balanced binary learning event should give. Unconditioned it pushed the
+    recommendation toward the crest, against everything else the tool argues.
+
+    The conditioning is not a new convention: ``r_location`` already drops the chance
+    failures, because a chance failure is a property of the prospect and not of where
+    the well goes.
+    """
+    import numpy as np
+
+    from wellvolpos.core import run_sweep
+
+    sweep = run_sweep(reduced, 0.7605, z_gap=50.0)
+    res = reduced.col("resource")
+    contact = reduced.col("contact")
+    assert (res <= 0).any(), "this test needs the file with chance failures"
+
+    # The optimum sits on the median success contact, not up-dip of it.
+    median = float(np.median(contact[res > 0]))
+    assert abs(sweep.z_optimum - median) < 5.0, (sweep.z_optimum, median)
+
+    # And r there is an even split, which is the mechanism.
+    r_at = float(np.interp(sweep.z_optimum, sweep.z, sweep.r_location))
+    assert 0.4 < r_at < 0.6, r_at
+
+    # The parent range the percentages are relative to is the conditional one, so the
+    # reduction cannot be inflated by the zeros: over all trials it would exceed 40 %.
+    assert sweep.reduction_optimum < 35.0, sweep.reduction_optimum
+
+
+def test_uncertainty_reduction_is_unchanged_on_a_file_with_no_chance_failures(full):
+    """The conditioning is a no-op where there is nothing to condition away.
+
+    Which is exactly why the defect survived: the two demo files disagree about
+    whether it matters, so one of them always looked right.
+    """
+    from wellvolpos.core import run_sweep
+
+    res = full.col("resource")
+    if (res <= 0).any():
+        import pytest
+
+        pytest.skip("this fixture carries chance failures")
+    sweep = run_sweep(full, 0.9, z_gap=50.0)
+    assert 0.0 < sweep.reduction_optimum < 100.0

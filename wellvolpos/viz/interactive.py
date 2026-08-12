@@ -1223,13 +1223,45 @@ def pfig_b2_chance_vs_regret(
 
 # ------------------------------------------------------------------- B3
 def pfig_b3_uncertainty_reduction(
-    sweep: Sweep, *, current_z: float | None = None, zlim: tuple[float, float] | None = None,
-    show_depth_labels: bool = True, dark: bool = False, height: int | None = PANEL_HEIGHT,
+    sweep: Sweep, *, current_z: float | None = None,
+    zlim: tuple[float, float] | None = None, show_depth_labels: bool = True,
+    dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
-    """B3 -- Haskett (2003) uncertainty reduction vs entry depth, optimum marked.
+    """B3 -- how much a well at each depth would *tell you*, not what it is worth.
 
-    The optimum is ``sweep.z_optimum``, found by argmax over the swept grid
-    rather than eyeballed.
+    The expected reduction in the prospect's **P10-P90 range** from learning which
+    side of the well the hydrocarbon-water contact falls on. At each depth the trials
+    split into "contact deeper" and "contact shallower" -- mutually exclusive and
+    exhaustive, which is Haskett's *discrete learning* -- and the two posterior
+    ranges are weighted by how likely each branch is.
+
+    **Haskett's measure, not Haskett's setting** (clarified with Lars, 2026-08-12).
+    His paper is about **appraisal**: a discovery exists and you are choosing where
+    well *two* goes. He says so directly -- *"Appraisal activities must be
+    distinguished from exploration and development activities... In order to appraise
+    there first needs to be a successful exploration effort."* This tool is choosing
+    where well *one* goes, and in that setting one branch of the split is a dry hole.
+    So the machinery transfers and the conclusion does not:
+
+    * The **P10-P90 range as a proxy for variance** is Haskett's own recommendation,
+      made because *"the ideal situation would have all team members fully statistics
+      literate... This ideal state is rare."* Using it here is faithful to him.
+    * **The optimum is the most *informative* depth, not the best one.** The measure
+      values learning "dry" exactly as much as learning "large", so it peaks near the
+      **median contact**, where the split is most evenly balanced. That is where a
+      well best resolves *where the contact is* -- a real and useful thing, and not
+      the same question as where a well is worth drilling. For value, read B9
+      (chance-weighted expectation) or B8 (commercial chance).
+    * **Haskett's variance additivity does not hold as he states it.** He writes that
+      *"the risked variance of the two child distributions will sum to equal the
+      variance of the parent"* and offers it as a validity check. The mean is
+      additive; the variance is not. ``Var(X) = E[Var(X|G)] + Var(E[X|G])``, and
+      probability-weighting the child variances recovers only the first term --
+      measured at 45-55 % of the parent on this data. The missing between-group term
+      is precisely the uncertainty that learning the branch *resolves*, so his check
+      would flag a correct calculation as an error.
+
+    Depth on y, inverted, like every other swept figure.
     """
     p = palette(dark)
     c = colour("p_well", dark)
@@ -1253,7 +1285,8 @@ def pfig_b3_uncertainty_reduction(
 
     top = float(np.nanmax(sweep.uncertainty_reduction)) if np.isfinite(sweep.uncertainty_reduction).any() else 5.0
     fig.update_layout(
-        title="B3 · Uncertainty reduction vs location (Haskett 2003)",
+        title=("B3 · How much a well here would tell you — expected reduction in the "
+               "prospect's P10–P90 range"),
         xaxis_title="Expected uncertainty reduction (%)", showlegend=False,
     )
     fig.update_xaxes(range=[0, max(5.0, top * 1.25)])
@@ -2308,9 +2341,10 @@ def pfig_b7_frontier(
     closure none do -- which is the point: there is no free lunch, only a rate of
     exchange, and this figure is where you read that rate.
 
-    ``x`` is the **well-associated** mean (Rose's *Downdip*, the whole accumulation
-    given a discovery) because that is what the workbook plots and what a well
-    proposal is written against. The proven mean is drawn beside it as a lighter
+    ``x`` is the **well-associated** mean -- the whole accumulation given a discovery,
+    crest to contact -- because that is what a well proposal is written against. It is
+    *not* Rose's "downdip" volume: he partitions the closure at the well, so his
+    downdip is only the part below it (49.65 against 171.69 MMboe on prospect B). The proven mean is drawn beside it as a lighter
     line, since the two answer "what would I find" and "what would I have proven".
 
     ``chance_scale`` switches the **chance** axis between ``"linear"`` and ``"log"``

@@ -90,7 +90,10 @@ def render(ctx: Ctx) -> None:
         k[0].metric("Proven mean — headline KPI", f"{cs['proven']['mean']:.2f}",
                     help="What this well would establish between entry and exit.")
         k[1].metric("Well associated mean", f"{gs['discovery']['mean']:.2f}",
-                    help="The whole accumulation given a discovery — Rose's 'Downdip'.")
+                    help="The whole accumulation given a discovery: crest to contact, "
+                         "which is proven + possible. NOT Rose's 'downdip' volume — his "
+                         "partitions the closure at the well, so his downdip is only the "
+                         "part BELOW it. See tab ⑥.")
         k[2].metric("Attic mean — if dry but charged", f"{cs['attic_dry_hole']['mean']:.2f}",
                     help="What is left up-dip if the well is dry but the prospect is charged.")
         if _atw_n:

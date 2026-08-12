@@ -970,7 +970,8 @@ def fig_b3_uncertainty_reduction(sweep: Sweep, *, current_z: float | None = None
     top = float(np.nanmax(sweep.uncertainty_reduction)) if np.isfinite(sweep.uncertainty_reduction).any() else 5.0
     ax.set_xlim(0, max(5.0, top * 1.15))
     ax.set_xlabel("Expected uncertainty reduction (%)")
-    ax.set_title("B3 · Uncertainty reduction vs location (Haskett 2003)")
+    ax.set_title("B3 · How much a well here would tell you — expected reduction "
+                 "in the prospect's P10–P90 range")
     fig.tight_layout()
     return fig, ax
 

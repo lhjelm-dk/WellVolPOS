@@ -124,13 +124,33 @@ def run_sweep(
 
     The A2 outcome shares are risked onto ``pos_prospect``, so they always
     partition to 1.0 and their discovery mass always equals ``p_well``. The
-    Haskett curve, by contrast, is computed from the trial masks directly: it
-    is a statement about how much the *trial set's* spread collapses on each
-    outcome, which the entered POS does not change.
+    uncertainty-reduction curve, by contrast, is computed from the trial masks
+    directly: it is a statement about how much the *trial set's* spread collapses on
+    each outcome, which the entered POS does not change.
+
+    That curve is taken over the **success cases only**, for the same reason
+    ``r_location`` is: a chance failure is a property of the prospect rather than of
+    where the well goes. Over every trial, a file with 23.9 % failures has a parent
+    P90 of exactly zero, and the curve then mostly measures "we learned it was not a
+    chance failure" -- which any depth tells you equally. On the reference file that
+    moved the optimum 92 m up-dip; conditioned, it lands on the median contact.
     """
     res = ts.col("resource")
     z = _sweep_grid(ts, z_min, z_max, n)
-    prospect_spread = _spread(res)
+    # **The uncertainty-reduction curve is computed on the success cases only.**
+    # Taken over every trial, a file with chance failures has a parent P90 of exactly
+    # zero, which inflates the parent range (13.46 -> 19.42 MMboe on the reference
+    # file) and makes the curve mostly measure "we learned it was not a chance
+    # failure" -- something a well at any depth tells you equally, so not a location
+    # signal. It moved the reported optimum 92 m toward the crest, and the reduction
+    # from 26.4 % to 50.4 %.
+    #
+    # Conditioning here is the same decision `r_location` already makes: a chance
+    # failure is a property of the prospect, not of where the well goes, and it is
+    # carried by POS_prospect. A file with no zero-volume trials is unaffected.
+    learn = res > 0.0
+    res_learn = res[learn]
+    prospect_spread = _spread(res_learn)
 
     r = np.empty(z.size)
     pw = np.empty(z.size)
@@ -158,9 +178,13 @@ def run_sweep(
         share_past[i] = risked["hc_to_exit"]
         share_dry[i] = risked["dry_with_attic"]
 
-        p_disc = float(discovery.mean())
-        disc_spread = _spread(res[discovery])
-        no_disc_spread = _spread(res[~discovery])
+        # Both branches over the success cases, so the split is "is the contact
+        # deeper than the well" and nothing else. `discovery` is already a subset of
+        # the success cases; `~discovery & learn` is the dry-but-charged group.
+        disc_learn = discovery[learn]
+        p_disc = float(disc_learn.mean()) if disc_learn.size else 0.0
+        disc_spread = _spread(res_learn[disc_learn])
+        no_disc_spread = _spread(res_learn[~disc_learn])
         expected_post = p_disc * disc_spread + (1.0 - p_disc) * no_disc_spread
         reduction_pct[i] = (
             100.0 * (prospect_spread - expected_post) / prospect_spread
