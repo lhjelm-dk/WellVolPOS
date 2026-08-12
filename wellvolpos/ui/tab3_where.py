@@ -237,7 +237,15 @@ def _location_sweep_tab(ctx: Ctx):
     st.subheader("The trade-off, and where it is commercial")
     tb1, tb2 = st.columns(2)
     with tb1:
-        _chart(pfig_b7_frontier(vsweep, current_z=entry), key="b7")
+        b7_scale = st.radio(
+            "3.7 volume axis", ["linear", "log"], horizontal=True, key="w_b7_scale",
+            format_func=lambda k: {"linear": "Linear", "log": "Log"}[k],
+            help=("Linear shows the absolute rate of exchange — how many MMboe a point "
+                  "of chance buys. Log shows the proportional one, which is the readable "
+                  "choice when volume spans an order of magnitude across the swept range "
+                  "and the shallow end is crushed into the axis."),
+        )
+        _chart(pfig_b7_frontier(vsweep, current_z=entry, volume_scale=b7_scale), key="b7")
     with tb2:
         _chart(pfig_b8_commercial_chance(vsweep, current_z=entry, zlim=zrow_sweep), key="b8")
     _chart(pfig_b9_chance_weighted(vsweep, current_z=entry, zlim=zrow_sweep), key="b9")

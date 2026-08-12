@@ -1129,12 +1129,12 @@ def test_b9_carries_the_chance_weighted_tails_as_grey_lines(vsweep):
     fig = I.pfig_b9_chance_weighted(vsweep)
     names = {getattr(t, "name", None) for t in fig.data}
     for q in ("P99", "P90", "P10", "P1"):
-        assert f"Proven {q}, chance weighted" in names, sorted(n for n in names if n)
+        assert f"Proven {q} × P_well" in names, sorted(n for n in names if n)
 
     series = {t.name: np.asarray(t.x, dtype=float) for t in fig.data
               if getattr(t, "name", None)}
-    p90, p10 = series["Proven P90, chance weighted"], series["Proven P10, chance weighted"]
-    mean = series["Proven — chance weighted"]
+    p90, p10 = series["Proven P90 × P_well"], series["Proven P10 × P_well"]
+    mean = series["Proven MEAN × P_well"]
     ok = np.isfinite(p90) & np.isfinite(p10) & np.isfinite(mean)
     assert ok.any()
     # P90 low, P10 high, mean between them: the weighting is applied to all three

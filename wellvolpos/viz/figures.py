@@ -1068,7 +1068,7 @@ def fig_b5_allocation_dumbbell(
 
 def fig_b7_frontier(
     vsweep: VolumeSweep, *, current_z: float | None = None, min_support: int = MIN_SUPPORT,
-    label_every: int = 4, dark: bool = False,
+    label_every: int = 4, volume_scale: str = "linear", dark: bool = False,
 ):
     """B7, for the export path. Twin of ``pfig_b7_frontier``.
 
@@ -1105,9 +1105,18 @@ def fig_b7_frontier(
     if vsweep.mefs is not None:
         ax.axvline(vsweep.mefs, color=colour("minimum", dark), ls=":", lw=1.0)
 
-    ax.set_xlim(left=0)
+    if volume_scale not in ("linear", "log"):
+        raise ValueError(f"unknown volume_scale {volume_scale!r}; expected 'linear' or 'log'")
+    if volume_scale == "log":
+        # No left=0 on a log axis. Everything plotted here is positive, so nothing
+        # is lost; the range comes from the data.
+        ax.set_xscale("log")
+    else:
+        ax.set_xlim(left=0)
     ax.set_ylim(0, 105)
-    ax.set_xlabel("Mean resource (MMboe)")
+    ax.set_xlabel("Mean resource (MMboe, log scale — a straight segment is a "
+                  "constant % per point of chance)" if volume_scale == "log"
+                  else "Mean resource (MMboe, linear scale)")
     ax.set_ylabel(r"$P_{well}$  (%)")
     ax.set_title(f"B7 · Chance against volume ({reference_label(vsweep.reference)})")
     ax.grid(True, lw=0.6, alpha=0.7)
@@ -1223,10 +1232,10 @@ def fig_b9_chance_weighted(
     z = vsweep.z
     fig, ax = new_figure(figsize=(5.8, 5.5), dark=dark)
     pw = thin(vsweep.p_well, vsweep.n_discovery, min_support)
-    series = [("Proven — chance weighted",
+    series = [("Proven MEAN × P_well",
                thin(vsweep.proven_mean, vsweep.n_discovery, min_support), "tested")]
     if vsweep.discovery_mean is not None:
-        series.append(("Well associated — chance weighted",
+        series.append(("Well associated MEAN × P_well",
                        thin(vsweep.discovery_mean, vsweep.n_discovery, min_support),
                        "well_associated"))
 
@@ -1236,7 +1245,7 @@ def fig_b9_chance_weighted(
         band = np.isfinite(lo) & np.isfinite(hi)
         if band.any():
             ax.fill_betweenx(z[band], lo[band], hi[band], color=colour("tested", dark),
-                             alpha=0.20, lw=0, label="Proven P90–P10, chance weighted")
+                             alpha=0.20, lw=0, label="Proven P90–P10 × P_well")
 
     # P99 and P1 as thin grey lines outside the fill, like the plotly twin: on a
     # right-skewed distribution P1 runs far above P10, and filling out to it would
@@ -1249,7 +1258,7 @@ def fig_b9_chance_weighted(
         weighted = pw * thin(values, vsweep.n_discovery, min_support)
         if np.isfinite(weighted).sum() >= 2:
             ax.plot(weighted, z, color=p["muted"], lw=0.9, ls=ls,
-                    label=f"Proven {label}, chance weighted")
+                    label=f"Proven {label} × P_well")
 
     for name, mean, role in series:
         weighted = pw * mean

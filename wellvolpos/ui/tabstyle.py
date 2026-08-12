@@ -37,7 +37,12 @@ TAB_FILLS = (
     "#e9e6df",   # ⑥ theory & guide         -- warm grey
 )
 
-__all__ = ["TAB_FILLS", "inject"]
+#: Tab label colours. Grey, both of them -- see the note in :func:`inject` for why
+#: the accent red is not used for the selected tab.
+ACTIVE_TEXT = "#2b2a28"
+INACTIVE_TEXT = "#52514e"
+
+__all__ = ["ACTIVE_TEXT", "INACTIVE_TEXT", "TAB_FILLS", "inject"]
 
 
 def inject() -> None:
@@ -48,10 +53,28 @@ def inject() -> None:
         ' border-radius: 8px 8px 0 0 !important;'
         ' padding: 8px 18px !important;'
         ' border-bottom: none !important; }',
-        # Which tab is *active* is shown by weight and full saturation; the hue only
-        # says which tab it is. Two questions, two cues.
-        '[role="tablist"] [role="tab"][aria-selected="true"] p { font-weight: 700 !important; }',
-        '[role="tablist"] [role="tab"][aria-selected="false"] { opacity: 0.55 !important; }',
+        # **Bold grey, never the accent red** (Lars, 2026-08-12). Streamlit paints the
+        # selected tab in its primary colour -- rgb(255,75,75) -- on the tab div, on
+        # the inner <p>, and on the bottom border. All three are overridden: red is
+        # the only colour in this app that means something (a threshold volume), and
+        # spending it on "you are here" would make the tab strip argue with every
+        # MEFS line on the page.
+        #
+        # Which tab is *active* is therefore shown by weight and full saturation of
+        # its own fill; the hue only says which tab it is. Two questions, two cues.
+        f'[role="tablist"] [role="tab"][aria-selected="true"],'
+        f' [role="tablist"] [role="tab"][aria-selected="true"] p {{'
+        f' color: {ACTIVE_TEXT} !important; font-weight: 700 !important;'
+        f' border-bottom-color: transparent !important; }}',
+        f'[role="tablist"] [role="tab"][aria-selected="false"],'
+        f' [role="tablist"] [role="tab"][aria-selected="false"] p {{'
+        f' color: {INACTIVE_TEXT} !important; font-weight: 500 !important; }}',
+        '[role="tablist"] [role="tab"][aria-selected="false"] { opacity: 0.62 !important; }',
+        # The sliding underline is a separate react-aria element, not the tab's own
+        # border -- which is why overriding border-bottom-color left a red bar
+        # behind. Recoloured rather than hidden: it is a useful third cue for where
+        # you are, it just must not be the accent red.
+        f'.react-aria-SelectionIndicator {{ background-color: {ACTIVE_TEXT} !important; }}',
     ]
     for i, fill in enumerate(TAB_FILLS, start=1):
         rules.append(

@@ -1660,6 +1660,14 @@ def pfig_b9_chance_weighted(
     Lars's: *where do I target the most resource for the least risk?* -- and the
     answer is not the deepest location, nor the shallowest.
 
+    **Every series here is P_well times a MEAN**, and the labels now say so (Lars,
+    2026-08-12 asked which statistic "Well associated -- chance weighted" was). It is
+    the arithmetic mean over the group the series conditions on, not a percentile:
+    on a right-skewed resource distribution those are materially different numbers,
+    and "chance weighted" alone did not distinguish them. The grey tails are the same
+    weighting applied to P99/P90/P10/P1 of the *proven* volume, so they are labelled
+    with their percentile explicitly.
+
     It is a product of a falling curve and a rising one. Chance falls down-dip
     because fewer contacts lie below the well; volume rises because a deeper well
     that does find hydrocarbons finds more of them. So the product usually has an
@@ -1681,12 +1689,12 @@ def pfig_b9_chance_weighted(
     fig = go.Figure()
     pw = thin(vsweep.p_well, vsweep.n_discovery, min_support)
     series = [
-        ("Proven — chance weighted", thin(vsweep.proven_mean, vsweep.n_discovery, min_support),
+        ("Proven MEAN × P_well", thin(vsweep.proven_mean, vsweep.n_discovery, min_support),
          "tested"),
     ]
     if vsweep.discovery_mean is not None:
         series.append(
-            ("Well associated — chance weighted",
+            ("Well associated MEAN × P_well",
              thin(vsweep.discovery_mean, vsweep.n_discovery, min_support), "well_associated")
         )
 
@@ -1710,7 +1718,7 @@ def pfig_b9_chance_weighted(
                 x=np.concatenate([lo[band], hi[band][::-1]]),
                 y=np.concatenate([z[band], z[band][::-1]]),
                 fill="toself", fillcolor=rgba("tested", 0.20, dark), mode="lines",
-                line=dict(width=0), name="Proven P90–P10, chance weighted",
+                line=dict(width=0), name="Proven P90–P10 × P_well",
                 hoverinfo="skip",
             )
     for stat, label, dash in (
@@ -1729,7 +1737,7 @@ def pfig_b9_chance_weighted(
         fig.add_scatter(
             x=weighted, y=z, mode="lines",
             line=dict(color=p["muted"], width=1.0, dash=dash),
-            name=f"Proven {label}, chance weighted",
+            name=f"Proven {label} × P_well",
             hovertemplate=(f"proven {label} x P_well"
                            "<br>%{x:.2f} MMboe at " + DEPTH_HOVER + "<extra></extra>"),
         )
@@ -1897,7 +1905,8 @@ def _reservoir_section(fig, ad, ts, *, z_entry, z_exit, dark, area_scale="area",
 # ------------------------------------------------------------------- B7
 def pfig_b7_frontier(
     vsweep: VolumeSweep, *, current_z: float | None = None, min_support: int = MIN_SUPPORT,
-    label_every: int = 4, dark: bool = False, height: int | None = PANEL_HEIGHT,
+    label_every: int = 4, volume_scale: str = "linear",
+    dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
     """B7 -- the trade-off frontier: chance against volume, parametric in depth.
 
@@ -1921,7 +1930,23 @@ def pfig_b7_frontier(
     given a discovery) because that is what the workbook plots and what a well
     proposal is written against. The proven mean is drawn beside it as a lighter
     line, since the two answer "what would I find" and "what would I have proven".
+
+    ``volume_scale`` switches the volume axis between ``"linear"`` and ``"log"``
+    (Lars, 2026-08-12). Both readings are worth having and they are not cosmetic
+    variants of each other:
+
+    * **linear** shows the *absolute* rate of exchange -- how many MMboe a point of
+      chance buys -- which is what a well proposal argues about.
+    * **log** shows the *proportional* one. On a closure whose volume spans an order
+      of magnitude across the swept range, the shallow end of a linear frontier is
+      crushed into the axis and the trade there is unreadable; on a log axis a
+      straight segment means a constant *percentage* of volume per point of chance.
+
+    The axis title says which is on, because a frontier that looks straight means
+    different things in the two and there is no other cue.
     """
+    if volume_scale not in ("linear", "log"):
+        raise ValueError(f"unknown volume_scale {volume_scale!r}; expected 'linear' or 'log'")
     p = palette(dark)
     fig = go.Figure()
     n_disc = vsweep.n_discovery
@@ -1972,13 +1997,22 @@ def pfig_b7_frontier(
     if vsweep.mefs is not None:
         _vline(fig, vsweep.mefs, colour("minimum", dark), "dot", "MEFS")
 
+    log = volume_scale == "log"
     fig.update_layout(
         title=(f"B7 · Chance against volume — the location trade-off "
                f"({reference_label(vsweep.reference)})"),
-        xaxis_title="Mean resource (MMboe)",
+        xaxis_title=("Mean resource (MMboe, log scale — a straight segment is a "
+                     "constant % per point of chance)" if log else
+                     "Mean resource (MMboe, linear scale)"),
         yaxis_title="P_well  (%)",
     )
-    fig.update_xaxes(rangemode="tozero")
+    if log:
+        # rangemode="tozero" is meaningless on a log axis and plotly warns; the
+        # range comes from the data instead. MEFS and the frontier are all positive
+        # here, so nothing is lost.
+        fig.update_xaxes(type="log")
+    else:
+        fig.update_xaxes(rangemode="tozero")
     fig.update_yaxes(range=[0, 105])
     apply_plotly(fig, dark, height)
     return fig
