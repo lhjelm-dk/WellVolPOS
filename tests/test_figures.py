@@ -72,7 +72,7 @@ def test_a3_depth_axis_and_chance_colour(sweep):
     fig, ax = figures.fig_a3_chance_decomposition(sweep, pos_trials=POS, current_z=ENTRY)
     assert is_depth_axis_correct(ax)
     lines = {line.get_label(): line for line in ax.get_lines()}
-    p_well_line = next(v for k, v in lines.items() if "P_{well}" in k)
+    p_well_line = next(v for k, v in lines.items() if "P_well" in k)
     r_line = next(v for k, v in lines.items() if k.startswith("r ="))
     assert p_well_line.get_color() == colour("discovery")
     assert r_line.get_color() == colour("discovery")
@@ -142,13 +142,20 @@ def test_a5_omits_the_risked_curves_when_no_chance_is_given(reduced, groups, vc)
 
 # ------------------------------------------------------------------- A1
 def test_a1_depth_axis_and_prospect_and_well_colours(area_depth):
+    """The rules are named "well entry" / "well exit" in both backends now.
+
+    They were "Entry" / "Exit" here and "well entry" / "well exit" on screen, which
+    is the same class of drift the twin-agreement guard exists to catch -- one
+    figure, two vocabularies, and the export is the copy that leaves the building.
+    """
     fig, ax = figures.fig_a1_area_depth(area_depth, current_entry=ENTRY, current_exit=EXIT)
     assert is_depth_axis_correct(ax)
     lines = {line.get_label(): line for line in ax.get_lines()}
-    curve = next(ln for ln in ax.get_lines() if ln.get_label() not in ("Entry", "Exit"))
+    curve = next(ln for ln in ax.get_lines()
+                 if ln.get_label() not in ("well entry", "well exit"))
     assert curve.get_color() == colour("prospect")
-    assert lines["Entry"].get_color() == colour("well")
-    assert lines["Exit"].get_color() == colour("well")
+    assert lines["well entry"].get_color() == colour("well")
+    assert lines["well exit"].get_color() == colour("well")
 
 
 # ------------------------------------------------------------------- A2
@@ -263,7 +270,7 @@ def test_b2_depth_axis_and_chance_regret_colours(volume_sweep):
     fig, ax = figures.fig_b2_chance_vs_regret(volume_sweep, current_z=ENTRY)
     assert is_depth_axis_correct(ax)
     labels = {line.get_label(): line for line in ax.get_lines()}
-    chance = next(v for k, v in labels.items() if "P_{well}" in k)
+    chance = next(v for k, v in labels.items() if "P_well" in k)
     assert chance.get_color() == colour("p_well")
     proven = next(v for k, v in labels.items() if k.startswith("P(proven"))
     attic = next(v for k, v in labels.items() if k.startswith("P(attic"))
@@ -482,7 +489,7 @@ def test_b6_spread_runs_p99_to_p1(vsweep_banded, reduced):
     fig, ax = figures.fig_b6_inverse(vsweep_banded, ts=reduced)
     labels = ax.get_legend_handles_labels()[1]
     for q in (99, 90, 50, 10, 1):
-        assert f"P{q} contact" in labels, labels
+        assert f"P{q} contact — of trials holding this volume" in labels, labels
 
 
 def test_b6_says_so_rather_than_drawing_nothing_when_there_is_no_curve(reduced, area_depth):
@@ -514,7 +521,7 @@ def test_b2_thins_conditional_curves_but_never_p_well(vsweep_banded):
     """P_well is a chance over all trials, so it is supported everywhere."""
     fig, ax = figures.fig_b2_chance_vs_regret(vsweep_banded)
     lines = {ln.get_label(): ln for ln in ax.get_lines()}
-    p_well_x = np.asarray(lines[r"$P_{well}$"].get_xdata(), dtype=float)
+    p_well_x = np.asarray(lines["P_well"].get_xdata(), dtype=float)
     assert not np.isnan(p_well_x).any()
     proven_x = np.asarray(lines["P(proven > MEFS | discovery)"].get_xdata(), dtype=float)
     assert np.isnan(proven_x).any()

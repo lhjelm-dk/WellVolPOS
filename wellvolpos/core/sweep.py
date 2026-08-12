@@ -130,8 +130,6 @@ def run_sweep(
     """
     res = ts.col("resource")
     z = _sweep_grid(ts, z_min, z_max, n)
-    success = res > 0.0
-
     prospect_spread = _spread(res)
 
     r = np.empty(z.size)

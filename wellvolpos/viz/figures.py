@@ -27,7 +27,7 @@ import numpy as np
 
 from ..core.chance import ELEMENTS, SCHEME_LABELS, SHIPPED_SCHEMES, allocate
 from ..core.chance import waterfall_steps as chance_waterfall_steps
-from ..core.classes import VolumeClasses, risked_exceedance
+from ..core.classes import READING_LABELS, VolumeClasses, risked_exceedance
 from ..core.groups import Groups
 from ..core.reservoir import thickness_from_pay
 from ..core.stats import MIN_SUPPORT, thin
@@ -44,6 +44,7 @@ from ..core.sweep import (
 )
 from ..io.adapters.base import TrialSet
 from .theme import (
+    AREA_SCALES,
     SEQUENTIAL_CMAP,
     VALUE_CMAP,
     colour,
@@ -251,8 +252,8 @@ def _mark_exceedance_mpl(ax, values, role: str, dark: bool, *, chance: float = 1
 
 def fig_a1_area_depth(
     ad: AreaDepth, *, ts: TrialSet | None = None, current_entry: float | None = None,
-    current_exit: float | None = None, show_reservoir: bool = True,
-    show_classes: bool = True, dark: bool = False,
+    current_exit: float | None = None, n_bins: int = 40, area_scale: str = "area",
+    show_reservoir: bool = True, show_classes: bool = True, dark: bool = False,
 ):
     """The area-depth curve recovered from the trials, entry/exit marked.
 
@@ -263,21 +264,50 @@ def fig_a1_area_depth(
     gets its own dedicated colour so it reads as the thing being placed
     against the curve, not a feature of it.
     """
-    fig, ax = new_figure(figsize=(5, 5.5), dark=dark)
+    fig, ax = new_figure(figsize=(6.5, 5.5), dark=dark)
     p = palette(dark)
 
-    ax.plot(ad.a, ad.z, color=colour("prospect", dark), lw=2.0)
+    # **The area family, which the export had been missing entirely** (found by
+    # audit, 2026-08-11). Given ``ts`` the plotly original draws P90 / P50 / mean /
+    # P10 of the area in each depth bin -- the thing Lars asked for -- and the export
+    # drew a bare A(z) instead. So the figure that goes into a well proposal was not
+    # the figure on screen, and nothing said so.
+    #
+    # Thin grey for the percentiles, prospect colour and weight for the mean: the
+    # mean is the number that gets quoted, and on a skewed distribution it is not
+    # the P50.
+    subtitle = ""
+    with_area = ts is not None and ts.has("area")
+    if with_area:
+        contact, area = ts.col("contact"), ts.col("area")
+        ok = area > 0
+        zb, a90, a50, amean, a10 = _depth_band(contact[ok], area[ok], n_bins=n_bins)
+        material, rel_resid = area_spread_is_material(ad)
+        for values, name in ((a90, "P90"), (a50, "P50"), (a10, "P10")):
+            ax.plot(values, zb, color=p["muted"], lw=1.0, label=name)
+        ax.plot(amean, zb, color=colour("prospect", dark), lw=2.5, label="Mean area")
+        subtitle = (
+            f"area scatter about A(z) is {rel_resid:.1%} of the mean — real area uncertainty"
+            if material else
+            "area is a deterministic function of contact depth here, so the P90–P10 "
+            "spread shown is the depth range within each bin, not area uncertainty"
+        )
+    else:
+        ax.plot(ad.a, ad.z, color=colour("prospect", dark), lw=2.5, label="A(z)")
+
     if current_entry is not None:
-        ax.axhline(current_entry, color=p["well"], ls="--", lw=1.4, label="Entry")
+        ax.axhline(current_entry, color=p["well"], ls="--", lw=1.4, label="well entry")
     if current_exit is not None and current_exit != current_entry:
-        ax.axhline(current_exit, color=p["well"], ls=":", lw=1.4, label="Exit")
+        ax.axhline(current_exit, color=p["well"], ls=":", lw=1.4, label="well exit")
 
     # C1's reservoir section, merged in (Lars, 2026-08-11): A1 and C1 drew the same
     # A(z), and the only thing C1 added was the base reservoir and the three shaded
-    # classes. C1 survives as a small unlabelled thumbnail beside C2.
+    # classes. The base reservoir carries its own P90/P50/mean/P10, because the
+    # thickness recovered from pay is a distribution.
+    stats = None
     if show_reservoir and ts is not None:
-        _reservoir_section_mpl(
-            ax, ad, ts,
+        stats = _reservoir_section_mpl(
+            ax, ad, ts, area_scale=area_scale,
             z_entry=current_entry if current_entry is not None else ad.shallowest,
             z_exit=current_exit if current_exit is not None else ad.deepest,
             dark=dark, show_classes=show_classes,
@@ -285,10 +315,19 @@ def fig_a1_area_depth(
 
     depth_axis(ax, zlim=(ad.shallowest, ad.deepest))
     ax.set_xlim(left=0)
-    ax.set_xlabel("Productive area (km²)")
-    ax.set_title("A1 · Area–depth curve and reservoir")
-    if current_entry is not None:
-        ax.legend(loc="lower right", fontsize=7.5)
+    ax.set_xlabel(AREA_SCALES.get(area_scale, AREA_SCALES["area"])[0])
+    # The same two-line title the plotly original carries. The caveat about what the
+    # P90-P10 spread means on a deterministic A(z) is the part that must not be lost
+    # in export: without it a reader takes the grey band for area uncertainty.
+    note = ""
+    if stats is not None:
+        note = (f"base reservoir = top + thickness from pay: P90 {stats['p90']:.0f} · "
+                f"P50 {stats['p50']:.0f} · mean {stats['mean']:.0f} · P10 {stats['p10']:.0f} m")
+    lines = [f"A1 · Area–depth curve and reservoir (isotonic R² = {ad.r2:.6f})"]
+    lines += [t for t in (subtitle, note) if t]
+    ax.set_title("\n".join(lines), fontsize=9)
+    if ax.get_legend_handles_labels()[1]:
+        ax.legend(loc="lower right", fontsize=6.5, ncol=2)
     fig.tight_layout()
     return fig, ax
 
@@ -354,9 +393,9 @@ def fig_a3_chance_decomposition(
     p = palette(dark)
     c = colour("p_well", dark)
 
-    ax.plot(sweep.p_well * 100.0, sweep.z, color=c, lw=2.0, label=r"$P_{well}$ = POS $\times$ r")
+    ax.plot(sweep.p_well * 100.0, sweep.z, color=c, lw=2.0, label="P_well = POS × r")
     ax.plot(sweep.r_location * 100.0, sweep.z, color=c, lw=1.4, ls="--",
-            label="r = P(contact deeper | HC present)")
+            label="r = P(contact deeper | HC)")
 
     def _pos_rule(value: float, label: str, ls: str) -> None:
         ax.axvline(value * 100.0, color=p["muted"], ls=ls, lw=1.0)
@@ -630,7 +669,7 @@ def fig_b1_volume_split(
         if values is not None:
             ax.plot(thin(values, vsweep.n_discovery, min_support), vsweep.z,
                     color=colour("proven", dark), lw=0.9, ls=ls,
-                    label=label if label != "Proven P50" else None)
+                    label=f"{label} | discovery")
 
     if current_z is not None and vsweep.z.min() <= current_z <= vsweep.z.max():
         ax.axhline(current_z, color=p["text_secondary"], ls="--", lw=1.0)
@@ -674,7 +713,7 @@ def fig_b2_chance_vs_regret(
     p_proven = thin(vsweep.p_proven_exceeds_mefs, vsweep.n_discovery, min_support)
     p_attic = thin(vsweep.p_attic_exceeds_mefs, vsweep.n_dry, min_support)
 
-    ax.plot(vsweep.p_well * 100.0, vsweep.z, color=colour("p_well", dark), lw=2.0, label=r"$P_{well}$")
+    ax.plot(vsweep.p_well * 100.0, vsweep.z, color=colour("p_well", dark), lw=2.0, label="P_well")
     ax.plot(p_proven * 100.0, vsweep.z, color=colour("proven", dark), lw=1.8,
             label="P(proven > MEFS | discovery)")
     ax.plot(p_attic * 100.0, vsweep.z, color=colour("attic", dark), lw=1.8,
@@ -769,7 +808,7 @@ def fig_b6_inverse(
             if good.sum() >= 2:
                 spread_depths.append(depths[good])
                 ax.plot(held[good], depths[good], color=p["muted"], lw=lw, ls=ls,
-                        label=f"P{q} contact")
+                        label=f"P{q} contact — of trials holding this volume")
         if mefs is not None:
             ax.axvline(float(mefs), color=p["muted"], ls=":", lw=1.0)
 
@@ -1073,10 +1112,10 @@ def fig_b8_commercial_chance(
     pc = pw * pmcfs / 100.0
 
     ax.plot(pmcfs, z, color=colour("tested", dark), lw=1.9,
-            label="Pmcfs(well) | discovery")
-    ax.plot(pw, z, color=colour("well_associated", dark), lw=1.9, label=r"$P_{well}$")
+            label="Pmcfs(well) — conditional on a discovery")
+    ax.plot(pw, z, color=colour("well_associated", dark), lw=1.9, label="P_well — chance of a discovery")
     ax.plot(pc, z, color=colour("minimum", dark), lw=2.4, ls="--",
-            label="Pc(well) — commercial")
+            label="Pc(well) — commercial chance, unconditional")
 
     if np.any(np.isfinite(pc)):
         best = int(np.nanargmax(pc))
@@ -1181,7 +1220,7 @@ def fig_b9_chance_weighted(
         weighted = pw * thin(values, vsweep.n_discovery, min_support)
         if np.isfinite(weighted).sum() >= 2:
             ax.plot(weighted, z, color=p["muted"], lw=0.9, ls=ls,
-                    label=f"Proven {label}, chance weighted" if label in ("P99", "P1") else None)
+                    label=f"Proven {label}, chance weighted")
 
     for name, mean, role in series:
         weighted = pw * mean
@@ -1394,8 +1433,6 @@ def _reservoir_section_mpl(ax, ad, ts, *, z_entry, z_exit, dark, area_scale="are
     and not a lateral distance, and why the base reservoir comes from inverting
     the pay rather than from reading a thickness column.
     """
-    from .interactive import AREA_SCALES
-
     p = palette(dark)
     _, transform = AREA_SCALES.get(area_scale, AREA_SCALES["area"])
     a, top = transform(ad.a), ad.z
@@ -1406,12 +1443,19 @@ def _reservoir_section_mpl(ax, ad, ts, *, z_entry, z_exit, dark, area_scale="are
 
     ax.plot(a, top, color=p["text"], lw=2.0, label="Top reservoir")
     if thickness is not None:
-        # P90 and P10 first, thin and grey, so the single P50 base reads as one
-        # case out of a sampled range rather than as a fixed surface.
-        for stat in ("p90", "p10"):
-            ax.plot(a, top + stats[stat], color=p["muted"], lw=0.9, ls=":")
+        # **Four base curves, matching the plotly original**: P90, P50, mean, P10 of
+        # the thickness recovered from pay. The export drew only three, and the one
+        # it dropped was the *mean* -- the number that gets quoted. It also left
+        # P90/P10 unlabelled, so an exported A1 had a legend claiming a single
+        # "Base reservoir" surface where the screen showed a sampled range.
+        for key, name, lw, ls in (("p90", "Base P90", 0.9, ":"),
+                                  ("p50", "Base P50", 1.5, "--"),
+                                  ("mean", "Base mean", 1.2, "-"),
+                                  ("p10", "Base P10", 0.9, ":")):
+            ax.plot(a, top + stats[key],
+                    color=p["text"] if key == "p50" else p["muted"],
+                    lw=lw, ls=ls, label=name)
         base = top + thickness
-        ax.plot(a, base, color=p["text"], lw=1.5, ls="--", label="Base reservoir")
 
         for lo, hi, role, label in () if not show_classes else (
             (-np.inf, z_entry, "up_dip", "up-dip"),
@@ -1430,17 +1474,11 @@ def _reservoir_section_mpl(ax, ad, ts, *, z_entry, z_exit, dark, area_scale="are
             ax.text(a[mid], 0.5 * (upper[mid] + lower[mid]), label, fontsize=7.5,
                     ha="center", va="center", color=p["text"])
 
-    a_entry = float(transform(np.asarray(ad.area_at(z_entry))))
-    ax.axvline(a_entry, color=p["well"], lw=2.2)
-    ax.annotate("Well", (a_entry, float(top.min())), xytext=(3, 6),
-                textcoords="offset points", fontsize=9, color=p["well"])
-    for depth, label in ((z_entry, "Reservoir entry"), (z_exit, "Reservoir exit")):
-        if depth is None:
-            continue
-        ax.annotate(f"{label} ", (a_entry, depth), xytext=(-4, 0),
-                    textcoords="offset points", ha="right", va="center",
-                    fontsize=7.5, color=p["text_secondary"])
-    return thickness
+    # **No well drawn here.** The plotly counterpart leaves it to the caller, and
+    # both callers already draw one -- so this helper was adding a third marker to
+    # A1 and a second to C1. The well is a property of the well, not of the
+    # reservoir band.
+    return stats if thickness is not None else None
 
 
 def fig_c1_section(
@@ -1456,8 +1494,6 @@ def fig_c1_section(
     thing C1 exists to show.
     """
     p = palette(dark)
-    from .interactive import AREA_SCALES          # local, as in _reservoir_section_mpl
-
     label, _ = AREA_SCALES.get(area_scale, AREA_SCALES["area"])
     fig, ax = new_figure(figsize=(6.0, 4.0), dark=dark)
     _reservoir_section_mpl(ax, ad, ts, z_entry=z_entry, z_exit=z_exit,
@@ -1498,7 +1534,6 @@ def fig_c2_exceedance(
     (risked), starting at the chance of that case. The vertical gap between the
     prospect's and the well's dashed starts is the location penalty.
     """
-    p = palette(dark)
     res = ts.col("resource")
     fig, ax_exc = new_figure(figsize=(8.6, 6.2), dark=dark)
 
@@ -1518,7 +1553,8 @@ def fig_c2_exceedance(
             ax_exc.plot(v, pct, color=colour(role, dark),
                         lw=2.2 if reading == "conditional" else 1.6,
                         ls="-" if reading == "conditional" else "--",
-                        label=name if reading == "conditional" else None)
+                        label=f"{name} — "
+                              f"{READING_LABELS[reading].split(' (')[0].lower()}")
             # Both families labelled, values on opposite sides so the two readings
             # of one concept do not overwrite each other.
             _mark_exceedance_mpl(ax_exc, values, role, dark, chance=chance_used,

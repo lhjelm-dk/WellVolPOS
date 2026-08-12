@@ -104,6 +104,10 @@ def _normalise(s: str) -> str:
         s = s.replace(tag, " ")
     for ch in "${}\\":
         s = s.replace(ch, "")
+    # ``P_well`` and ``P<sub>well</sub>`` are one symbol written two ways -- plain
+    # text for matplotlib, which cannot take HTML, and a subscript for plotly, which
+    # cannot take mathtext. Neither spelling is content.
+    s = s.replace("_", " ")
     return " ".join(s.split()).lower()
 
 
@@ -140,3 +144,89 @@ def test_every_depth_carrying_twin_inverts_its_axis_in_both_backends(kit):
         m_lo, m_hi = ax.get_ylim()
         assert m_lo > m_hi, f"{name}: matplotlib depth axis is not inverted"
         plt.close("all")
+
+
+#: Series a backend is allowed to name where its twin does not, because the two
+#: draw the same thing by different means. Kept explicit and short: an exemption
+#: list that grows without argument is how the guard stops guarding.
+NAME_EXEMPT = {
+    # matplotlib rules are Line2D objects and carry legend labels; plotly draws
+    # them as layout shapes with annotations, which have no trace name.
+    "A1": {"well entry", "well exit"},
+    "A4": {"well entry", "well exit"},
+    "A8": {"well entry", "sampled contacts"},
+    "A9": {"prospect (n=7,605)"},
+    # B0's bands are annotated in both, but only plotly names the traces.
+    "B0": {"attic if dry", "proven", "possible below exit"},
+    "B3": {"reduction"},
+}
+
+
+def test_every_twin_draws_the_same_named_series(kit):
+    """Not just the axes -- the *curves*.
+
+    The audit that found the axis drift also found A1's export missing the entire
+    area P90/P50/mean/P10 family and one of the four base-reservoir curves, and C1
+    drawing one base where the screen drew four. Both were features Lars had asked
+    for, absent from the artefact that goes in a well proposal, with nothing on the
+    page to say so.
+
+    Comparing *names* rather than pixels keeps this honest without freezing the
+    styling: the backends may render a curve differently, they may not omit it.
+    """
+    missing = []
+    for name, pfig, (_mfig, max_) in _pairs(kit):
+        # Normalised, like the axis titles: the two backends spell markup
+        # differently and neither spelling is content.
+        p_names = {
+            _normalise(t.name) for t in pfig.data
+            if getattr(t, "name", None) and "lines" in (getattr(t, "mode", "") or "lines")
+        }
+        m_names = set()
+        for ax in np.atleast_1d(max_).ravel():
+            m_names |= {_normalise(lbl) for lbl in ax.get_legend_handles_labels()[1]
+                        if not lbl.startswith("_")}
+        exempt = NAME_EXEMPT.get(name, set())
+        only_plotly = p_names - m_names - exempt
+        only_mpl = m_names - p_names - exempt
+        if only_plotly:
+            missing.append(f"{name}: on screen but not exported: {sorted(only_plotly)}")
+        if only_mpl:
+            missing.append(f"{name}: exported but not on screen: {sorted(only_mpl)}")
+        plt.close("all")
+    assert not missing, "twins draw different series:\n  " + "\n  ".join(missing)
+
+
+def test_every_figure_with_a_twin_reaches_the_export_bundle(reduced, area_depth):
+    """A twin that agrees perfectly is no use if the export never asks for it.
+
+    A9 had a matplotlib twin, passed the agreement guard, and was absent from every
+    exported document because ``build_figures`` simply did not list it. That is a
+    different hole from divergence and needs its own check: the export path is the
+    only consumer of ``viz.figures``, so anything with a twin and no bundle entry is
+    dead weight on screen-only.
+
+    Exemptions are for helpers that are not figures in their own right.
+    """
+    from wellvolpos.report import export as E
+    from wellvolpos.report.case import Case
+    from wellvolpos.viz import figures as Fmod
+
+    case = Case(
+        entry=ENTRY, exit=EXIT, mefs=14.0, risking_convention="success_case_only",
+        chance_table={"charge": 0.9, "trap": 1.0, "reservoir": 0.6, "retention": 0.8},
+        play_elements={e: 1.0 for e in ("charge", "trap", "reservoir", "retention")},
+        reference="crest", scheme="equal_cube_root",
+    )
+    bundle = E.assemble(reduced, case, pos=POS, pos_source="the chance table")
+    exported = " ".join(E.build_figures(bundle)).lower()
+
+    #: Not figures: ``fig_concepts`` was split into C1/C2, and the colour key and
+    #: map view are exported under their own names already.
+    skip = {"fig_concepts"}
+    missing = [
+        name for name in dir(Fmod)
+        if name.startswith("fig_") and name not in skip
+        and name[len("fig_"):].split("_")[0] not in exported
+    ]
+    assert not missing, f"have a twin but never reach an export: {missing}"

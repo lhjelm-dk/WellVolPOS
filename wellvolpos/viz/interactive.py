@@ -57,6 +57,7 @@ from .figures import (
     exceedance_marks,
 )
 from .theme import (
+    AREA_SCALES,
     PANEL_HEIGHT,
     VALUE_CMAP,
     apply_plotly,
@@ -1421,7 +1422,7 @@ def pfig_b6_inverse(
                 len=0.28, thickness=10, tickfont=dict(size=9),
             ),
         ),
-        name="Required entry \u2014 for a target MEAN PROVEN volume",
+        name=f"Required entry \u2014 for a target {stat_label} volume",
         customdata=p_at[ok] * 100.0,
         hovertemplate=(
             "to prove %{x:.2f} MMboe of mean proven volume<br>enter at " + DEPTH_HOVER
@@ -1712,19 +1713,6 @@ def pfig_b9_chance_weighted(
                       show_ticklabels=show_depth_labels)
     return fig
 
-AREA_SCALES = {
-    "area": ("Productive area (km²)", lambda a: a),
-    "area²": ("Productive area² (km⁴)", lambda a: a ** 2),
-    "√area": ("√ productive area (km)", lambda a: np.sqrt(np.maximum(a, 0.0))),
-}
-"""x-axis transforms for the area-depth panels.
-
-GeoX plots its area-depth curve against area **squared**, so that convention is
-offered rather than only ours. `sqrt(area)` is included too because it is the one
-that straightens a conical closure, which makes departures from a simple cone easy
-to see. The transform touches the axis only -- every number the tool computes is
-in km2 regardless (non-negotiable 4).
-"""
 
 
 def _reservoir_section(fig, ad, ts, *, z_entry, z_exit, dark, area_scale="area",
@@ -2131,7 +2119,6 @@ def pfig_c2_exceedance(
     curve cannot start anywhere but at its chance -- see that docstring for the four
     times an unrisked number was drawn under a risked label.
     """
-    p = palette(dark)
     res = ts.col("resource")
     fig = go.Figure()
     # ------------------------------- conditional and unconditional, both drawn

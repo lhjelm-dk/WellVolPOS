@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+import numpy as np
 
 # --------------------------------------------------------------- palette
 # The hues follow Lars's teaching figure; the *lightness* of each was then tuned
@@ -129,6 +130,21 @@ ROLES = {
     "mefs": "minimum",
     "well": "well",
 }
+
+AREA_SCALES = {
+    "area": ("Productive area (km²)", lambda a: a),
+    "area²": ("Productive area² (km⁴)", lambda a: a ** 2),
+    "√area": ("√ productive area (km)", lambda a: np.sqrt(np.maximum(a, 0.0))),
+}
+"""x-axis transforms for the area-depth panels.
+
+GeoX plots its area-depth curve against area **squared**, so that convention is
+offered rather than only ours. `sqrt(area)` is included too because it is the one
+that straightens a conical closure, which makes departures from a simple cone easy
+to see. The transform touches the axis only -- every number the tool computes is
+in km2 regardless (non-negotiable 4).
+"""
+
 
 SEQUENTIAL_CMAP = "Blues"   # single hue, light -> dark; never a rainbow
 

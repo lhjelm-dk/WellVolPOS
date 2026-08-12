@@ -366,6 +366,12 @@ def _draw_export_figures(b: Bundle, *, dark: bool = False) -> dict[str, object]:
 
     figs["A8_contact_distribution"] = F.fig_a8_contact_distribution(
         b.ts, current_entry=c.entry, dark=dark)[0]
+    # A9 had a twin in both backends and was never wired into the bundle, so it was
+    # on screen and absent from every exported document. Found by audit,
+    # 2026-08-11 -- the twin guard checks that a pair *agrees*, not that the export
+    # path actually asks for it, which is a different hole.
+    figs["A9_prospect_density"] = F.fig_a9_prospect_density(
+        b.ts, mefs=c.mefs, dark=dark)[0]
 
     if b.ad is not None:
         figs["A1_area_depth"] = F.fig_a1_area_depth(
