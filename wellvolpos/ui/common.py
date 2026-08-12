@@ -1,0 +1,77 @@
+"""Helpers every tab needs, in one place rather than four.
+
+Nothing here decides anything -- it is presentation only. The arithmetic lives in
+``wellvolpos.core`` and the figures in ``wellvolpos.viz``, which is what lets this
+module be imported by every tab without creating a cycle.
+"""
+
+from __future__ import annotations
+
+import numpy as np
+import streamlit as st
+
+from ..viz.theme import PANEL_HEIGHT
+from .context import Ctx
+
+#: C2 is a *stacked composite*, not a panel in a row. At the shared panel height
+#: both of its halves were squashed to the point where the braces collided with
+#: the axis, so it gets its own.
+C2_HEIGHT = 620
+
+__all__ = ["C2_HEIGHT", "badge", "chart", "split_caveat"]
+
+
+def badge(level: str) -> str:
+    return {"pass": "✅", "warn": "⚠️", "fail": "⛔"}[level]
+
+
+def chart(fig, key: str, height: int = PANEL_HEIGHT):
+    """Render a project figure with the two settings a row's alignment needs.
+
+    ``height`` is pinned rather than left at Streamlit's default of ``"content"``:
+    on ``"content"`` each chart is sized from its own contents, so panels in a
+    row end up different heights and a shared depth range still does not put a
+    given depth on the same pixel row.
+
+    ``theme=None`` keeps ``wellvolpos.viz.theme`` authoritative. Streamlit's own
+    plotly theme otherwise restyles fonts, title and template on top of ours,
+    which is exactly the drift between the two backends that CLAUDE.md's
+    "both driven from viz/theme.py" rule exists to prevent.
+    """
+    return st.plotly_chart(fig, width="stretch", height=height, theme=None, key=key)
+
+
+def split_caveat(ctx: Ctx) -> None:
+    """Say when the proven/possible split cannot be trusted, or was approximated.
+
+    Raised wherever the split's own numbers are drawn, not only in the QC list --
+    a reader who goes straight to tab ③ never sees that list.
+
+    The correlation check *warns* rather than fails (decided 2026-08-10): the
+    assumption it tests belongs to the extension alone, and blocking on it closed
+    the reference engine, which apportions nothing, along with it.
+    """
+    if (ctx.split_level == "warn" and np.isfinite(ctx.split_r)
+            and abs(ctx.split_r) >= 0.5):
+        st.warning(
+            f"**The proven/possible split is not defensible on this data.** "
+            f"{ctx.split_message}"
+        )
+    if ctx.vc is None:
+        return
+    # The apportionment changed on 2026-08-11 and moved the headline numbers by
+    # about 8 %, so it is stated wherever the split's own numbers are drawn rather
+    # than only in the footer.
+    if ctx.vc.apportionment == "area":
+        st.info(
+            "**Split apportioned by map area**, not on the wedge — this file carries no "
+            "gross pay and no HC gross rock volume, so the reservoir thickness cannot be "
+            "recovered and the wedge cannot be built. The area rule assumes uniform pay per "
+            "unit area, which understates proven and overstates possible."
+        )
+    elif ctx.vc.n_thickness_assumed:
+        st.caption(
+            f"{ctx.vc.n_thickness_assumed:,} discovery trials could not resolve a reservoir "
+            f"thickness from pay and were treated as **charged to base**, which is what the "
+            f"thickness inversion flags them as."
+        )
