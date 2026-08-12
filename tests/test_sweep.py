@@ -487,3 +487,58 @@ def test_an_unknown_target_statistic_is_refused_rather_than_defaulted(reduced, a
     vs = run_volume_sweep(reduced, area_depth, POS, n=10, z_gap=50.0)
     with pytest.raises(ValueError, match="unknown target statistic"):
         invert_volume_target(vs, 12.0, statistic="p42")
+
+
+def test_the_possible_and_proven_exceedance_curves_are_mirror_images(reduced, area_depth):
+    """Deepening the well moves volume from possible into proven, and B2 shows it.
+
+    Added 2026-08-12, when Lars asked whether P(possible below exit) could be shown
+    against depth. It can: ``P(possible > MEFS | discovery)`` is the same
+    conditioning and the same threshold as the proven curve, so the two are directly
+    comparable on one pair of axes -- which is the whole reason it belongs on B2
+    rather than in a figure of its own.
+
+    Two properties are asserted because both are geological rather than arithmetic:
+
+    * the possible curve **falls** with depth while the proven curve **rises**, since
+      a deeper exit leaves less below it; and
+    * their sum is **not** 1. A single trial can have both halves above MEFS, so
+      treating them as complementary would double-count nothing but would still be
+      the wrong statement about what the well proved.
+    """
+    from wellvolpos.core.sweep import run_volume_sweep
+
+    vs = run_volume_sweep(reduced, area_depth, POS, n=25, mefs=8.0, z_gap=50.0)
+    assert vs.p_possible_exceeds_mefs is not None
+
+    ok = np.isfinite(vs.p_possible_exceeds_mefs) & np.isfinite(vs.p_proven_exceeds_mefs)
+    poss, prov = vs.p_possible_exceeds_mefs[ok], vs.p_proven_exceeds_mefs[ok]
+    assert poss.size >= 5
+
+    # Direction, over the whole supported span rather than step by step: a sampled
+    # curve wobbles, the trend is the claim.
+    assert poss[0] > poss[-1], f"possible should fall with depth: {poss[0]:.3f} -> {poss[-1]:.3f}"
+    assert prov[0] < prov[-1], f"proven should rise with depth: {prov[0]:.3f} -> {prov[-1]:.3f}"
+    assert not np.allclose(poss + prov, 1.0), "the two are not complementary"
+
+
+def test_the_geometric_reading_is_carried_but_is_not_a_threshold_curve(reduced, area_depth):
+    """``p_well_exits_in_hc`` answers a different question and is kept separate.
+
+    Given a discovery, it is the chance the well leaves the reservoir still in
+    hydrocarbons *at all* -- so it needs no MEFS, and it is what the exit depth
+    controls directly. It is deliberately not drawn on B2 beside the threshold
+    curves: it is non-monotone in depth, because the discovery group it conditions
+    on shrinks as the entry deepens, and a non-monotone curve among three monotone
+    ones reads as noise rather than as a different question.
+    """
+    from wellvolpos.core.sweep import run_volume_sweep
+
+    vs = run_volume_sweep(reduced, area_depth, POS, n=20, z_gap=50.0)
+    assert vs.p_well_exits_in_hc is not None
+    # Present even with no MEFS, unlike every other exceedance curve on the sweep.
+    assert vs.p_proven_exceeds_mefs is None
+    ok = np.isfinite(vs.p_well_exits_in_hc)
+    assert ok.any()
+    v = vs.p_well_exits_in_hc[ok]
+    assert np.all((v >= 0.0) & (v <= 1.0))

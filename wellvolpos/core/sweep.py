@@ -246,6 +246,25 @@ class VolumeSweep:
     proven_p10: np.ndarray | None = None
     proven_p1: np.ndarray | None = None
     alpha: float | None = None
+    #: ``P(possible > MEFS | discovery)`` and ``P(possible > 0 | discovery)`` --
+    #: added 2026-08-12 on Lars's question of whether the possible-below-exit
+    #: probability could be shown against depth. It can, and the two readings answer
+    #: different questions:
+    #:
+    #: * ``p_possible_exceeds_mefs`` is the **material** one: given a discovery, the
+    #:   chance the untested volume below the exit is on its own worth a threshold
+    #:   field. It sits on B2 beside proven and attic, on the same conditioning and
+    #:   the same threshold, so the three are comparable.
+    #: * ``p_well_exits_in_hc`` is the **geometric** one: given a discovery, the
+    #:   chance the well leaves the reservoir still in hydrocarbons at all, i.e. that
+    #:   any possible volume exists. It is the fraction of discovery trials whose
+    #:   contact is deeper than the exit, and it is what the exit depth controls
+    #:   directly -- deepen the exit and it falls to zero.
+    #:
+    #: Both are conditional on a discovery, like the proven curve, so none of them
+    #: may be read against ``p_well`` as if on one scale.
+    p_possible_exceeds_mefs: np.ndarray | None = None
+    p_well_exits_in_hc: np.ndarray | None = None
 
 
 def run_volume_sweep(
@@ -284,6 +303,7 @@ def run_volume_sweep(
     # entry, which split_trials rightly rejects, and B1's stated fixed gap
     # silently stopped being fixed at the deep end.
     z_exit = z + z_gap
+    contact = np.asarray(ts.col("contact"), dtype=float)
 
     pw = np.empty(z.size)
     proven_mean = np.full(z.size, np.nan)
@@ -299,6 +319,8 @@ def run_volume_sweep(
     n_dry = np.zeros(z.size, dtype=int)
     p_proven_ex = np.full(z.size, np.nan) if mefs is not None else None
     p_attic_ex = np.full(z.size, np.nan) if mefs is not None else None
+    p_possible_ex = np.full(z.size, np.nan) if mefs is not None else None
+    p_exits_hc = np.full(z.size, np.nan)
     p_disc_ex = np.full(z.size, np.nan) if mefs is not None else None
     boot_lo = np.full(z.size, np.nan) if n_boot > 0 else None
     boot_hi = np.full(z.size, np.nan) if n_boot > 0 else None
@@ -328,6 +350,10 @@ def run_volume_sweep(
         n_dry[i] = int(groups_i.dry_with_attic.sum())
 
         if n_disc[i]:
+            # Does the well leave the reservoir still in hydrocarbons? That is
+            # exactly "is there any possible volume", and it is what the exit depth
+            # controls: push the exit below the deepest contact and it is zero.
+            p_exits_hc[i] = float((contact[groups_i.discovery] > zx).mean())
             proven = vc.proven[groups_i.discovery]
             associated = vc.discovery_total[groups_i.discovery]
             proven_mean[i] = float(proven.mean())
@@ -343,6 +369,7 @@ def run_volume_sweep(
             )
             if mefs is not None:
                 p_proven_ex[i] = float((proven > mefs).mean())
+                p_possible_ex[i] = float((vc.possible[groups_i.discovery] > mefs).mean())
                 p_disc_ex[i] = float((associated > mefs).mean())
             if n_boot > 0:
                 boot_lo[i], boot_hi[i] = bootstrap_mean_ci(
@@ -358,6 +385,7 @@ def run_volume_sweep(
         proven_mean=proven_mean, possible_mean=possible_mean, attic_mean=attic_mean,
         discovery_mean=discovery_mean,
         mefs=mefs, p_proven_exceeds_mefs=p_proven_ex, p_attic_exceeds_mefs=p_attic_ex,
+        p_possible_exceeds_mefs=p_possible_ex, p_well_exits_in_hc=p_exits_hc,
         p_discovery_exceeds_mefs=p_disc_ex,
         proven_p99=p99, proven_p90=p90, proven_p50=p50, proven_p10=p10,
         proven_p1=p1,

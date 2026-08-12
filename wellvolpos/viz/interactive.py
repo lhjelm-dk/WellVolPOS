@@ -1106,6 +1106,22 @@ def pfig_b2_chance_vs_regret(
     charged, which is stated in its name: folding the chance failures in
     roughly halves it, and both readings are legitimate answers to different
     questions.
+
+    Four curves, and **only ``P_well`` is unconditional** -- the other three each
+    condition on a different event, so none of them may be read against it as if on
+    one scale. That is why the crossing marked on this figure names the two curves
+    that meet rather than claiming "chance equals regret".
+
+    The proven and possible curves are mirror images: deepening the well moves
+    volume from the second into the first, and the pair is the clearest statement
+    here of what a deeper exit actually buys. Their sum is not 1 -- a single trial
+    can have both halves above MEFS.
+
+    ``VolumeSweep`` also carries ``p_well_exits_in_hc``, the *geometric* reading:
+    given a discovery, the chance the well leaves the reservoir still in
+    hydrocarbons at all. It is not drawn here because it is not on the same footing
+    as the others -- it has no threshold in it, and it is non-monotone in depth,
+    since the discovery group it conditions on shrinks as the entry deepens.
     """
     if vsweep.mefs is None or vsweep.p_proven_exceeds_mefs is None or vsweep.p_attic_exceeds_mefs is None:
         raise ValueError("pfig_b2_chance_vs_regret needs a VolumeSweep run with a mefs threshold")
@@ -1115,11 +1131,25 @@ def pfig_b2_chance_vs_regret(
     # curves are.
     p_proven = thin(vsweep.p_proven_exceeds_mefs, vsweep.n_discovery, min_support)
     p_attic = thin(vsweep.p_attic_exceeds_mefs, vsweep.n_dry, min_support)
-    for values, name, role, width in (
+    series = [
         (vsweep.p_well, "P<sub>well</sub>", "p_well", 3),
         (p_proven, "P(proven > MEFS | discovery)", "proven", 2.5),
         (p_attic, "P(attic > MEFS | dry & charged)", "attic", 2.5),
-    ):
+    ]
+    # **P(possible below exit > MEFS | discovery)** (Lars, 2026-08-12 asked whether
+    # the possible-below-exit probability could be shown against depth). Same
+    # conditioning and same threshold as the proven curve, so the two are directly
+    # comparable and their sum is not 1: a trial can have both above MEFS.
+    #
+    # It falls as the well goes deeper, because a deeper exit leaves less below it --
+    # which is the mirror image of the proven curve rising, and the pair is the
+    # clearest statement on this figure of what deepening the well actually buys.
+    if vsweep.p_possible_exceeds_mefs is not None:
+        series.append((
+            thin(vsweep.p_possible_exceeds_mefs, vsweep.n_discovery, min_support),
+            "P(possible below exit > MEFS | discovery)", "possible", 2.5,
+        ))
+    for values, name, role, width in series:
         fig.add_scatter(
             x=np.asarray(values) * 100.0, y=vsweep.z, mode="lines", name=name,
             line=dict(color=colour(role, dark), width=width),

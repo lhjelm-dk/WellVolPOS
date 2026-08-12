@@ -747,6 +747,13 @@ def fig_b2_chance_vs_regret(
             label="P(proven > MEFS | discovery)")
     ax.plot(p_attic * 100.0, vsweep.z, color=colour("attic", dark), lw=1.8,
             label="P(attic > MEFS | dry & charged)")
+    # The mirror image of the proven curve: deepening the well moves volume from
+    # possible into proven. See the plotly twin for why the geometric reading
+    # (p_well_exits_in_hc) is deliberately not drawn beside these.
+    if vsweep.p_possible_exceeds_mefs is not None:
+        p_possible = thin(vsweep.p_possible_exceeds_mefs, vsweep.n_discovery, min_support)
+        ax.plot(p_possible * 100.0, vsweep.z, color=colour("possible", dark), lw=1.8,
+                label="P(possible below exit > MEFS | discovery)")
 
     # Labelled for exactly what it is. It is tempting to call this "where
     # chance stops outweighing regret", and wrong: P_well is unconditional
