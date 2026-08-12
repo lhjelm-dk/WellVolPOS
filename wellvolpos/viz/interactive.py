@@ -33,6 +33,7 @@ from ..core.chance import (
     SCHEME_LABELS,
     SHIPPED_SCHEMES,
     allocate,
+    step_element,
 )
 from ..core.chance import waterfall_steps as chance_waterfall_steps
 from ..core.classes import (
@@ -69,6 +70,7 @@ from .theme import (
     BAND_PANEL_HEIGHT,
     VOLUME_SCALES,
     concept_shades,
+    element_colour,
     depth_shades,
     log_tick_text,
     log_ticks,
@@ -1295,7 +1297,19 @@ def pfig_b4_chance_waterfall(
         return fig
 
     for label, v, role, b, t in zip(labels, values, roles, bottoms, tops):
-        face = p["muted"] if role == "reconcile" else c
+        # **Colour is the element, hatching is the location share** (Lars's card,
+        # 2026-08-12). It used to be one colour for every chance step, which meant the
+        # figure could say *that* the elements differ but never *which* element a bar
+        # was without reading the tick label underneath it. The steps that belong to
+        # no element -- the location residual and the POS reconciliation -- stay
+        # neutral, which is also what distinguishes them.
+        el = step_element(label)
+        if role == "reconcile":
+            face = p["muted"]
+        elif el is not None:
+            face = element_colour(el, dark)
+        else:
+            face = c
         fig.add_bar(
             x=[label], y=[abs(b - t)], base=[min(b, t)], name=label, showlegend=False,
             marker=dict(
@@ -1350,6 +1364,7 @@ def pfig_b5_allocation_dumbbell(
         subplot_titles=[SCHEME_LABELS.get(s, s) for s in schemes],
     )
     names = [ELEMENT_LABELS[e] for e in ELEMENTS]
+    el_colours = [element_colour(e, dark) for e in ELEMENTS]
 
     for i, scheme in enumerate(schemes, start=1):
         revised, _ = allocate(elements, r, scheme)
@@ -2662,8 +2677,13 @@ def pfig_c2_exceedance(
                            font=dict(size=9, color=col_))
 
     fig.update_layout(
+        # **The legend is on** (Lars, 2026-08-12: *"I don't see a legend on 4.2?"*).
+        # It was suppressed because the braces name the four concepts already -- but
+        # the braces label *ranges* below the zero line, not curves, and eight curves
+        # in four colours and two line styles had no key at all. The braces are about
+        # the nesting; the legend says which curve is which.
         title="C2 · The same volumes as exceedance curves — solid conditional, dashed unconditional",
-        showlegend=False,
+        showlegend=True,
     )
     fig.update_xaxes(title_text="Recoverable resource (MMboe)", rangemode="tozero")
     # The braces live below zero, so the axis reaches there -- but a negative

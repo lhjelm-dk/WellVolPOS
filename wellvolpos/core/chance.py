@@ -130,7 +130,10 @@ SCHEMES: dict[str, dict[str, float]] = {
 SCHEME_LABELS = {
     "none": "None — report r separately (Milkov 2021)",
     "equal_cube_root": "Equal cube-root — charge, closure, retention",
-    "all_to_trap": "All to closure (Rose, Eq. 1)",
+    "all_to_trap": "All to closure (trap, Rose Eq. 1)",  # 'trap' kept in the
+    # label on purpose (Lars, 2026-08-12): Rose's Eq. 1 assigns the whole location
+    # penalty to what he calls the *trap* element, and a reader who knows the
+    # equation by that word has to be able to find it here.
     "custom": "Custom weights",
 }
 
@@ -232,6 +235,25 @@ def cube_root_factor(r: float) -> float:
 WaterfallStep = tuple[str, float, str]
 
 
+def step_element(label: str) -> str | None:
+    """The element key a waterfall step belongs to, or ``None``.
+
+    ``"Closure"`` and ``"Closure · r^0.33"`` both map to ``"trap"``; the location
+    residual and the POS reconciliation map to ``None``, because they belong to no
+    single element.
+
+    Lives here rather than in the figures for the same reason the arithmetic does: a
+    figure that recovered the element by string-matching its own label would get a
+    different answer the moment the wording changed, and the wording is
+    :data:`ELEMENT_LABELS`' business.
+    """
+    head = label.split(" · ")[0].strip()
+    for key, name in ELEMENT_LABELS.items():
+        if head == name:
+            return key
+    return None
+
+
 def waterfall_steps(
     elements: dict[str, float],
     r: float,
@@ -303,7 +325,8 @@ class RiskSummary:
       are **inputs** --
       judgements about the prospect, made before anyone picks a location and
       unchanged by picking one. They belong with the data and the risking
-      convention, which is why the chance table lives in tab ①.
+      convention, which is why the chance table lives in tab ② beside the
+      distributions it risks.
     * ``r_location`` is **computed**, from the trial file and the well's entry
       depth. It exists only once there is a well.
 

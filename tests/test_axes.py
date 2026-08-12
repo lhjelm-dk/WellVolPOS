@@ -157,12 +157,49 @@ def test_palette_survives_colour_vision_deficiency(dark):
     """
     from itertools import combinations
 
-    from wellvolpos.viz.theme import CO_OCCURRING
+    from wellvolpos.viz.theme import CO_OCCURRING, element_colour
     from wellvolpos.viz.theme import palette as pal
 
     p = pal(dark)
+
+    def _hex(member: str) -> str:
+        # An "element:" member is a *risk element*, not a volume role -- a separate
+        # family with its own table, added when Lars supplied four element colours
+        # on 2026-08-12. Resolved here so one test covers both families.
+        if member.startswith("element:"):
+            return element_colour(member.split(":", 1)[1], dark)
+        return p[member]
+
     for group, members in CO_OCCURRING.items():
         for cvd, matrix in CVD_MATRICES.items():
             for a, b in combinations(members, 2):
-                d = float(np.linalg.norm(_simulate_cvd(p[a], matrix) - _simulate_cvd(p[b], matrix)))
+                d = float(np.linalg.norm(
+                    _simulate_cvd(_hex(a), matrix) - _simulate_cvd(_hex(b), matrix)))
                 assert d >= 15.0, f"{group}: {a} vs {b} under {cvd} is dE {d:.1f}"
+
+
+def test_the_pale_element_tints_are_never_used_as_the_only_channel():
+    """The tints are for a chip with the name written on it, and nothing else.
+
+    Measured: as pale fills, charge and reservoir separate by **dE 6.8** under
+    simulated tritanopia -- less than half this project's bar. That is fine behind a
+    written label and not fine on a line or a bar, so the saturated set is what the
+    figures use and this records why the two tables exist.
+    """
+    from itertools import combinations
+
+    from wellvolpos.viz.theme import ELEMENT_COLOURS, ELEMENT_TINTS
+
+    assert set(ELEMENT_TINTS) == set(ELEMENT_COLOURS)
+    worst_tint = min(
+        float(np.linalg.norm(_simulate_cvd(ELEMENT_TINTS[a], m)
+                             - _simulate_cvd(ELEMENT_TINTS[b], m)))
+        for m in CVD_MATRICES.values() for a, b in combinations(ELEMENT_TINTS, 2)
+    )
+    worst_solid = min(
+        float(np.linalg.norm(_simulate_cvd(ELEMENT_COLOURS[a], m)
+                             - _simulate_cvd(ELEMENT_COLOURS[b], m)))
+        for m in CVD_MATRICES.values() for a, b in combinations(ELEMENT_COLOURS, 2)
+    )
+    assert worst_tint < 15.0, "tints now pass -- update the comment, not the test"
+    assert worst_solid >= 15.0, f"the saturated element colours fell to dE {worst_solid:.1f}"

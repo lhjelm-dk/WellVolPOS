@@ -40,7 +40,7 @@ from .conventions import (
     PLAY_DEFAULTS,
     PLAY_HELP,
 )
-from .common import chart as _chart, split_caveat
+from .common import chart as _chart, element_chip, split_caveat
 from .context import Ctx
 from .numbering import ref as fig_ref
 
@@ -67,12 +67,18 @@ def render(ctx: Ctx) -> None:
         "risk summary in tab ⑤."
     )
     st.markdown("**The prospect, given the play works**")
+    # The element colours from 5.1 and 5.2, on a chip above each input, so a number
+    # typed here can be found again on those figures without counting rows. The name
+    # is written on the chip because the tint alone does not survive tritanopia --
+    # see `common.element_chip`.
     ec = st.columns(4)
     for i, el in enumerate(ELEMENTS):
+        ec[i].markdown(element_chip(el), unsafe_allow_html=True)
         ec[i].number_input(
             ELEMENT_LABELS[el], 0.01, 1.0, CHANCE_DEFAULTS[el], 0.01,
             key=f"w_chance_{el}",
             help=CHANCE_HELP[el],
+            label_visibility="collapsed",
         )
     st.markdown("**The play — the same four elements, one level up**")
     st.caption(
@@ -84,9 +90,11 @@ def render(ctx: Ctx) -> None:
     )
     pc = st.columns(4)
     for i, el in enumerate(ELEMENTS):
+        pc[i].markdown(element_chip(el), unsafe_allow_html=True)
         pc[i].number_input(
             f"{ELEMENT_LABELS[el]} (play)", 0.01, 1.0, PLAY_DEFAULTS[el], 0.01,
             key=f"w_play_{el}", help=PLAY_HELP[el],
+            label_visibility="collapsed",
         )
     _cond = float(np.prod(list(elements.values())))
     st.caption(

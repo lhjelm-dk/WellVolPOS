@@ -27,6 +27,7 @@ from ..viz import (
     pfig_c2_exceedance,
     pfig_map_view,
 )
+from ..viz.theme import reference_label
 from .common import C2_HEIGHT, chart as _chart, split_caveat
 from .context import Ctx
 from .numbering import ref as fig_ref
@@ -49,82 +50,97 @@ def render(ctx: Ctx) -> None:
     st.subheader("At this well")
     _split_caveat()
 
+    # --------------------------------------------------------------- the chance
+    # **P_well appears once**, and here, as the multiplication it is: POS x r. It used
+    # to be printed twice -- 20.3 % among the volumes and 0.2031 in the decomposition
+    # four rows down -- which leaves a reader working out whether the two agree.
+    # Reading the row left to right *is* the argument the whole tool rests on.
+    st.markdown("##### The chance this well finds hydrocarbons")
+    ch = st.columns(4)
+    ch[0].metric("POS prospect", f"{chance.pos_prospect:.1%}",
+                 help="The chance the PROSPECT holds hydrocarbons. From the chance table "
+                      "in tab ②, or from the trials, depending on the risking convention.")
+    ch[1].metric("× r location", f"{chance.r_location:.1%}",
+                 help="P(contact deeper than the well | hydrocarbons present). The only "
+                      "quantity the well's position controls.")
+    ch[2].metric("= P well", f"{chance.p_well:.1%}",
+                 help="The chance THIS well finds hydrocarbons. Never quote it as the "
+                      "prospect's chance, and never quote the prospect's as this.")
+    ch[3].metric("Reference contour", reference_label(ref).replace("-referenced", ""),
+                 help="What r location is measured against. An explicit setting, because "
+                      "it changes the number.")
+    st.caption(
+        f"`P_well = POS_prospect × r_location` — **{chance.pos_prospect:.4f} × "
+        f"{chance.r_location:.4f} = {chance.p_well:.4f}**. Two numbers with two meanings, "
+        "never multiplied into one for reporting: only the second moves when the well moves, "
+        "so a poor chance table cannot be fixed by drilling deeper."
+    )
+
     if has_area:
         cs = class_summary(vc, groups)
         gs = group_summary(ts, groups)
-        # The two numbers a well proposal is actually made on, side by side with
-        # the two the prospect is described by — because they are what this tool
-        # exists to distinguish. A discovery-case mean is not comparable with a
-        # prospect mean, and P_well is not comparable with POS.
+        # ------------------------------------------------------ the success case
+        # Every number in this block is **conditional** on its own outcome and none of
+        # them is risked. Keeping them in one block, away from the expected volumes
+        # below, is the layout doing the work that this codebase's recurring bug --
+        # an unrisked number under a risked label -- otherwise requires prose to do.
+        st.markdown("##### Volumes if it works, in MMboe — success case, unrisked")
+        _atw, _atw_n = at_the_well_volume(ts, entry)
         k = st.columns(4)
         k[0].metric("Proven mean — headline KPI", f"{cs['proven']['mean']:.2f}",
-                    help="MMboe. What this well would establish between entry and exit.")
+                    help="What this well would establish between entry and exit.")
         k[1].metric("Well associated mean", f"{gs['discovery']['mean']:.2f}",
-                    help="MMboe. The whole accumulation given a discovery — Rose's 'Downdip'.")
-        k[2].metric("P well", f"{chance.p_well:.1%}",
-                    help="POS prospect × r location. The chance THIS well finds hydrocarbons.")
-        k[3].metric("Attic mean | dry & charged", f"{cs['attic_dry_hole']['mean']:.2f}",
-                    help="MMboe left up-dip if the well is dry but the prospect is charged.")
-
-        # Expected volumes: mean × chance. Additive across prospects, and the
-        # only figures here that are — but they describe no outcome that can
-        # occur, so they sit below the success-case means, never instead of them.
-        # **The volume when the contact lands on the well** (Lars, 2026-08-12) --
-        # the workbook's Results!G8, and Rose's "No Regrets" volume in probabilistic
-        # form. It belongs beside the attic and discovery means because it is the seam
-        # between them, and the surprise is how much closer it sits to the attic.
-        _atw, _atw_n = at_the_well_volume(ts, entry)
+                    help="The whole accumulation given a discovery — Rose's 'Downdip'.")
+        k[2].metric("Attic mean — if dry but charged", f"{cs['attic_dry_hole']['mean']:.2f}",
+                    help="What is left up-dip if the well is dry but the prospect is charged.")
         if _atw_n:
-            w = st.columns(2)
-            w[0].metric("At the well — contact exactly at entry", f"{_atw:.2f}",
-                        help=f"MMboe, mean of the {_atw_n:,} trials whose contact lands "
-                             f"within ±2 m of the reservoir entry.")
+            k[3].metric("At the well — contact on entry", f"{_atw:.2f}",
+                        help=f"Mean of the {_atw_n:,} trials whose contact lands within "
+                             f"±2 m of the reservoir entry. Neither a discovery nor a "
+                             f"dry hole — the boundary case.")
+
+        if _atw_n:
             _span = gs["discovery"]["mean"] - cs["attic_dry_hole"]["mean"]
             _frac = ((_atw - cs["attic_dry_hole"]["mean"]) / _span) if _span else float("nan")
-            w[1].metric("...where that sits between dry and discovery", f"{_frac:.0%}",
-                        help="0 % would be the attic mean, 100 % the discovery mean.")
             st.caption(
-                f"**The boundary case.** Not a discovery and not a dry hole, but the "
-                f"accumulation you get if the hydrocarbon–water contact lands *on* the well: "
-                f"**{_atw:.2f} MMboe**, between the attic mean of "
-                f"{cs['attic_dry_hole']['mean']:.2f} and the discovery mean of "
-                f"{gs['discovery']['mean']:.2f}. This is Rose's *“No Regrets”* volume in "
-                f"probabilistic form — his is a single deterministic product, this is the mean "
-                f"of the trials that actually landed there, so it carries the model's own "
-                f"correlations. He is candid that the deterministic version *“is an "
-                f"oversimplification”*, because *“there remains a chance the updip volume will "
-                f"exceed MCFS”* — which is what {fig_ref('{b2}')}'s regret curve answers."
+                f"**The boundary case.** The accumulation you get if the hydrocarbon–water "
+                f"contact lands *on* the well: **{_atw:.2f} MMboe**, which sits **{_frac:.0%}** "
+                f"of the way from the attic mean ({cs['attic_dry_hole']['mean']:.2f}) to the "
+                f"discovery mean ({gs['discovery']['mean']:.2f}) — closer to the dry case than "
+                f"most people expect. This is Rose's *“No Regrets”* volume in probabilistic "
+                f"form: his is a single deterministic product, this is the mean of the trials "
+                f"that actually landed there, so it carries the model's own correlations. He is "
+                f"candid that the deterministic version *“is an oversimplification”*, because "
+                f"*“there remains a chance the updip volume will exceed MCFS”* — which is what "
+                f"{fig_ref('{b2}')}'s regret curve answers."
             )
 
+        # ------------------------------------------------------ risked, and separate
+        st.markdown("##### Expected volumes, in MMboe — risked, mean × chance")
         e = st.columns(3)
         e[0].metric("Expected prospect volume",
-                    f"{expected_volume(gs['prospect']['mean'], chance.pos_prospect):.2f}")
+                    f"{expected_volume(gs['prospect']['mean'], chance.pos_prospect):.2f}",
+                    help=f"Prospect mean × POS prospect ({chance.pos_prospect:.1%}).")
         e[1].metric("Expected well associated",
-                    f"{expected_volume(gs['discovery']['mean'], chance.p_well):.2f}")
+                    f"{expected_volume(gs['discovery']['mean'], chance.p_well):.2f}",
+                    help=f"Discovery mean × P well ({chance.p_well:.1%}).")
         e[2].metric("Expected proven",
-                    f"{expected_volume(cs['proven']['mean'], chance.p_well):.2f}")
+                    f"{expected_volume(cs['proven']['mean'], chance.p_well):.2f}",
+                    help=f"Proven mean × P well ({chance.p_well:.1%}).")
         st.caption(
-            "MMboe. **Expected** volumes are mean × chance — a *risked mean* — "
-            "\"'Risked' Pmean\" column. They are what a portfolio adds up, and they describe no "
-            "outcome that can happen: this well either finds something near "
-            f"{gs['discovery']['mean']:.1f} or it finds nothing. Quote them beside the chance and "
-            "the size, never instead of them."
+            "A **risked mean**: each success-case mean above, times the chance of the outcome "
+            "it belongs to. These are the only volumes here that are *additive across "
+            "prospects*, which is why a portfolio uses them — and they describe no outcome that "
+            f"can happen: this well either finds something near {gs['discovery']['mean']:.1f} "
+            "MMboe or it finds nothing. Quote them beside the chance and the size, never "
+            "instead of them."
         )
 
-    c = st.columns(4)
-    c[0].metric("POS prospect", f"{chance.pos_prospect:.4f}")
-    c[1].metric("r location", f"{chance.r_location:.4f}")
-    c[2].metric("P well", f"{chance.p_well:.4f}")
-    c[3].metric("Trials", f"{ts.n_trials:,}")
-    # risked_shares, not shares(): shares() is what the trial file's own zero
-    # count implies (POS_trials), which only equals the entered POS_prospect
-    # when the risking convention is "Correct". Showing raw shares() next to
-    # a P_well metric drawn from an entered chance table would silently print
-    # two different POS figures on the same tab.
+    st.divider()
     sh = groups.risked_shares(chance.pos_prospect, chance.p_well)
     st.markdown(
-        f"**Outcome tree** — chance failure {sh['chance_failure']:.1%} · "
-        f"dry with attic {sh['dry_with_attic']:.1%} · "
+        f"**Outcome tree**, over {ts.n_trials:,} trials — chance failure "
+        f"{sh['chance_failure']:.1%} · dry with attic {sh['dry_with_attic']:.1%} · "
         f"discovery with contact logged {sh['contact_seen']:.1%} · "
         f"discovery with HC to exit {sh['hc_to_exit']:.1%}"
     )

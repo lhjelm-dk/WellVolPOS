@@ -13,6 +13,8 @@ from __future__ import annotations
 import numpy as np
 import streamlit as st
 
+from ..core.chance import ELEMENTS
+from ..ui.common import element_chip
 from ..ui.numbering import guide_table, ref
 
 from wellvolpos.core import commercial_chance, expected_volume, no_regrets, thickness_from_pay
@@ -26,6 +28,88 @@ def render(*, ts, ad, groups, vc, chance, mefs, entry, exit_, pos_source):
         "Written to be read beside the concepts figure on the Well location tab. "
         "Every number below is computed from the trials currently loaded, so it agrees "
         "with the rest of the app by construction rather than by proofreading."
+    )
+
+    # -------------------------------------------------------------- guidelines
+    # First on the tab (Lars, 2026-08-12). These and the figure table were at the
+    # bottom, behind five sections of theory, so the two most operational parts of
+    # the tab were the last things a reader found.
+    st.markdown("### Guidelines — six things to get right")
+    st.markdown(
+        """
+1. **Set the risking convention first.** Everything downstream depends on whether the trials
+   already carry the geological risk. It is stamped in the footer on every tab so it is never
+   implicit.
+2. **Quote `P_well` and the well-associated volume** for a well decision; show the prospect
+   figures as the contrast, not the headline.
+3. **Say which "proven" you mean.** The word carries two different numbers and both are
+   in this app. One is the mean *total* resource of the trials whose contact happens to fall
+   between entry and exit — 14.78 MMboe on prospect A, reported as *tested by the well*. The
+   other is the per-trial **wedge** split, averaged over every discovery trial — 16.04 MMboe,
+   the headline proven mean. Neither is wrong; quoting one under the other's name is.
+4. **Distrust the deep end of any swept curve.** Conditional groups thin down-dip; steps
+   resting on fewer than 30 trials are left undrawn rather than shown as firmly as the rest.
+5. **Treat the apex as an extrapolation.** It comes from A(z)'s shallow tail, because the
+   trials do not contain the crest — and the `crest` column cannot supply it (60 % of success
+   trials there have a "crest" deeper than their own contact, which is impossible).
+6. **Never join a GeoX export on `TrialNumber`.** The identifiers can sit on different rows
+   than their own data.
+        """
+    )
+
+
+    # ------------------------------------------------------- scope and disclaimer
+    st.divider()
+    st.markdown("### Scope, assumptions and disclaimer")
+    st.markdown(
+        """
+**What this tool does.** It re-cuts one prospect segment's Monte Carlo trial export
+against one proposed well trajectory, and answers five questions: the chance *this
+well* finds hydrocarbons as distinct from the chance the prospect contains them; what
+a discovery would have proven and what stays unproven below it; how much sits up-dip
+if the well is dry; where the well must go to prove a given volume, and what that
+costs in chance; and which risk elements carry the location penalty.
+
+**What it does not do.** It does not replace the volumetric model — it re-cuts that
+model's own output, and it cannot be better than the input. It does not build the
+hydrocarbon–water contact distribution, which is the single most important input to
+every location result here. It does not do economics: MEFS appears as a reference
+line to read probabilities against and is never applied to a distribution.
+        """
+    )
+    st.warning(
+        "**Single hydrocarbon–water contact only.** A prospect with both a gas–oil and an "
+        "oil–water contact, where a well may test one and not the other, is **not "
+        "represented**. Neither is vertical (depth-dependent) risk: it is assumed to be "
+        "carried already by the contact distribution, because `r_location` is derived from "
+        "that distribution and modelling it again here would count it twice."
+    )
+    st.markdown(
+        """
+**Assumptions that are load-bearing, stated once.**
+
+* **Uniform yield and net-to-gross inside the charged interval.** The wedge geometry
+  fixes the *shape* of the charged interval but not the properties within it. The
+  proven/possible split rests on this; the reference grouping does not.
+* **The apex is an extrapolation** of the area–depth curve's shallow tail to zero
+  area. The trials do not contain the crest, so minimum column height inherits that
+  error.
+* **The area–depth curve is recovered from the trials**, not mapped. It fits them
+  extremely closely, but it is a fit.
+* **Percentiles are exceedance throughout** — a P90 is a *small* volume, exceeded 90 %
+  of the time. Half the industry writes it the other way round.
+
+Where an assumption is not met on the data actually loaded, the QC report on tab ①
+says so, and a caveat is repeated on every tab whose numbers depend on it.
+        """
+    )
+    st.error(
+        "**No warranty.** This is a decision-support tool, not an authority. Every number it "
+        "produces is a consequence of the trial file, the well depths and the conventions you "
+        "chose, and any of those can be wrong. Check results against your own model before "
+        "they inform a commitment. The author accepts no responsibility or liability for any "
+        "decision, loss or damage arising from its use, or from any error in its calculations "
+        "or in the data supplied to it."
     )
 
     # ------------------------------------------------------------- the one idea
@@ -57,7 +141,12 @@ and the chance is applied once, separately.
 
     # ----------------------------------------------------------- the volumes
     st.divider()
-    st.markdown("### The volumes, and the colour each one always has")
+    st.markdown("### Colour associations")
+    st.caption(
+        "Colour is assigned by **what a thing is**, never cycled — so the same concept is the "
+        "same colour on every figure and in every export, and a colour can be learned once."
+    )
+    st.markdown("**The volumes**")
     st.plotly_chart(pfig_colour_key(), width="stretch", theme=None, key="colourkey")
     st.info(
         "**They nest**: minimum ⊂ up-dip ⊂ tested ⊂ well associated ⊂ prospect. And **a chance "
@@ -65,6 +154,41 @@ and the chance is applied once, separately.
         "well-associated case, POS_prospect navy — so on an exceedance plot the two POS values "
         "read against the two distributions they risk."
     )
+    st.markdown("**The risk elements** — a separate family, used on the chance table and on "
+                "5.1 and 5.2")
+    _ec = st.columns(len(ELEMENTS))
+    for _i, _el in enumerate(ELEMENTS):
+        _ec[_i].markdown(element_chip(_el), unsafe_allow_html=True)
+    st.caption(
+        "A different question from the volumes, so a different family: these say which *chance "
+        "element* a bar belongs to. The chips are pale because a name is written on them; the "
+        "lines and bars use the saturated versions of the same four hues, which is what keeps "
+        "them apart under colour-vision deficiency."
+    )
+    st.markdown("**Line style carries the reading, not the quantity**")
+    st.markdown(
+        """
+| style | meaning |
+|---|---|
+| **solid** | conditional — the success case, starting at 100 %. Percentiles live here. |
+| **dashed** | unconditional (risked) — the same volumes, starting at the chance. |
+| **dotted** | a second *volume concept* in the same family, as on 3.12 where dotted is what the well proves. Never risking — that is what dashed means. |
+| **thin grey** | a spread read off the trials, drawn behind the answer it qualifies. |
+| **shaded band** | sampling error on an estimate, which is a different kind of thing from a geological spread. Both appear on 3.11 and the legend says which is which. |
+        """
+    )
+
+    # --------------------------------------------------------- how to read it
+    st.divider()
+    st.markdown("### How to read each figure")
+    st.caption(
+        "Figures are numbered **by tab**: 2.1 is the first figure on tab ②, 3.10 the tenth "
+        "on tab ③, so a number tells you where to find it. The exported figure files keep a "
+        "short letter code in their names instead, because a file dropped into a deck outlives "
+        "the tab it came from."
+    )
+    st.markdown(guide_table())
+
 
     # ------------------------------------------------ pay vs reservoir thickness
     st.divider()
@@ -182,18 +306,6 @@ size, never instead of them.
         """
     )
 
-    # --------------------------------------------------------- how to read it
-    st.divider()
-    st.markdown("### How to read each figure")
-    st.caption(
-        "Figures are numbered **by tab**: 2.1 is the first figure on tab ②, 3.10 the tenth "
-        "on tab ③. The old letter codes are kept in brackets because the code, the exported "
-        "file names and this project's notes still argue about \"B6\" by letter — the letter "
-        "is the figure's identity, the number is where it sits today."
-    )
-    st.markdown(guide_table())
-
-
     # ------------------------------------------- Haskett, and what 3.3 measures here
     st.divider()
     st.markdown("### Uncertainty reduction (3.3) — and what it is measuring *here*")
@@ -269,31 +381,6 @@ far apart the two outcome means sit — is precisely the uncertainty the well re
 is what 3.3 is built from. So the paper's arithmetic claim is loose while its conclusion
 stands, and it is worth knowing which is which before quoting either.
 """
-    )
-
-    # -------------------------------------------------------------- guidelines
-    st.divider()
-    st.markdown("### Guidelines")
-    st.markdown(
-        """
-1. **Set the risking convention first.** Everything downstream depends on whether the trials
-   already carry the geological risk. It is stamped in the footer on every tab so it is never
-   implicit.
-2. **Quote `P_well` and the well-associated volume** for a well decision; show the prospect
-   figures as the contrast, not the headline.
-3. **Say which "proven" you mean.** The word carries two different numbers and both are
-   in this app. One is the mean *total* resource of the trials whose contact happens to fall
-   between entry and exit — 14.78 MMboe on prospect A, reported as *tested by the well*. The
-   other is the per-trial **wedge** split, averaged over every discovery trial — 16.04 MMboe,
-   the headline proven mean. Neither is wrong; quoting one under the other's name is.
-4. **Distrust the deep end of any swept curve.** Conditional groups thin down-dip; steps
-   resting on fewer than 30 trials are left undrawn rather than shown as firmly as the rest.
-5. **Treat the apex as an extrapolation.** It comes from A(z)'s shallow tail, because the
-   trials do not contain the crest — and the `crest` column cannot supply it (60 % of success
-   trials there have a "crest" deeper than their own contact, which is impossible).
-6. **Never join a GeoX export on `TrialNumber`.** The identifiers can sit on different rows
-   than their own data.
-        """
     )
 
     # -------------------------------------------------------------- references

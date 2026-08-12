@@ -10,7 +10,11 @@ from __future__ import annotations
 import numpy as np
 import streamlit as st
 
-from ..viz.theme import PANEL_HEIGHT
+from ..core.chance import ELEMENT_LABELS
+from ..viz.theme import (
+    PANEL_HEIGHT,
+    element_colour,
+)
 from .context import Ctx
 from .numbering import renumber_title
 
@@ -19,7 +23,7 @@ from .numbering import renumber_title
 #: the axis, so it gets its own.
 C2_HEIGHT = 620
 
-__all__ = ["C2_HEIGHT", "badge", "chart", "split_caveat"]
+__all__ = ["C2_HEIGHT", "badge", "chart", "element_chip", "split_caveat"]
 
 
 def badge(level: str) -> str:
@@ -96,3 +100,26 @@ def split_caveat(ctx: Ctx) -> None:
             f"thickness from pay and were treated as **charged to base**, which is what the "
             f"thickness inversion flags them as."
         )
+
+
+def element_chip(key: str) -> str:
+    """A small coloured nameplate for one risk element, as HTML.
+
+    Lars asked for the four element colours on the chance-table inputs as well as on
+    5.1 and 5.2, so that a number typed here can be found again on the figures
+    without counting rows. A Streamlit ``number_input`` label cannot be coloured, so
+    the colour goes on a chip above it.
+
+    **The name is written on the chip**, which is the point rather than decoration:
+    the tint alone would put charge and reservoir at dE 6.8 under simulated
+    tritanopia, well inside this project's dE 15 bar. With the name on the mark the
+    colour is a second channel and never the only one.
+    """
+    fill = element_colour(key, tint=True)
+    edge = element_colour(key)
+    return (
+        f'<div style="background:{fill};border-left:5px solid {edge};'
+        f'border-radius:3px;padding:2px 8px;margin-bottom:2px;'
+        f'font-size:0.82rem;font-weight:600;color:#1b1b1b;">'
+        f'{ELEMENT_LABELS[key]}</div>'
+    )

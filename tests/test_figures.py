@@ -341,15 +341,41 @@ def test_b4_marks_the_total_as_p_well_not_as_the_tables_own_product():
     assert f"{float(np.prod(list(ELEMENTS_EXAMPLE.values()))) * R_EXAMPLE:.4f}" not in said
 
 
-def test_b4_keeps_location_steps_blue_but_separable_by_hatch():
-    """r is a chance and A3 draws it blue, so B4 must not give it a second
-    colour; the location contribution is separated by hatching instead."""
-    fig, ax = figures.fig_b4_chance_waterfall(ELEMENTS_EXAMPLE, R_EXAMPLE, POS_EXAMPLE, scheme="none")
+def test_b4_colours_each_bar_by_its_element_and_hatches_the_location_share():
+    """Colour is the element, hatching is the location share (Lars's card, 2026-08-12).
+
+    Before this, every chance step was one blue, so the figure could say *that* the
+    elements differ but never *which* element a bar was without reading the tick
+    label under it. The standalone location bar belongs to no element, so it keeps
+    the ``p_well`` colour -- which is also what distinguishes it.
+    """
+    from wellvolpos.viz.theme import element_colour
+
+    fig, ax = figures.fig_b4_chance_waterfall(
+        ELEMENTS_EXAMPLE, R_EXAMPLE, POS_EXAMPLE, scheme="none")
     hatched = [p for p in ax.patches if p.get_hatch()]
-    plain = [p for p in ax.patches if not p.get_hatch() and _rgb(p.get_facecolor()) == pytest.approx(_rgb(colour("p_well")))]
-    assert len(hatched) == 1                       # the standalone location bar
-    assert len(plain) == len(figures.ELEMENTS)      # one per chance element
+    assert len(hatched) == 1                        # the standalone location bar
     assert _rgb(hatched[0].get_facecolor()) == pytest.approx(_rgb(colour("p_well")))
+
+    faces = [_rgb(p.get_facecolor()) for p in ax.patches if not p.get_hatch()]
+    for el in figures.ELEMENTS:
+        assert any(f == pytest.approx(_rgb(element_colour(el))) for f in faces), el
+
+
+def test_b4_gives_a_location_share_the_same_colour_as_its_own_element():
+    """Under a scheme that spreads the penalty, the hatched bar beside an element
+    has to be that element's colour -- otherwise the pairing is only positional."""
+    from wellvolpos.viz.theme import element_colour
+
+    fig, ax = figures.fig_b4_chance_waterfall(
+        ELEMENTS_EXAMPLE, R_EXAMPLE, POS_EXAMPLE, scheme="equal_cube_root")
+    hatched = [_rgb(p.get_facecolor()) for p in ax.patches if p.get_hatch()]
+    assert hatched, "equal cube root should hatch three location shares"
+    for face in hatched:
+        assert any(face == pytest.approx(_rgb(element_colour(el)))
+                   for el in ("charge", "trap", "retention")), face
+    # Reservoir is exempt from the location penalty, so it must not appear hatched.
+    assert not any(f == pytest.approx(_rgb(element_colour("reservoir"))) for f in hatched)
 
 
 def test_b4_reconciliation_step_is_neither_chance_nor_location_coloured():

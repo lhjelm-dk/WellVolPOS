@@ -33,6 +33,7 @@ from ..core.chance import (
     SCHEME_LABELS,
     SHIPPED_SCHEMES,
     allocate,
+    step_element,
 )
 from ..core.chance import waterfall_steps as chance_waterfall_steps
 from ..core.classes import (
@@ -61,6 +62,7 @@ from .theme import (
     FAN_POS_LEVELS,
     VOLUME_SCALES,
     concept_shades,
+    element_colour,
     depth_shades,
     log_tick_text,
     log_ticks,
@@ -1031,12 +1033,17 @@ def fig_b4_chance_waterfall(
 
     x = np.arange(len(labels))
     for xi, (b, t, role) in enumerate(zip(bottoms, tops, roles)):
+        # Colour is the element, hatching is the location share -- see the plotly
+        # twin. Steps that belong to no element stay neutral, which is also what
+        # tells them apart from the ones that do.
+        el = step_element(labels[xi])
         if role == "reconcile":
             face, hatch = p["muted"], None
-        elif role == "location":
-            face, hatch = c, "///"
+        elif el is not None:
+            face = element_colour(el, dark)
+            hatch = "///" if role == "location" else None
         else:
-            face, hatch = c, None
+            face, hatch = c, "///" if role == "location" else None
         ax.bar(xi, abs(b - t), bottom=min(b, t), color=face, width=0.6,
                hatch=hatch, edgecolor=p["surface"] if hatch else "none", linewidth=0.0)
     for xi, (b, v) in enumerate(zip(bottoms, values)):
@@ -1117,6 +1124,11 @@ def fig_b5_allocation_dumbbell(
 
     axes[0].set_yticks(y)
     axes[0].set_yticklabels([ELEMENT_LABELS[e] for e in ELEMENTS])
+    # The element colour on the tick labels, so 5.1 and 5.2 can be read against each
+    # other and against the chance-table inputs without counting rows.
+    for tick, el in zip(axes[0].get_yticklabels(), ELEMENTS):
+        tick.set_color(element_colour(el, dark))
+        tick.set_fontweight("bold")
     axes[0].legend(loc="lower right", fontsize=7)
     fig.suptitle("B5 · Allocation dumbbell", fontsize=9.5, fontweight="bold", color=p["text"])
     fig.tight_layout()
@@ -1829,6 +1841,12 @@ def fig_c2_exceedance(
         "C2 · The same volumes as exceedance curves — solid conditional, dashed unconditional",
         fontsize=9.5,
     )
+    # A legend, matching the interactive half (Lars, 2026-08-12). The braces name the
+    # four concepts, but they label *ranges* below the zero line rather than curves,
+    # so eight curves in four colours and two styles had no key at all.
+    handles, labels = ax_exc.get_legend_handles_labels()
+    if handles:
+        ax_exc.legend(loc="upper right", fontsize=6.5, framealpha=0.9)
     fig.tight_layout()
     return fig, ax_exc
 

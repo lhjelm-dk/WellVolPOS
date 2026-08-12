@@ -108,6 +108,11 @@ CO_OCCURRING = {
     "B4 waterfall": ("well_associated", "muted"),
     "B12 bands": ("prospect", "tested", "minimum"),
     "map view": ("up_dip", "prospect", "tested"),
+    # The risk elements, which share 5.1 and 5.2. Named with an "element:"
+    # prefix so the CVD test can resolve them against ELEMENT_COLOURS rather
+    # than against ROLES -- they are a different family.
+    "B4/B5 risk elements": ("element:charge", "element:trap",
+                            "element:reservoir", "element:retention"),
 }
 
 # Meaning -> palette key. Never index the palette by position.
@@ -132,6 +137,41 @@ ROLES = {
     "mefs": "minimum",
     "well": "well",
 }
+
+#: One colour per geological risk element (Lars's card, 2026-08-12). A *different*
+#: family from the volume palette and it has to stay that way: the volume roles say
+#: which volume concept a curve is, these say which chance element a bar is, and no
+#: figure shows both encodings at once.
+#:
+#: Saturated, not the pale fills on the card. Measured: as pale fills, charge and
+#: reservoir separate by only dE 6.8 under simulated tritanopia, against this
+#: project's dE 15 bar; saturated, the worst pair over all three deficiencies is
+#: dE 16.8. The hues are unchanged -- red, blue, yellow, green -- only the lightness
+#: is, which is exactly the tuning the volume palette had.
+ELEMENT_COLOURS = {
+    "charge": "#c62828",       # red
+    "trap": "#1565c0",         # blue     -- displayed as "Closure"
+    "reservoir": "#e6a700",    # yellow
+    "retention": "#2e7d32",    # green
+}
+
+#: The pale versions, for a chip or a table cell *behind a written label*. Never for
+#: a line or a bar, where the name is not on the mark and colour carries it alone.
+ELEMENT_TINTS = {
+    "charge": "#f6d6d6",
+    "trap": "#d3e3f7",
+    "reservoir": "#faedc4",
+    "retention": "#d6e9d7",
+}
+
+
+def element_colour(key: str, dark: bool = False, *, tint: bool = False) -> str:
+    """The colour for a risk element, by its stable key (``trap``, not ``Closure``)."""
+    table = ELEMENT_TINTS if tint else ELEMENT_COLOURS
+    if key not in table:
+        raise KeyError(f"no colour for risk element {key!r}; expected {sorted(table)}")
+    return table[key]
+
 
 AREA_SCALES = {
     "area": ("Productive area (km²)", lambda a: a),
@@ -309,19 +349,32 @@ def _has_colourbar(fig) -> bool:
     return False
 
 
-def _place_colourbars(fig, n_entries: int, height: int | None) -> None:
+def _place_colourbars(fig, n_entries: int, height: int | None,
+                      bottom: int | None = None) -> None:
     """Put any colourbar in the reserved band, *above* the legend.
 
     Both were being anchored independently -- the legend to the figure bottom, the
     colourbar to a fraction of the plot -- and on A4 they landed on top of each
     other. There is one band of reserved space below the x-axis title, so one
-    function has to divide it: the legend takes the bottom, sized by its entry
-    count, and the colourbar sits just above whatever that comes to.
+    function has to divide it: the legend takes the bottom and the colourbar sits
+    above it.
+
+    **Anchored to the axis foot, not to the legend** (Lars, 2026-08-12: *"the colour
+    bar on 3.11 needs to go down a bit"*). Measured up from the legend's *worst case*
+    it was pushed hard against the x-axis title -- 14 px below it on 3.11, where the
+    legend reserves for twelve entries and then renders two rows. The axis foot is
+    the stable reference: it does not depend on how the browser wraps the legend. The
+    floor keeps a realistic three-row legend clear, which is the collision that
+    actually matters.
     """
     if height is None or not height:
         return
-    legend_px = LEGEND_ROW_PX * max(int(n_entries), 1) + 8
-    y = (legend_px + 10) / float(height)          # container fraction, from the bottom
+    legend_floor = LEGEND_ROW_PX * 3 + 18
+    if bottom:
+        y_px = max(int(bottom) - AXIS_FOOT_PX - 20, legend_floor)
+    else:
+        y_px = LEGEND_ROW_PX * max(int(n_entries), 1) + 18
+    y = y_px / float(height)                      # container fraction, from the bottom
     spec = dict(orientation="h", x=0.5, xanchor="center", xref="container",
                 yref="container", yanchor="bottom", y=y,
                 len=0.42, thickness=10, tickfont=dict(size=9))
@@ -428,7 +481,7 @@ def apply_plotly(fig, dark: bool = False, height: int | None = PANEL_HEIGHT):
     )
     if height is not None:
         fig.update_layout(height=height)
-    _place_colourbars(fig, n_entries, height)
+    _place_colourbars(fig, n_entries, height, bottom)
     axis = dict(
         gridcolor=p["grid"], zeroline=False, linecolor=p["grid"],
         tickfont=dict(color=p["muted"], size=11),

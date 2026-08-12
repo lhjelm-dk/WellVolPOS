@@ -24,6 +24,7 @@ from .chance import (
     normalised_weights,
     p_well,
     r_location,
+    step_element,
     waterfall_steps,
 )
 from .classes import (
@@ -95,7 +96,7 @@ __all__ = [
     "r_location", "p_well", "allocate", "cube_root_factor", "expected_volume", "ReferenceContour",
     "risk_summary", "RiskSummary", "SUMMARY_COLUMNS",
     "ELEMENT_LABELS", "ELEMENTS", "SCHEMES", "SCHEME_LABELS", "SHIPPED_SCHEMES", "normalised_weights",
-    "waterfall_steps",
+    "step_element", "waterfall_steps",
     "Sweep", "run_sweep", "VolumeSweep", "run_volume_sweep",
     "InverseResult", "TARGET_STATISTICS", "TARGET_STATISTIC_LABELS", "invert_volume_target", "volume_target_curve", "find_crossing",
     "ThicknessFromPay", "thickness_from_pay",

@@ -2,7 +2,7 @@
 
 Phases 0–5. Six tabs, ordered so a reader moves **explore, then evaluate**:
 
-    ① Data, QC and risk   what am I working with, and what risk am I bringing?
+    ① Input data and QC   what am I working with, and is it sound?
     ② Prospect            what is this prospect, before any well?
     ③ Where to drill      where should the well go? — every figure that sweeps depth
     ④ At this well        what do I get at the depth I chose?
@@ -170,7 +170,7 @@ st.caption("Well POS and volume, from a stochastic prospect model")
 # there, what is it worth, and what does any of it mean.
 tabs = st.tabs(
     [
-        "① Data, QC and risk",
+        "① Input data and QC",
         "② Prospect",
         "③ Where to drill",
         "④ At this well",
