@@ -99,27 +99,65 @@ def test_a_shared_zlim_is_honoured_exactly_by_every_panel(area_depth, sweep, vsw
     assert set(ranges.values()) == {(ZROW[1], ZROW[0])}     # descending = inverted
 
 
-def test_panels_in_a_row_share_one_height(area_depth, sweep, vsweep, reduced):
+def test_a_figures_bottom_margin_grows_with_its_legend(area_depth, sweep, vsweep, reduced):
+    """The reserved space is sized to the legend, not fixed (Lars, 2026-08-12).
+
+    A fixed 125 px clipped real legends: measured in the app, B1's six entries wrapped
+    to six rows in a three-column layout and lost 75 px off the bottom. Streamlit
+    charts are width-responsive, so how many rows a horizontal legend takes is decided
+    in the browser and cannot be known here -- which is why
+    :func:`~wellvolpos.viz.theme.legend_margin` reserves for the worst case of one
+    entry per row.
+
+    The cost is paid in figure *height*, not in plot area, so a figure with twelve
+    series is taller than one with two and both have the same room to draw in.
+    """
+    from wellvolpos.viz.theme import _has_colourbar, legend_entries, legend_margin
+
     figs = _depth_figures(area_depth, sweep, vsweep, reduced)
-    assert {fig.layout.height for fig in figs.values()} == {PANEL_HEIGHT}
+    for name, fig in figs.items():
+        n = legend_entries(fig)
+        want = legend_margin(n, colourbar=_has_colourbar(fig))
+        assert fig.layout.margin.b == want, name
+        # ...and the figure grew to pay for it, rather than the plot area shrinking.
+        assert fig.layout.height == PANEL_HEIGHT + max(0, want - legend_margin(3)), name
+
+    # Since the margin now depends on the series count, panels genuinely differ --
+    # which is the reason level_row exists rather than a defect.
+    assert len({fig.layout.margin.b for fig in figs.values()}) > 1
 
 
-def test_panels_in_a_row_share_one_plot_area(area_depth, sweep, vsweep, reduced):
+def test_level_row_makes_a_row_share_one_plot_area(area_depth, sweep, vsweep, reduced):
     """Equal ranges are not enough — the plot *areas* have to match too.
 
-    An identical y-range still lands a given depth on a different pixel row if
-    one panel's axes are inset further than another's. Plotly does exactly that
-    when a legend or colour bar sits outside the axes and ``autoexpand`` is
-    left on: the margin grows to fit it. Same height plus same fixed margins
-    plus same range is what actually makes a row level.
+    An identical y-range still lands a given depth on a different pixel row if one
+    panel's axes are inset further than another's. That used to be guaranteed by
+    fixing every margin to the same number; now the margin follows the legend, so the
+    sharing has to be *imposed* on a row after its figures are built.
+
+    ``level_row`` is that step, and it is called from the same place as ``row_zlim``
+    for the same reason. This asserts the mechanism rather than an accident: build
+    three panels that differ, level them, and every one of the three properties a
+    level row needs must hold.
     """
-    figs = _depth_figures(area_depth, sweep, vsweep, reduced)
-    margins = {
-        (m.l, m.r, m.t, m.b, m.autoexpand)
-        for m in (fig.layout.margin for fig in figs.values())
-    }
+    from wellvolpos.viz.theme import level_row
+
+    figs = list(_depth_figures(area_depth, sweep, vsweep, reduced).values())[:3]
+    assert len({f.layout.margin.b for f in figs}) > 1, "need panels that differ to test this"
+
+    level_row(*figs)
+    margins = {(m.l, m.r, m.t, m.b, m.autoexpand)
+               for m in (f.layout.margin for f in figs)}
     assert len(margins) == 1, margins
-    assert next(iter(margins))[-1] is False, "autoexpand must be off or a legend can shift the axes"
+    assert next(iter(margins))[-1] is False, \
+        "autoexpand must be off or a legend can shift the axes"
+    assert len({f.layout.height for f in figs}) == 1
+    # The row takes the largest of each, so nothing that fitted before is clipped now.
+    assert next(iter(margins))[3] == max(
+        __import__("wellvolpos.viz.theme", fromlist=["legend_margin"]).legend_margin(
+            __import__("wellvolpos.viz.theme", fromlist=["legend_entries"]).legend_entries(f)
+        ) for f in figs
+    )
 
 
 def test_every_legend_sits_below_the_x_axis_at_the_shared_height(
@@ -134,15 +172,20 @@ def test_every_legend_sits_below_the_x_axis_at_the_shared_height(
     the row out of level. Reserving it uniformly is what keeps a given depth on the
     same pixel row across a row of panels.
 
-    So the assertion is not "inside the axes" any more -- it is "at ``LEGEND_Y``,
-    the shared constant". An arbitrary negative y would clip, or misalign a row.
+    It is **anchored to the figure, not to the plot area**. With plotly's default
+    ``yref="paper"`` the y is a fraction of the *plot* height, so the gap below the
+    axis grew with the plot and a legend that fitted on a short figure ran off a tall
+    one -- three still clipped after the margin was made legend-aware.
+    ``yref="container"`` measures from the figure edge, so the legend sits at the
+    bottom and grows upward into the reserved margin. That is what makes it
+    impossible to clip, and it is what this asserts.
     """
-    from wellvolpos.viz.theme import LEGEND_Y
-
     for name, fig in _depth_figures(area_depth, sweep, vsweep, reduced).items():
         lg = fig.layout.legend
-        assert lg.y == LEGEND_Y, f"{name} legend y={lg.y}, expected {LEGEND_Y}"
         assert lg.orientation == "h", f"{name} legend is not horizontal"
+        assert lg.yref == "container", f"{name} legend yref={lg.yref!r}, expected 'container'"
+        assert lg.yanchor == "bottom", f"{name} legend yanchor={lg.yanchor!r}"
+        assert 0.0 < lg.y < 0.1, f"{name} legend y={lg.y} is not near the figure bottom"
         # ...and the margin actually reserves the space it now needs.
         assert fig.layout.margin.b >= 100, f"{name} bottom margin {fig.layout.margin.b} is too small"
         assert fig.layout.margin.autoexpand is False, name
@@ -1156,14 +1199,18 @@ def test_no_colourbar_sits_outside_its_axes(reduced, vsweep):
 
     The fix was first "inside the axes"; on 2026-08-12 Lars asked for legends and
     colourbars alike to sit **below the x-axis title**, which is better -- inside the
-    axes they covered data in whichever corner they were parked. It is safe because
-    ``apply_plotly`` reserves the bottom margin on every figure, so no panel grows
-    its own margin and takes the row out of level.
+    axes they covered data in whichever corner they were parked.
 
-    So the rule is now: a colourbar sits at ``COLOURBAR_Y``, the shared constant,
-    below the legend. Cheap to assert, invisible to lose.
+    The first attempt at that placed the two independently -- the legend against the
+    figure, the colourbar against a fraction of the plot -- and on A4 they landed on
+    top of each other. There is **one** band of reserved space, so one function
+    divides it: ``theme.apply_plotly`` puts the legend at the bottom, sized by its
+    entry count, and the colourbar just above whatever that comes to. The figures
+    themselves declare only that a colourbar exists and what it says.
+
+    So the rule is now: every colourbar is anchored to the container, horizontal, and
+    sitting above the legend rather than over it.
     """
-    from wellvolpos.viz.theme import COLOURBAR_Y
     figs = {
         "A4": I.pfig_a4_resource_vs_depth(reduced, render="grid"),
         "B6": I.pfig_b6_inverse(vsweep, target=14.0, ts=reduced),
@@ -1175,10 +1222,17 @@ def test_no_colourbar_sits_outside_its_axes(reduced, vsweep):
         bars += [t.colorbar for t in fig.data
                  if getattr(t, "colorbar", None) is not None and t.colorbar.x is not None]
         assert bars, f"{name}: expected a positioned colourbar"
+        legend_y = fig.layout.legend.y
         for cb in bars:
-            assert 0.0 <= cb.x <= 1.0, f"{name}: colourbar x={cb.x} is off the figure"
-            assert cb.y == COLOURBAR_Y, f"{name}: colourbar y={cb.y}, expected {COLOURBAR_Y}"
             assert cb.orientation == "h", f"{name}: colourbar is not horizontal"
+            assert cb.yref == "container", f"{name}: colourbar yref={cb.yref!r}"
+            assert cb.yanchor == "bottom", f"{name}: colourbar yanchor={cb.yanchor!r}"
+            # Above the legend, not on it. Both are container fractions from the
+            # bottom, so "above" is simply a larger y.
+            assert cb.y > legend_y, (
+                f"{name}: colourbar y={cb.y} is not above the legend at y={legend_y}"
+            )
+            assert cb.y < 0.5, f"{name}: colourbar y={cb.y} has climbed into the plot"
         assert fig.layout.margin.b >= 100, f"{name}: bottom margin leaves no room"
 
 

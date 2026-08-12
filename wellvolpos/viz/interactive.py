@@ -58,7 +58,6 @@ from .figures import (
     exceedance_marks,
 )
 from .theme import (
-    COLOURBAR_Y,
     AREA_SCALES,
     PANEL_HEIGHT,
     VALUE_CMAP,
@@ -674,10 +673,10 @@ def pfig_a4_resource_vs_depth(
         # "more or less", which is not what a trial count is for. Bottom-right is the
         # empty corner here: deep contacts hold large volumes, so the mass runs
         # top-left to bottom-right and the cells past it are empty.
-        colorbar=dict(title=dict(text="trials (log₁₀)", side="top"),
-                      orientation="h", x=0.5, xanchor="center", y=COLOURBAR_Y,
-                      yanchor="top", len=0.45, thickness=10,
-                      tickfont=dict(size=9)),
+        # Position is set by theme.apply_plotly, which owns the reserved band below
+        # the axis and has to divide it between this and the legend -- they were
+        # placed independently and landed on top of each other on A4.
+        colorbar=dict(title=dict(text="trials (log₁₀)", side="top"), x=0.5),
         hovertemplate=("%{customdata:.0f} trials<br>%{x:.1f} MMboe at "
                        + DEPTH_HOVER + "<extra></extra>"),
     )
@@ -1520,11 +1519,8 @@ def pfig_b6_inverse(
             # trade this figure exists to show, an invisible scale makes the colour
             # decorative. Horizontal in the bottom-left corner, which the curve never
             # reaches: the requirement runs top-left to bottom-right.
-            colorbar=dict(
-                title=dict(text="P<sub>well</sub> (%)", side="top"),
-                orientation="h", x=0.5, xanchor="center", y=COLOURBAR_Y,
-                yanchor="top", len=0.45, thickness=10, tickfont=dict(size=9),
-            ),
+            # Position set by theme.apply_plotly -- see the note on A4's colourbar.
+            colorbar=dict(title=dict(text="P<sub>well</sub> (%)", side="top"), x=0.5),
         ),
         name=f"Required entry \u2014 for a target {stat_label} volume",
         customdata=p_at[ok] * 100.0,

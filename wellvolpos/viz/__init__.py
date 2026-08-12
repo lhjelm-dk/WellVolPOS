@@ -60,6 +60,7 @@ from .interactive import (
 )
 from .theme import (
     PANEL_HEIGHT,
+    level_row,
     apply,
     apply_plotly,
     colour,
@@ -70,7 +71,7 @@ from .theme import (
 
 __all__ = [
     "apply", "palette", "colour", "depth_axis",
-    "apply_plotly", "depth_axis_plotly", "PANEL_HEIGHT", "row_zlim", "AREA_SCALES",
+    "apply_plotly", "depth_axis_plotly", "PANEL_HEIGHT", "level_row", "row_zlim", "AREA_SCALES",
     # matplotlib / export
     "fig_a1_area_depth", "fig_a2_outcome_tree", "fig_a3_chance_decomposition",
     "fig_a4_resource_vs_depth", "fig_a5_exceedance", "fig_a6_overlap",

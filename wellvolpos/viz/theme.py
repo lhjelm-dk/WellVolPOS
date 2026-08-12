@@ -146,13 +146,10 @@ in km2 regardless (non-negotiable 4).
 """
 
 
-#: Where the legend's top edge sits, in axis fractions -- negative is below the
-#: plot. Anything the reader must look up rather than read off the data goes here,
-#: under the x-axis title, so it never covers a curve. One constant so a legend and
-#: a colourbar cannot end up at different heights on two figures in a row.
+#: Kept for callers that still reference it; the legend is anchored to the figure
+#: bottom now (see :func:`apply_plotly`) rather than to a fraction of the plot,
+#: because a plot-relative offset drifted with the plot height and clipped.
 LEGEND_Y = -0.20
-#: Colourbars sit below the legend, same reasoning.
-COLOURBAR_Y = -0.34
 
 SEQUENTIAL_CMAP = "Blues"   # single hue, light -> dark; never a rainbow
 
@@ -265,9 +262,118 @@ def new_figure(nrows=1, ncols=1, figsize=(12, 6), dark=False, **kw):
 PANEL_HEIGHT = 560
 
 
+#: Vertical space one row of horizontal legend entries takes, in px, measured off
+#: the rendered app rather than guessed.
+LEGEND_ROW_PX = 21
+#: Room for the x-axis title and tick labels, below which the legend starts.
+AXIS_FOOT_PX = 62
+#: Never reserve more than this. Beyond it the legend is the figure, and the answer
+#: is fewer series rather than more margin.
+MAX_LEGEND_PX = 260
+#: A colourbar needs its own strip above the legend: the bar, its ticks and its title.
+COLOURBAR_BAND_PX = 54
+
+
+def legend_entries(fig) -> int:
+    """How many entries the legend will actually show."""
+    return sum(
+        1 for tr in fig.data
+        if getattr(tr, "name", None) and getattr(tr, "showlegend", None) is not False
+    )
+
+
+def _has_colourbar(fig) -> bool:
+    for tr in fig.data:
+        if getattr(tr, "colorbar", None) is not None and tr.colorbar.x is not None:
+            return True
+        marker = getattr(tr, "marker", None)
+        if marker is not None and getattr(marker, "colorbar", None) is not None                 and marker.colorbar.x is not None:
+            return True
+    return False
+
+
+def _place_colourbars(fig, n_entries: int, height: int | None) -> None:
+    """Put any colourbar in the reserved band, *above* the legend.
+
+    Both were being anchored independently -- the legend to the figure bottom, the
+    colourbar to a fraction of the plot -- and on A4 they landed on top of each
+    other. There is one band of reserved space below the x-axis title, so one
+    function has to divide it: the legend takes the bottom, sized by its entry
+    count, and the colourbar sits just above whatever that comes to.
+    """
+    if height is None or not height:
+        return
+    legend_px = LEGEND_ROW_PX * max(int(n_entries), 1) + 8
+    y = (legend_px + 10) / float(height)          # container fraction, from the bottom
+    spec = dict(orientation="h", x=0.5, xanchor="center", xref="container",
+                yref="container", yanchor="bottom", y=y,
+                len=0.42, thickness=10, tickfont=dict(size=9))
+    for tr in fig.data:
+        if getattr(tr, "colorbar", None) is not None and tr.colorbar.x is not None:
+            tr.colorbar.update(**spec)
+        marker = getattr(tr, "marker", None)
+        if marker is not None and getattr(marker, "colorbar", None) is not None                 and marker.colorbar.x is not None:
+            marker.colorbar.update(**spec)
+
+
+def legend_margin(n_entries: int, *, colourbar: bool = False) -> int:
+    """Bottom margin needed to show *all* of a horizontal legend, worst case.
+
+    **Worst case is one entry per row**, and that is not pessimism -- it is what
+    happens in a three-column row on this app, measured: B1 with six entries wrapped
+    to six rows and was clipped by 75 px against the old fixed 125 px margin. Because
+    Streamlit charts are width-responsive, the number of rows is decided in the
+    browser at render time and cannot be known here; reserving for the worst case is
+    the only thing that is always right.
+
+    The cost is paid in figure *height*, not in plot area -- see
+    :func:`apply_plotly`, which grows the figure by whatever the margin grew by. A
+    taller figure with the same plot area is a strictly better trade than a legend
+    with half its entries cut off.
+    """
+    needed = AXIS_FOOT_PX + LEGEND_ROW_PX * max(int(n_entries), 0)
+    if colourbar:
+        needed += COLOURBAR_BAND_PX
+    cap = MAX_LEGEND_PX + (COLOURBAR_BAND_PX if colourbar else 0)
+    return int(min(max(needed, AXIS_FOOT_PX + LEGEND_ROW_PX * 3), cap))
+
+
+def level_row(*figs, height: int | None = None) -> None:
+    """Give every figure in a row the same bottom margin and the same height.
+
+    Panels in a row must share a plot area, not just a depth range -- otherwise the
+    same depth lands on a different pixel row in each and the row cannot be read
+    across, which is what non-negotiable 2 is for. Since the legend now sets the
+    bottom margin and each panel has its own number of series, that sharing has to
+    be imposed *after* the figures are built.
+
+    The row takes the **largest** margin and the **largest** height among its
+    members, so nothing is clipped anywhere and every panel still lines up. Mirrors
+    :func:`wellvolpos.viz.interactive.row_zlim`, which does the same job for the
+    depth range, and is called from the same place.
+    """
+    figs = [f for f in figs if f is not None]
+    if not figs:
+        return
+    b = max(int(f.layout.margin.b or 0) for f in figs)
+    h = height or max(int(f.layout.height or PANEL_HEIGHT) for f in figs)
+    for f in figs:
+        f.update_layout(margin=dict(b=b), height=h)
+
+
 def apply_plotly(fig, dark: bool = False, height: int | None = PANEL_HEIGHT):
-    """Style a plotly figure to match :func:`apply`'s matplotlib rcParams."""
+    """Style a plotly figure to match :func:`apply`'s matplotlib rcParams.
+
+    The bottom margin is sized to the legend rather than fixed, and ``height`` grows
+    by the same amount -- so a figure with twelve series is taller than one with two
+    and both have the same plot area. See :func:`legend_margin`.
+    """
     p = palette(dark)
+    n_entries = legend_entries(fig)
+    has_bar = _has_colourbar(fig)
+    bottom = legend_margin(n_entries, colourbar=has_bar)
+    if height is not None:
+        height = int(height) + max(0, bottom - legend_margin(3))
     fig.update_layout(
         template="plotly_dark" if dark else "plotly_white",
         paper_bgcolor=p["surface"],
@@ -287,15 +393,25 @@ def apply_plotly(fig, dark: bool = False, height: int | None = PANEL_HEIGHT):
         # plot area and the row stops being level even though every axis carries
         # the identical range. Reserving the space on *every* figure instead keeps
         # a given depth on the same pixel row in every panel.
-        margin=dict(l=70, r=25, t=55, b=125, autoexpand=False),
+        margin=dict(l=70, r=25, t=55, b=bottom, autoexpand=False),
         legend=dict(
             bgcolor="rgba(0,0,0,0)", borderwidth=0, font=dict(size=10),
-            orientation="h", yanchor="top", y=LEGEND_Y, xanchor="center", x=0.5,
+            orientation="h",
+            # **Anchored to the figure, not to the plot area.** With the default
+            # ``yref="paper"`` the legend's y is a fraction of the *plot* height, so
+            # the gap below the axis grew with the plot and a legend that fitted on a
+            # short figure overflowed a tall one -- three of them still clipped after
+            # the margin was made legend-aware. ``yref="container"`` measures from the
+            # figure edge instead, so the legend sits at the bottom and grows upward
+            # into the reserved margin. It cannot run off the page.
+            yref="container", yanchor="bottom", y=0.012,
+            xref="container", xanchor="center", x=0.5,
         ),
         hovermode="closest",
     )
     if height is not None:
         fig.update_layout(height=height)
+    _place_colourbars(fig, n_entries, height)
     axis = dict(
         gridcolor=p["grid"], zeroline=False, linecolor=p["grid"],
         tickfont=dict(color=p["muted"], size=11),

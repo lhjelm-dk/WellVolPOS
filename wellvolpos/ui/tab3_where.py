@@ -28,6 +28,7 @@ from ..core import (
     volume_target_curve,
 )
 from ..viz import (
+    level_row,
     pfig_a2_outcome_tree,
     pfig_a3_chance_decomposition,
     pfig_b0_section,
@@ -181,17 +182,23 @@ def _location_sweep_tab(ctx: Ctx):
         (ad.shallowest, ad.deepest) if has_area else None,
         pad_frac=0.02,
     )
+    # Built first, levelled, then drawn. The bottom margin is sized to each figure's
+    # own legend now, so three panels with three different series counts would
+    # otherwise get three different plot areas -- and a shared depth range does not
+    # put a depth on the same pixel row unless the plot areas match too. level_row
+    # takes the largest margin and height across the row; see theme.level_row.
+    f_a2 = pfig_a2_outcome_tree(sweep, current_z=entry, zlim=zrow_sweep)
+    f_a3 = pfig_a3_chance_decomposition(
+        sweep, pos_prospect=pos, pos_trials=pos_trials, current_z=entry, zlim=zrow_sweep)
+    f_b3 = pfig_b3_uncertainty_reduction(sweep, current_z=entry, zlim=zrow_sweep)
+    level_row(f_a2, f_a3, f_b3)
     c1, c2, c3 = st.columns(3)
     with c1:
-        _chart(pfig_a2_outcome_tree(sweep, current_z=entry, zlim=zrow_sweep), key="a2")
+        _chart(f_a2, key="a2", height=int(f_a2.layout.height))
     with c2:
-        _chart(pfig_a3_chance_decomposition(
-                sweep, pos_prospect=pos, pos_trials=pos_trials, current_z=entry,
-                zlim=zrow_sweep), key="a3")
+        _chart(f_a3, key="a3", height=int(f_a3.layout.height))
     with c3:
-        _chart(pfig_b3_uncertainty_reduction(
-                sweep, current_z=entry, zlim=zrow_sweep
-            ), key="b3")
+        _chart(f_b3, key="b3", height=int(f_b3.layout.height))
     st.caption(
         f"Haskett (2003) optimum: {sweep.reduction_optimum:.0f}% expected uncertainty reduction "
         f"at entry {sweep.z_optimum:.1f} m TVDSS. A2's exit is a hypothetical entry + "
@@ -207,17 +214,17 @@ def _location_sweep_tab(ctx: Ctx):
     with st.spinner("Sweeping the volume split…"):
         vsweep = _volume_sweep(source.name, source.data,
                                tuple(sorted(overrides.items())), pos, gap, mefs, ref.value)
+    f_b0 = pfig_b0_section(ad, z_entry=entry, z_exit=exit_, zlim=zrow_sweep)
+    f_b1 = pfig_b1_volume_split(vsweep, current_z=entry, zlim=zrow_sweep)
+    f_b2 = pfig_b2_chance_vs_regret(vsweep, current_z=entry, zlim=zrow_sweep)
+    level_row(f_b0, f_b1, f_b2)
     d1, d2, d3 = st.columns(3)
     with d1:
-        _chart(pfig_b0_section(ad, z_entry=entry, z_exit=exit_, zlim=zrow_sweep), key="b0")
+        _chart(f_b0, key="b0", height=int(f_b0.layout.height))
     with d2:
-        _chart(pfig_b1_volume_split(
-                vsweep, current_z=entry, zlim=zrow_sweep
-            ), key="b1")
+        _chart(f_b1, key="b1", height=int(f_b1.layout.height))
     with d3:
-        _chart(pfig_b2_chance_vs_regret(
-                vsweep, current_z=entry, zlim=zrow_sweep
-            ), key="b2")
+        _chart(f_b2, key="b2", height=int(f_b2.layout.height))
     # Both conditional groups, because they thin at opposite ends: the discovery
     # group fails down-dip, the dry-with-attic group up-dip where almost nothing
     # is dry. Reporting only the first left the missing top of B1's orange curve
