@@ -1475,6 +1475,23 @@ def pfig_b6_inverse(
                                "%{x:.1f} MMboe or more<br>" + DEPTH_HOVER
                                + "<extra></extra>"),
             )
+        # The **mean** contact of the qualifying trials (Lars, 2026-08-12). Grey like
+        # the percentiles because it belongs to the same family and is read against
+        # the same axes -- but dash-dot, and named "mean", because it is not one of
+        # them: on a skewed set of contacts it does not sit at the P50, and this is
+        # the number the workbook's BA column quotes on its own.
+        mean_contact = band_pct.get("mean")
+        if mean_contact is not None:
+            good = np.isfinite(mean_contact)
+            if good.sum() >= 2:
+                spread_depths.append(mean_contact[good])
+                fig.add_scatter(
+                    x=held[good], y=mean_contact[good], mode="lines",
+                    line=dict(color=p["muted"], width=1.8, dash="dashdot"),
+                    name="Pmean contact \u2014 of trials holding this volume",
+                    hovertemplate=("mean contact among trials holding %{x:.1f} MMboe "
+                                   "or more<br>" + DEPTH_HOVER + "<extra></extra>"),
+                )
         if mefs is not None:
             _vline(fig, float(mefs), p["muted"], "dot", "MEFS")
 
@@ -1516,6 +1533,35 @@ def pfig_b6_inverse(
             + "<br>P<sub>well</sub> %{customdata:.1f}%<extra></extra>"
         ),
     )
+
+    # **The other three statistics, thin and violet, no markers** (Lars, 2026-08-12).
+    # The main curve carries whichever statistic the user chose, with markers coloured
+    # by P_well; these are the remaining three drawn faintly beside it so the *spread
+    # of the requirement itself* is visible. Deliberately marker-free: markers here
+    # would be read as a second P_well scale, and there is only one.
+    #
+    # P90 is the low case and needs the deepest well; P10 the high case and the
+    # shallowest. So the three fan out around the chosen one, and the width of that
+    # fan is how much the answer depends on which discovery you are asking about.
+    for other in ("p90", "p50", "p10"):
+        if other == statistic:
+            continue
+        try:
+            o_targets, o_z, _ = volume_target_curve(vsweep, n=n_targets, ts=ts,
+                                                    statistic=other)
+        except ValueError:
+            continue                      # this sweep carries no such curve
+        good = np.isfinite(o_z)
+        if good.sum() < 2:
+            continue
+        fig.add_scatter(
+            x=o_targets[good], y=o_z[good], mode="lines",
+            line=dict(color=colour("well", dark), width=1.0,
+                      dash="dot" if other != "p50" else "dash"),
+            name=f"Required entry \u2014 {TARGET_STATISTIC_LABELS[other]}",
+            hovertemplate=(f"to prove %{{x:.2f}} MMboe of {TARGET_STATISTIC_LABELS[other]}"
+                           "<br>enter at " + DEPTH_HOVER + "<extra></extra>"),
+        )
 
     if target is not None:
         res = invert_volume_target(vsweep, float(target), ts=ts)
@@ -2283,16 +2329,21 @@ def pfig_c2_exceedance(
                     "<br>%{y:.1f}% chance of exceeding %{x:.2f} MMboe<extra></extra>"
                 ),
             )
-            # **Both families labelled** (Lars, 2026-08-11), with the values pushed to
-            # opposite sides so the two readings of one concept do not overwrite each
-            # other: conditional to the right of its marker, unconditional to the
-            # left. The volumes are identical between the two -- only the height
-            # differs -- so seeing the same number twice at two heights is the whole
-            # lesson rather than a duplication.
+            # **Markers on both families, values on the conditional one only**
+            # (Lars, 2026-08-12). Both were labelled until then, on the reasoning
+            # that seeing the same volume twice at two heights was the lesson. In
+            # practice it doubled the text on the busiest figure in the app for no
+            # new information: **the volumes are identical between the two readings**
+            # -- risking scales the probability, never the volume -- so the second
+            # copy of each number said nothing the first had not.
+            #
+            # The risked curve keeps its markers, because *where* it sits is the
+            # whole point: the same P50 volume at a lower height is the location
+            # penalty made visible. It is the redundant label that goes, not the mark.
             _mark_exceedance(
-                fig, values, role, dark, chance=chance_used, size=6, show_text=True,
-                textposition="middle right" if reading == "conditional" else "middle left",
-                prefix=" " if reading == "conditional" else "",
+                fig, values, role, dark, chance=chance_used, size=6,
+                show_text=reading == "conditional",
+                textposition="middle right",
             )
         positive = np.sort(np.asarray(values, dtype=float))
         positive = positive[np.isfinite(positive) & (positive > 0)]

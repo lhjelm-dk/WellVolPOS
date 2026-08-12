@@ -244,13 +244,17 @@ def render(ctx: Ctx) -> None:
             f"curve begins at {chance.pos_prospect:.0%} and the well-associated one at "
             f"{chance.p_well:.0%} — and **the vertical gap between those two starts is the location "
             "penalty**, the chance the prospect holds something this well would miss.\n\n"
-            "**Markers on both curves**, at P90 / P50 / mean / P10, each labelled with its "
-            "volume — values to the right of the conditional markers and to the left of the "
-            "unconditional ones so the pair does not overwrite itself. The volume is *the same "
-            "number* on both curves; only the height differs, which is the whole lesson. The "
-            "braces below show the nesting — up-dip inside tested inside well associated inside "
-            "prospect — and the axis carries no negative labels: that space is for the braces, "
-            "not for probabilities."
+            "**Markers on both curves at P90 / P50 / mean / P10, but values on the solid ones "
+            "only** (Lars, 2026-08-12). Risking scales the *probability* and never the volume, so "
+            "the number beside a dashed marker was always the number beside its solid twin — text "
+            "without information, doubled on the busiest figure here. The dashed markers stay, "
+            "because *where* they sit is the point: the same P50 volume at a lower height is the "
+            "location penalty, made visible.
+
+"
+            "The braces below show the nesting — up-dip inside tested inside well associated "
+            "inside prospect — and the axis carries no negative labels: that space is for the "
+            "braces, not for probabilities."
         )
 
         st.divider()

@@ -751,6 +751,16 @@ def entry_depth_percentiles(
     contact = np.asarray(ts.col("contact"), dtype=float)
     success = res > 0.0
     out = {q: np.full(np.asarray(targets).size, np.nan) for q in percentiles}
+    # The **mean** contact among the qualifying trials, under the key ``"mean"``
+    # (Lars, 2026-08-12). Not a percentile, so it gets a string key rather than an
+    # integer one -- which is deliberately ugly, because a mean quietly filed among
+    # P99..P1 is exactly the kind of thing that later gets read as one.
+    #
+    # It is the number the workbook's own ``BA`` column computes, and Rose's Figure 4
+    # is the argument against quoting it alone: "The EUR of 9.4 MMBO is associated
+    # with productive areas from 200 to 1500 acres." Drawn *with* the spread it is
+    # useful; drawn instead of it, it is the mistake.
+    out["mean"] = np.full(np.asarray(targets).size, np.nan)
     for i, target in enumerate(np.asarray(targets, dtype=float)):
         qualifies = success & (res >= target)
         n = int(qualifies.sum())
@@ -760,4 +770,5 @@ def entry_depth_percentiles(
         for q in percentiles:
             # P99 = shallow end, so it is the 1st percentile of the depths.
             out[q][i] = float(np.percentile(depths, 100 - q))
+        out["mean"][i] = float(depths.mean())
     return out

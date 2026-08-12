@@ -1180,3 +1180,34 @@ def test_no_colourbar_sits_outside_its_axes(reduced, vsweep):
             assert cb.y == COLOURBAR_Y, f"{name}: colourbar y={cb.y}, expected {COLOURBAR_Y}"
             assert cb.orientation == "h", f"{name}: colourbar is not horizontal"
         assert fig.layout.margin.b >= 100, f"{name}: bottom margin leaves no room"
+
+
+def test_c2_labels_the_conditional_curves_only_but_marks_both(reduced, groups, vc):
+    """Markers on both readings, value labels on the conditional one only.
+
+    Both were labelled until 2026-08-12. The argument for it was that seeing one
+    volume twice at two heights taught the risking; the argument against, which won,
+    is that **risking scales the probability and never the volume** -- so the second
+    copy of each number carried no information and doubled the text on the busiest
+    figure in the app.
+
+    The risked curve keeps its *markers*, because where it sits is the entire point:
+    the same P50 volume at a lower height is the location penalty made visible. So
+    this asserts an asymmetry, not a removal, and it would fail just as loudly if
+    someone dropped the risked markers as if they put the labels back.
+    """
+    fig = I.pfig_c2_exceedance(reduced, groups, vc, pos_prospect=POS, p_well=0.4576)
+    # Each statistic is its own single-point trace, and ``show_text`` decides the
+    # mode -- so "markers+text" is a labelled mark and "markers" is a bare one.
+    labelled = [t for t in fig.data if t.mode == "markers+text"]
+    bare = [t for t in fig.data if t.mode == "markers"]
+
+    # Four classes x four statistics, each way round.
+    assert len(labelled) == 16, len(labelled)
+    assert len(bare) == 16, len(bare)
+
+    # The labelled marks sit on the conditional curves: their P90 reaches 90 %.
+    assert max(float(t.y[0]) for t in labelled) == pytest.approx(90.0, abs=0.1)
+    # The bare ones are risked, so every one of them is pulled below its twin --
+    # the highest risked mark is POS_prospect x 0.90, not 90 %.
+    assert max(float(t.y[0]) for t in bare) == pytest.approx(90.0 * POS, abs=0.6)

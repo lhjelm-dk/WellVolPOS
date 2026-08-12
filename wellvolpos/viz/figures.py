@@ -845,6 +845,16 @@ def fig_b6_inverse(
                 spread_depths.append(depths[good])
                 ax.plot(held[good], depths[good], color=p["muted"], lw=lw, ls=ls,
                         label=f"P{q} contact — of trials holding this volume")
+        # The mean contact of the qualifying trials -- grey like the percentiles
+        # because it shares their axes, dash-dot and named "mean" because it is not
+        # one of them. See the plotly twin.
+        mean_contact = band_pct.get("mean")
+        if mean_contact is not None:
+            good = np.isfinite(mean_contact)
+            if good.sum() >= 2:
+                spread_depths.append(mean_contact[good])
+                ax.plot(held[good], mean_contact[good], color=p["muted"], lw=1.6,
+                        ls="-.", label="Pmean contact — of trials holding this volume")
         if mefs is not None:
             ax.axvline(float(mefs), color=p["muted"], ls=":", lw=1.0)
 
@@ -856,6 +866,22 @@ def fig_b6_inverse(
             label=f"Required entry \u2014 for a target {stat_label} volume")
     cb = fig.colorbar(sc, ax=ax, pad=0.02)
     cb.set_label(r"$P_{well}$ at that depth (%)", fontsize=8)
+
+    # The other three statistics, thin and violet, marker-free -- see the plotly twin
+    # for why markers are withheld here.
+    for other in ("p90", "p50", "p10"):
+        if other == statistic:
+            continue
+        try:
+            o_targets, o_z, _ = volume_target_curve(vsweep, n=n_targets, ts=ts,
+                                                    statistic=other)
+        except ValueError:
+            continue
+        good = np.isfinite(o_z)
+        if good.sum() >= 2:
+            ax.plot(o_targets[good], o_z[good], color=colour("well", dark), lw=0.9,
+                    ls="--" if other == "p50" else ":",
+                    label=f"Required entry — {TARGET_STATISTIC_LABELS[other]}")
 
     if target is not None:
         res = invert_volume_target(vsweep, float(target), ts=ts)
@@ -1600,11 +1626,12 @@ def fig_c2_exceedance(
                         ls="-" if reading == "conditional" else "--",
                         label=f"{name} — "
                               f"{READING_LABELS[reading].split(' (')[0].lower()}")
-            # Both families labelled, values on opposite sides so the two readings
-            # of one concept do not overwrite each other.
+            # Markers on both families, values on the conditional one only -- see the
+            # plotly twin: the volumes are identical between the two readings, so the
+            # second copy of each number was text without information.
             _mark_exceedance_mpl(ax_exc, values, role, dark, chance=chance_used,
-                                 show_text=True, size=4.0,
-                                 ha="left" if reading == "conditional" else "right")
+                                 show_text=reading == "conditional", size=4.0,
+                                 ha="left")
         vals = np.sort(np.asarray(values, dtype=float))
         positive = vals[np.isfinite(vals) & (vals > 0)]
         if positive.size:
