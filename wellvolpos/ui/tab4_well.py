@@ -234,9 +234,10 @@ def render(ctx: Ctx) -> None:
                 p_well=chance.p_well, mefs=mefs,
             ), key="c2", height=C2_HEIGHT)
         st.caption(
-            "**C1 — the concepts, in one picture.** Above: where each volume sits in the "
-            "structure. Below: the same volumes as exceedance curves, **two per concept in one "
-            "colour**.\n\n"
+            "**4.1 and 4.2 — the concepts, twice.** 4.1 shows where each volume sits in the "
+            "structure; 4.2 shows the same volumes as exceedance curves, **two per concept in "
+            "one colour**. Read them as a pair: the first says *where*, the second says *how "
+            "much and how likely*.\n\n"
             "The **solid** curve is *conditional* — the success case, given that case happens. It "
             "starts at 100 % and it is where the percentiles live: that is what anyone means by "
             "\"the P50\". The **dashed** curve is *unconditional* (risked): the same volumes with "
@@ -249,9 +250,7 @@ def render(ctx: Ctx) -> None:
             "the number beside a dashed marker was always the number beside its solid twin — text "
             "without information, doubled on the busiest figure here. The dashed markers stay, "
             "because *where* they sit is the point: the same P50 volume at a lower height is the "
-            "location penalty, made visible.
-
-"
+            "location penalty, made visible.\n\n"
             "The braces below show the nesting — up-dip inside tested inside well associated "
             "inside prospect — and the axis carries no negative labels: that space is for the "
             "braces, not for probabilities."
