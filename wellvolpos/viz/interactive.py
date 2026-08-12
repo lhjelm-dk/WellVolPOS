@@ -1053,6 +1053,21 @@ def pfig_b1_volume_split(
          "Possible below exit | discovery", "possible", "dash", 2),
         (thin(vsweep.attic_mean, vsweep.n_dry, min_support),
          "Attic | dry hole", "attic", "solid", 3),
+    ) + (
+        # **The volume when the contact lands ON the well** (Lars, 2026-08-12), which
+        # is the workbook's Results!G8 swept -- its charts 5 and 16 -- and Rose's
+        # "No Regrets" curve in his Figures 7 and 19. It is the boundary between the
+        # two outcomes either side of it, so it runs between the attic and the
+        # discovery case at every supported depth, and seeing it there is the point:
+        # it is what you get if the well is exactly right, and it is much closer to
+        # the attic than to the discovery mean.
+        #
+        # Neutral grey, not a class colour: it is not one of the volume classes, it is
+        # the seam between two of them.
+        ((thin(vsweep.at_well_mean, vsweep.at_well_n, min_support),
+          f"At the well (contact within ±{vsweep.at_well_window:.0f} m)", "muted",
+          "dashdot", 2),)
+        if vsweep.at_well_mean is not None else ()
     ):
         fig.add_scatter(
             x=values, y=vsweep.z, mode="lines", name=name,

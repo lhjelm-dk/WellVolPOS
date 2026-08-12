@@ -192,7 +192,10 @@ def guide_table() -> str:
     rows = ["| Figure | The question it answers |", "|---|---|"]
     for key, (what, question) in FIGURE_GUIDE.items():
         number = FIGURE_NUMBERS.get(key, "—")
-        legacy = LEGACY_CODE.get(key)
-        tag = f"**{number}** {what}" + (f" *(was {legacy})*" if legacy else "")
-        rows.append(f"| {tag} | {question} |")
+        # No legacy code in the reader-facing table (Lars, 2026-08-12): "(was A5)"
+        # meant nothing to anyone who had not used the app before the renumbering,
+        # and it made every row look like it was mid-migration. LEGACY_CODE stays --
+        # the export file names and this project's own notes still use the letters --
+        # it just is not shown to the reader.
+        rows.append(f"| **{number}** {what} | {question} |")
     return "\n".join(rows)

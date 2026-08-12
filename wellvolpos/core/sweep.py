@@ -265,6 +265,14 @@ class VolumeSweep:
     #: may be read against ``p_well`` as if on one scale.
     p_possible_exceeds_mefs: np.ndarray | None = None
     p_well_exits_in_hc: np.ndarray | None = None
+    #: Mean resource of the trials whose contact sits **at** the entry, within
+    #: ``at_well_window`` metres -- the workbook's ``Results!G8`` swept over depth,
+    #: which is what its charts 5 and 16 plot and what Rose's Figures 7 and 19 show as
+    #: the "No Regrets" curve. It is the boundary between the attic and the discovery
+    #: case, so it runs between ``attic_mean`` and ``discovery_mean`` at every depth.
+    at_well_mean: np.ndarray | None = None
+    at_well_n: np.ndarray | None = None
+    at_well_window: float = 2.0
 
 
 def run_volume_sweep(
@@ -280,6 +288,7 @@ def run_volume_sweep(
     z_max: float | None = None,
     n: int = 60,
     n_boot: int = 0,
+    at_well_window: float = 2.0,
     alpha: float = 0.10,
     seed: int | None = 0,
 ) -> VolumeSweep:
@@ -321,6 +330,8 @@ def run_volume_sweep(
     p_attic_ex = np.full(z.size, np.nan) if mefs is not None else None
     p_possible_ex = np.full(z.size, np.nan) if mefs is not None else None
     p_exits_hc = np.full(z.size, np.nan)
+    at_well = np.full(z.size, np.nan)
+    at_well_n = np.zeros(z.size, dtype=int)
     p_disc_ex = np.full(z.size, np.nan) if mefs is not None else None
     boot_lo = np.full(z.size, np.nan) if n_boot > 0 else None
     boot_hi = np.full(z.size, np.nan) if n_boot > 0 else None
@@ -342,6 +353,13 @@ def run_volume_sweep(
             reference=reference, reference_percentile=reference_percentile,
         )
         pw[i] = chance.p_well
+
+        # The volume when the contact lands ON the well, not above or below it.
+        m_at = (np.asarray(ts.col("resource"), dtype=float) > 0.0) & (
+            np.abs(contact - float(zi)) <= float(at_well_window))
+        at_well_n[i] = int(m_at.sum())
+        if at_well_n[i]:
+            at_well[i] = float(np.asarray(ts.col("resource"), dtype=float)[m_at].mean())
 
         groups_i = group_trials(ts, float(zi), zx)
         vc = split_trials(ts, ad, groups_i, float(zi), zx,
@@ -386,6 +404,7 @@ def run_volume_sweep(
         discovery_mean=discovery_mean,
         mefs=mefs, p_proven_exceeds_mefs=p_proven_ex, p_attic_exceeds_mefs=p_attic_ex,
         p_possible_exceeds_mefs=p_possible_ex, p_well_exits_in_hc=p_exits_hc,
+        at_well_mean=at_well, at_well_n=at_well_n, at_well_window=float(at_well_window),
         p_discovery_exceeds_mefs=p_disc_ex,
         proven_p99=p99, proven_p90=p90, proven_p50=p50, proven_p10=p10,
         proven_p1=p1,

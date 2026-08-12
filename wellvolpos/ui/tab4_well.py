@@ -11,6 +11,8 @@ import pandas as pd
 import streamlit as st
 
 from ..core import (
+    at_the_well_volume,
+    outcome_overlap,
     REPORT_PERCENTILES,
     chance_from_counts,
     class_percentiles,
@@ -66,6 +68,33 @@ def render(ctx: Ctx) -> None:
         # Expected volumes: mean × chance. Additive across prospects, and the
         # only figures here that are — but they describe no outcome that can
         # occur, so they sit below the success-case means, never instead of them.
+        # **The volume when the contact lands on the well** (Lars, 2026-08-12) --
+        # the workbook's Results!G8, and Rose's "No Regrets" volume in probabilistic
+        # form. It belongs beside the attic and discovery means because it is the seam
+        # between them, and the surprise is how much closer it sits to the attic.
+        _atw, _atw_n = at_the_well_volume(ts, entry)
+        if _atw_n:
+            w = st.columns(2)
+            w[0].metric("At the well — contact exactly at entry", f"{_atw:.2f}",
+                        help=f"MMboe, mean of the {_atw_n:,} trials whose contact lands "
+                             f"within ±2 m of the reservoir entry.")
+            _span = gs["discovery"]["mean"] - cs["attic_dry_hole"]["mean"]
+            _frac = ((_atw - cs["attic_dry_hole"]["mean"]) / _span) if _span else float("nan")
+            w[1].metric("...where that sits between dry and discovery", f"{_frac:.0%}",
+                        help="0 % would be the attic mean, 100 % the discovery mean.")
+            st.caption(
+                f"**The boundary case.** Not a discovery and not a dry hole, but the "
+                f"accumulation you get if the hydrocarbon–water contact lands *on* the well: "
+                f"**{_atw:.2f} MMboe**, between the attic mean of "
+                f"{cs['attic_dry_hole']['mean']:.2f} and the discovery mean of "
+                f"{gs['discovery']['mean']:.2f}. This is Rose's *“No Regrets”* volume in "
+                f"probabilistic form — his is a single deterministic product, this is the mean "
+                f"of the trials that actually landed there, so it carries the model's own "
+                f"correlations. He is candid that the deterministic version *“is an "
+                f"oversimplification”*, because *“there remains a chance the updip volume will "
+                f"exceed MCFS”* — which is what 3.6's regret curve answers."
+            )
+
         e = st.columns(3)
         e[0].metric("Expected prospect volume",
                     f"{expected_volume(gs['prospect']['mean'], chance.pos_prospect):.2f}")
@@ -289,6 +318,30 @@ def render(ctx: Ctx) -> None:
         )
         _chart(pfig_a6_overlap(vc, groups, ts=ts, mefs=mefs,
                                normalise=a6_norm, show_exceedance=a6_curves), key="a6")
+        # **The overlap, as a number** (Lars, 2026-08-12). The figure has always shown
+        # that it is larger than anyone expects and never said how large. Schneider
+        # et al. quote 68 % for their own example (their Figure 16); these are the same
+        # family of statements for the trials loaded here.
+        _ov = outcome_overlap(vc, groups)
+        o = st.columns(3)
+        o[0].metric("P(a dry hole beats a discovery)",
+                    f"{_ov['p_attic_beats_proven']:.1%}",
+                    help="Draw one dry outcome and one discovery independently: this is the "
+                         "chance the volume left up-dip is larger than the volume the well "
+                         "would have proved.")
+        o[1].metric("Proven ≤ the best possible attic",
+                    f"{_ov['proven_below_max_attic']:.0%}",
+                    help="Schneider's framing of the overlap: the share of discoveries whose "
+                         "proven volume is no larger than the largest attic in the set.")
+        o[2].metric("Attic ≥ the smallest proven", f"{_ov['attic_above_min_proven']:.0%}",
+                    help="The mirror statement, from the attic's side.")
+        st.caption(
+            f"**Schneider's “surprising overlap”, quantified.** The headline is the first "
+            f"number: on these trials there is a **{_ov['p_attic_beats_proven']:.1%}** chance "
+            f"that a dry hole leaves behind more than a discovery would have proved. Small, "
+            f"and not negligible — and it is the number that turns the shape above into an "
+            f"argument. The other two are the same overlap read from each side."
+        )
         st.caption(
             "A6 — Schneider et al.'s 'surprising overlap' between what a dry hole leaves in the "
             "attic and what a discovery proves. Live section — the closure shape from A(z), "

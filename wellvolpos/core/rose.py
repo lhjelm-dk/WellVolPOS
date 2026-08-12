@@ -156,3 +156,86 @@ def commercial_chance(
         mcfs=float(mcfs), p_well=float(p_well), p_mcfs_downdip=p_downdip,
         p_mcfs_proven=p_proven, pc_well=float(p_well) * p_downdip, n_discovery=n,
     )
+
+
+# ------------------------------------------------- the volume *at* the well
+def at_the_well_volume(
+    ts: TrialSet, z_entry: float, *, window_m: float = 2.0
+) -> tuple[float, int]:
+    """Mean resource of the trials whose contact sits **at** the well.
+
+    The source workbook's ``Results!G8``, *"Entry depth asso. vol."*, and the third
+    of the three things CLAUDE.md recorded the workbook as having that this app did
+    not. Returns ``(mean, n)``; the count matters because a narrow window on a small
+    trial file can leave nothing to average.
+
+    **What it is.** Not the discovery case and not the attic, but the boundary
+    between them: the accumulation you get when the hydrocarbon-water contact lands
+    on the well rather than above or below it. It therefore sits between the two --
+    on prospect A, 11.67 MMboe against an attic mean of 9.09 and a discovery mean of
+    16.52.
+
+    **Why it is worth having.** It is a probabilistic version of Rose's
+    deterministic *"No Regrets"* volume (his Figures 7 and 19), and arguably a better
+    one: his is ``A(z_entry) x mean(net pay) x mean(yield)``, a single arithmetic
+    product, while this is the mean of the trials that actually landed there and so
+    carries the model's own correlations. The poster is candid that the
+    deterministic version is *"an oversimplification"*, because *"there remains a
+    chance the updip volume will exceed MCFS"* -- which is what 3.6's regret curve
+    answers, and why this number is quoted beside it rather than instead of it.
+
+    ``window_m`` is +-2 m to match the workbook. It is not a sensitive choice: on the
+    reference file +-2, +-5 and +-10 m give 11.67, 11.67 and 11.75 MMboe, because the
+    quantity varies slowly with depth. Widen it on a sparse file rather than accept a
+    mean of a handful of trials.
+    """
+    res = np.asarray(ts.col("resource"), dtype=float)
+    contact = np.asarray(ts.col("contact"), dtype=float)
+    m = (res > 0.0) & (np.abs(contact - float(z_entry)) <= float(window_m))
+    n = int(m.sum())
+    return (float(res[m].mean()) if n else float("nan")), n
+
+
+# --------------------------------------------- how far the two outcomes overlap
+def outcome_overlap(vc, groups) -> dict[str, float]:
+    """Put a number on Schneider's *"surprising overlap"*.
+
+    A6 draws the overlap between what a dry hole leaves up-dip and what a discovery
+    proves, and the whole point of the figure is that it is larger than anyone
+    expects. It never said *how* large. Schneider et al. quote 68 % for their
+    example (their Figure 16, "the 68% overlap ... P100 to P32 of the Downdip
+    Distribution"); this returns the same family of statements for the loaded trials.
+
+    Three numbers, because they answer three different questions:
+
+    ``proven_below_max_attic``
+        The share of discoveries whose proven volume is no larger than the *best*
+        possible attic. Schneider's framing, and the largest of the three.
+    ``attic_above_min_proven``
+        The mirror statement, from the attic's side.
+    ``p_attic_beats_proven``
+        **The decision-relevant one**: draw one dry outcome and one discovery
+        independently, and this is the chance the volume left behind is bigger than
+        the volume that would have been proved. On the demo files it is 6.8 % and
+        8.3 % -- small, but not negligible, and it is the number that makes the
+        overlap concrete rather than visual.
+
+    The third is computed exactly rather than sampled: for each attic value, count
+    the proven values below it. That is O(n log n) by sorting, and exact beats a
+    Monte Carlo estimate of a quantity we already have every sample of.
+    """
+    attic = np.asarray(vc.attic[groups.dry_with_attic], dtype=float)
+    proven = np.asarray(vc.proven[groups.discovery], dtype=float)
+    out = {"n_attic": float(attic.size), "n_proven": float(proven.size)}
+    if not attic.size or not proven.size:
+        return {**out, "proven_below_max_attic": float("nan"),
+                "attic_above_min_proven": float("nan"),
+                "p_attic_beats_proven": float("nan")}
+    out["proven_below_max_attic"] = float((proven <= attic.max()).mean())
+    out["attic_above_min_proven"] = float((attic >= proven.min()).mean())
+    # P(attic > proven) over independent draws, exactly: for every attic value, how
+    # many proven values fall strictly below it.
+    ordered = np.sort(proven)
+    below = np.searchsorted(ordered, attic, side="left")
+    out["p_attic_beats_proven"] = float(below.mean() / ordered.size)
+    return out

@@ -193,7 +193,7 @@ def render(ctx: Ctx) -> None:
         _auto_r, _auto_z = suggest_grid(res_all[res_all > 0.0], succ_contact)
         ac1, ac2, ac3 = st.columns([2, 1, 1])
         a4_render = ac1.radio(
-            "A4 rendering", ["grid", "hexbin"], horizontal=True, key="w_a4_render",
+            "Rendering", ["grid", "hexbin"], horizontal=True, key="w_a4_render",
             format_func=lambda k: {"grid": "Trial-count grid",
                                    "hexbin": "Log-density hexbin"}[k],
         )

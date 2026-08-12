@@ -16,6 +16,7 @@ so this tab informs rather than decides.
 
 from __future__ import annotations
 
+import numpy as np
 import streamlit as st
 
 from ..core import (
@@ -238,6 +239,24 @@ def _location_sweep_tab(ctx: Ctx):
         f"curve is conditional on a dry *and* charged outcome. {sup_disc.message()} "
         f"{sup_dry.message()}"
     )
+
+    # **P(up-dip <= MEFS) at this well** (Lars, 2026-08-12) -- the workbook's
+    # `P(Updip vol <= MCFS)@well`. Stated as a number rather than drawn as a curve,
+    # and deliberately: it is the exact complement of the attic curve already on 3.6,
+    # so a fifth line would be that curve mirrored about 50 % -- more ink, no more
+    # information. As a number it says the useful thing in the useful direction.
+    if vsweep.p_attic_exceeds_mefs is not None:
+        _i = int(np.argmin(np.abs(vsweep.z - entry)))
+        _p_regret = vsweep.p_attic_exceeds_mefs[_i]
+        if np.isfinite(_p_regret):
+            st.success(
+                f"**If this well is dry but the prospect is charged, there is a "
+                f"{1.0 - _p_regret:.1%} chance the volume left up-dip is *below* MEFS "
+                f"({vsweep.mefs:.1f} MMboe)** — that is, a "
+                f"{1.0 - _p_regret:.1%} chance being dry here costs you nothing material. "
+                f"The complement, {_p_regret:.1%}, is the attic curve on 3.6; this is the same "
+                f"number said the other way round, which is the way a decision is usually put."
+            )
 
     # ---- B7 and B8, both from the 2018 macro workbook (Lars, 2026-08-11)
     st.divider()

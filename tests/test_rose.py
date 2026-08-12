@@ -124,3 +124,74 @@ def test_no_regrets_refuses_a_trial_set_with_no_successes(reduced, area_depth):
     ts.frame["resource"] = 0.0
     with pytest.raises(ValueError, match="no successful trials"):
         no_regrets(ts, area_depth, ENTRY)
+
+
+# ------------------------------------------------ Tier 1 of the workbook audit
+def test_the_at_the_well_volume_reproduces_the_workbooks_own_number(reduced):
+    """``Results!G8``, *"Entry depth asso. vol."* = 11.67 MMboe over 303 trials.
+
+    The third of the three things CLAUDE.md recorded the source workbook as having
+    that this app did not. It is the boundary case: not a discovery and not a dry
+    hole, but the accumulation you get when the contact lands *on* the well.
+    """
+    from wellvolpos.core.rose import at_the_well_volume
+
+    value, n = at_the_well_volume(reduced, ENTRY)
+    assert n == 303
+    assert value == pytest.approx(11.67, abs=0.01)
+
+
+def test_the_at_the_well_volume_is_insensitive_to_the_window(reduced):
+    """+-2 m is the workbook's window, and the number does not hang on it.
+
+    Worth pinning because a mean over "trials near a depth" invites the question of
+    how near, and the honest answer is that it does not matter much here: the
+    quantity varies slowly with depth, so widening the window trades a little bias
+    for a lot of sample. That is what makes it safe to widen on a sparse file.
+    """
+    from wellvolpos.core.rose import at_the_well_volume
+
+    values = [at_the_well_volume(reduced, ENTRY, window_m=w)[0] for w in (2.0, 5.0, 10.0)]
+    assert max(values) - min(values) < 0.15, values
+
+
+def test_the_at_the_well_volume_sits_between_dry_and_discovery(reduced, area_depth, groups):
+    """It is the seam between the two outcomes, so it must lie between their means.
+
+    This is the property that makes the number interpretable rather than merely
+    computable -- and the interesting part is *where* between: much closer to the
+    attic than to the discovery mean, which is the argument against reading a
+    discovery mean as what a well "gets".
+    """
+    from wellvolpos.core.classes import split_trials
+    from wellvolpos.core.groups import group_summary
+    from wellvolpos.core.rose import at_the_well_volume
+
+    vc = split_trials(reduced, area_depth, groups, ENTRY, EXIT)
+    attic = float(vc.attic[groups.dry_with_attic].mean())
+    discovery = float(group_summary(reduced, groups)["discovery"]["mean"])
+    value, _ = at_the_well_volume(reduced, ENTRY)
+    assert attic < value < discovery, (attic, value, discovery)
+
+
+def test_the_overlap_is_quantified_three_ways_and_they_order(reduced, area_depth, groups):
+    """Schneider's *"surprising overlap"* as numbers rather than a shape.
+
+    The decision-relevant one is ``p_attic_beats_proven``: draw one dry outcome and
+    one discovery independently, and this is the chance the volume left behind is
+    larger than the volume that would have been proved. It is computed exactly, not
+    sampled, because we hold every sample of both distributions.
+
+    It must be the *smallest* of the three: "some discovery is beaten by the best
+    possible attic" is a much weaker statement than "a randomly drawn dry hole beats
+    a randomly drawn discovery", and if that ordering ever inverts the arithmetic is
+    wrong somewhere.
+    """
+    from wellvolpos.core.classes import split_trials
+    from wellvolpos.core.rose import outcome_overlap
+
+    vc = split_trials(reduced, area_depth, groups, ENTRY, EXIT)
+    o = outcome_overlap(vc, groups)
+    assert 0.0 < o["p_attic_beats_proven"] < o["proven_below_max_attic"] <= 1.0
+    assert 0.0 < o["p_attic_beats_proven"] < o["attic_above_min_proven"] <= 1.0
+    assert o["p_attic_beats_proven"] == pytest.approx(0.068, abs=0.005)

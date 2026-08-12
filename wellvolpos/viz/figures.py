@@ -688,6 +688,13 @@ def fig_b1_volume_split(
     ax.plot(possible, vsweep.z, color=colour("possible", dark), lw=1.6, ls="--",
             label="Possible below exit | discovery")
     ax.plot(attic, vsweep.z, color=colour("attic", dark), lw=2.0, label="Attic | dry hole")
+    # The volume when the contact lands on the well -- Results!G8 swept, Rose's
+    # "No Regrets" curve. Neutral grey: it is the seam between two classes, not a
+    # class. See the plotly twin.
+    if vsweep.at_well_mean is not None:
+        at_well = thin(vsweep.at_well_mean, vsweep.at_well_n, min_support)
+        ax.plot(at_well, vsweep.z, color=p["muted"], lw=1.6, ls="-.",
+                label=f"At the well (contact within ±{vsweep.at_well_window:.0f} m)")
 
     # The spread around the proven mean; see the plotly twin.
     for values, label, ls in (
