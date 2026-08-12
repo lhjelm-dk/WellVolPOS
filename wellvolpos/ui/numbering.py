@@ -93,3 +93,106 @@ def renumber_title(title: str, key: str) -> str:
         if 2 <= len(stripped) <= 3 and stripped[0].isalpha() and stripped[1:].isdigit():
             return f"{number} {sep}{rest}"
     return f"{number} · {title}"
+
+
+#: key -> (what it is, the question it answers). The guide's "How to read each
+#: figure" table is generated from this together with :data:`FIGURE_NUMBERS`, so the
+#: numbers in the guide cannot drift from the numbers on the figures -- which they
+#: had, within a day of the renumbering, because the table spelled them out by hand.
+#:
+#: Order here is the order the table is rendered in, which is tab order.
+FIGURE_GUIDE = {
+    "a1": ("area–depth curve and reservoir",
+           "The structural spine. Everything that splits a trial at the well rests on "
+           "this curve. Carries the area uncertainty as P90/P50/mean/P10 and the base "
+           "reservoir four times over, because the thickness recovered from pay is a "
+           "distribution and one base line implied a surface the trials do not support."),
+    "a4": ("resource vs contact depth",
+           "Where the volume actually sits with depth, success trials only. Colour is a "
+           "trial count on a log scale, because the modal cell holds two orders of "
+           "magnitude more trials than the tails — and the tails are where a location "
+           "question lives."),
+    "a5": ("prospect exceedance, both readings",
+           "Solid conditional from 100 %, dashed unconditional from POS_prospect. The "
+           "volumes are identical between the two; only the probability attached to them "
+           "changes, and the risked one is what a portfolio adds up."),
+    "a9": ("prospect resource density",
+           "The same distribution 2.3 draws as a curve, drawn as a shape. Where the mass "
+           "sits, how long the tail is, and how far the mean sits from the P50."),
+    "a8": ("contact distribution and P(deeper)",
+           "The HCWC distribution read back out of the trials, with the inverse cumulative "
+           "beside it. That cumulative *is* r_location at every depth, so 2.5 and 3.2 must "
+           "agree everywhere."),
+    "a2": ("outcome tree vs location",
+           "What moving the well does to the four outcomes. Risked onto the entered POS, so "
+           "it cannot contradict 3.2."),
+    "a3": ("chance decomposition vs location",
+           "`P_well` and `r_location` as separate curves — the decomposition made "
+           "un-mistakable. Never multiplied into one number."),
+    "b3": ("uncertainty reduction vs location",
+           "Haskett's value-of-information optimum, found by argmax rather than by eye. See "
+           "the section below on what it is measuring here, which is *not* an appraisal well."),
+    "b0": ("schematic section",
+           "The three volumes in section. Width is a circular-closure proxy, so the shape is "
+           "illustrative; the depths on y are the real quantity."),
+    "b1": ("volume split vs location",
+           "Proven, possible and attic against location, with the proven P90/P50/P10 family "
+           "around the mean."),
+    "b2": ("chance vs regret",
+           "The most decision-relevant plot: where chance stops outweighing what a dry hole "
+           "leaves. Four curves, and only `P_well` is unconditional — so the crossing names "
+           "the two curves that meet rather than claiming chance equals regret."),
+    "b7": ("chance against volume",
+           "The trade-off stated directly: moving down-dip buys volume with chance. Depth "
+           "appears as labels along the curve. Switch the volume axis to log to read the "
+           "*proportional* rate of exchange instead of the absolute one."),
+    "b8": ("commercial chance vs location",
+           "A rising conditional times a falling `P_well` gives an interior maximum, and that "
+           "starred peak is where the well goes commercially."),
+    "b9": ("chance-weighted resource vs location",
+           "`P_well × the mean`, swept — where the expectation peaks. An expected value "
+           "describes no outcome that can happen: the well either finds something near the "
+           "success-case mean or it finds nothing. Right for ranking locations, wrong to "
+           "quote as a volume."),
+    "b6": ("the inverse",
+           "Given a volume to prove, where must the well go and what does it cost? Answers a "
+           "**guarantee** — the shallowest depth from which the statistic stays at or above "
+           "the target all the way down. The grey family is the spread of contacts consistent "
+           "with the same volume, on borrowed axes, so where the two families cross means "
+           "nothing."),
+    "c1": ("the structure, with the volume classes",
+           "Where each volume sits in the structure at this well. Read as a pair with 4.2."),
+    "c2": ("the same volumes as exceedance curves",
+           "Two curves per concept in one colour. The risked curves start at their own chance, "
+           "so the vertical gap between the top two *is* the location penalty. Values are "
+           "labelled on the conditional curves only — risking scales the probability, never "
+           "the volume."),
+    "live": ("live section",
+             "3.4 drawn at the well you have chosen, so the classes are the ones the current "
+             "entry and exit actually produce."),
+    "a6": ("where the four classes overlap",
+           "Schneider's *“surprising overlap”*: a dry hole's attic against a discovery's "
+           "proven volume, seen against the two larger distributions they are carved out of. "
+           "Switch to peak-normalised to compare *shapes* when one class is far narrower."),
+    "mapview": ("conceptual map view",
+                "The entry contour in plan, and the three areas a well at this depth divides "
+                "the closure into. Contours on round absolute depths, not stepped off the "
+                "apex, so they do not move when the apex estimate is nudged."),
+    "b4": ("chance waterfall",
+           "The chance elements then the location factor, as a running product on a log axis. "
+           "Totals to `pos_prospect × r` by construction."),
+    "b5": ("allocation dumbbell",
+           "Which risk elements carry the location penalty. Every scheme gives the same "
+           "`P_well` — only the attribution differs."),
+}
+
+
+def guide_table() -> str:
+    """The guide's figure table, in markdown, numbered from :data:`FIGURE_NUMBERS`."""
+    rows = ["| Figure | The question it answers |", "|---|---|"]
+    for key, (what, question) in FIGURE_GUIDE.items():
+        number = FIGURE_NUMBERS.get(key, "—")
+        legacy = LEGACY_CODE.get(key)
+        tag = f"**{number}** {what}" + (f" *(was {legacy})*" if legacy else "")
+        rows.append(f"| {tag} | {question} |")
+    return "\n".join(rows)

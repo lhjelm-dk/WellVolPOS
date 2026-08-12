@@ -10,7 +10,10 @@ typed in, so the worked examples cannot drift from what the other tabs report.
 
 from __future__ import annotations
 
+import numpy as np
 import streamlit as st
+
+from ..ui.numbering import guide_table
 
 from wellvolpos.core import commercial_chance, expected_volume, no_regrets, thickness_from_pay
 from wellvolpos.viz import pfig_colour_key
@@ -136,7 +139,7 @@ is assumed.
         st.caption(
             "The poster calls No Regrets *“useful to the decision-maker, however, it is an "
             "oversimplification”*, because *“for most downdip well locations, there remains a "
-            "chance the updip volume will exceed MCFS”*. That chance is exactly what B2 draws "
+            "chance the updip volume will exceed MCFS”*. That chance is exactly what 3.6 draws "
             "on the Location sweep tab — so this tool shows Rose's number **and** the thing he "
             "says it understates."
         )
@@ -147,7 +150,7 @@ is assumed.
         cc = commercial_chance(ts, groups, vc.proven, chance.p_well, mefs)
         st.markdown(cc.message())
         st.caption(
-            "Rose's `Pmcfs(well)` conditions on the **whole** well-associated volume; our B2 "
+            "Rose's `Pmcfs(well)` conditions on the **whole** well-associated volume; our 3.6 "
             "curve conditions on the **proven** volume between entry and exit. Both are "
             "legitimate and they are different numbers, so both are shown rather than one being "
             "quoted as the other. `Pc(well)` is the chance the poster says to use for EMV — a "
@@ -177,24 +180,90 @@ size, never instead of them.
     # --------------------------------------------------------- how to read it
     st.divider()
     st.markdown("### How to read each figure")
+    st.caption(
+        "Figures are numbered **by tab**: 2.1 is the first figure on tab ②, 3.10 the tenth "
+        "on tab ③. The old letter codes are kept in brackets because the code, the exported "
+        "file names and this project's notes still argue about \"B6\" by letter — the letter "
+        "is the figure's identity, the number is where it sits today."
+    )
+    st.markdown(guide_table())
+
+
+    # ------------------------------------------- Haskett, and what 3.3 measures here
+    st.divider()
+    st.markdown("### Uncertainty reduction (3.3) — and what it is measuring *here*")
+    _res = np.asarray(ts.col("resource"), dtype=float)
+    _disc = groups.discovery
+    _p = float(_disc.mean())
+    _hi, _lo = _res[_disc], _res[~_disc]
+    _parent_var = float(_res.var())
+    _within = _p * float(_hi.var()) + (1.0 - _p) * float(_lo.var())
+    _between = _parent_var - _within
+    _spread = lambda v: float(np.percentile(v, 90) - np.percentile(v, 10)) if v.size else 0.0
+    _attic = vc.attic[groups.dry_with_attic] if vc is not None else np.array([])
+    _proven = vc.proven[_disc] if vc is not None else np.array([])
     st.markdown(
-        """
-| Figure | The question it answers |
-|---|---|
-| **Concepts** | Where each volume sits, and why the well's POS is below the prospect's. The risked curves start at their own chance, so the vertical gap between the top two *is* the location penalty. |
-| **A1** area–depth | The structural spine. Everything that splits a trial at the well rests on this curve. |
-| **A2** outcome tree | What moving the well does to the four outcomes. Risked onto the entered POS, so it cannot contradict A3. |
-| **A3** chance decomposition | `P_well` and `r_location` as separate curves — the decomposition made un-mistakable. |
-| **A4** resource vs depth | Where the volume actually sits with depth, success trials only. |
-| **A5** exceedance | The money chart. Read a probability off a curve at a volume you care about. |
-| **A6** overlap | Schneider's *“surprising overlap”*: a dry hole's attic against a discovery's proven volume. |
-| **B0 / map view** | The same three volumes in section and in plan. Both are cartoons of shape but faithful on area. |
-| **B1** volume split | Proven, possible and attic against location. |
-| **B2** chance vs regret | The most decision-relevant plot: where chance stops outweighing what a dry hole leaves. |
-| **B3** uncertainty reduction | Haskett's value-of-information optimum, found by argmax rather than eye. |
-| **B4 / B5** chance waterfall, allocation | Which risk elements carry the location penalty. Every scheme gives the same `P_well`. |
-| **B6** inverse | Given a volume to prove, where must the well go and what does it cost? |
-        """
+        f"""
+Haskett (2003) is about **appraisal** wells: you have a discovery, and you are choosing
+where to drill next so that the *next* well tells you as much as possible about a field you
+already know exists. That is not our situation. This app places an **exploration** well, and
+3.3 is not asking how to appraise a discovery.
+
+**What transfers is Haskett's mechanism, not his setting.** He separates two kinds of
+learning, and names the one we use:
+
+> *“Discrete learning results from the assessment of mutually exclusive, distinct events or
+> discovery possibilities. Reservoir extent is the prime example. The productive reservoir
+> section either is, or is not present at a particular appraisal location.”*
+
+An exploration well at a chosen reservoir entry depth is **exactly** a discrete learning
+event, and the cleanest possible one: the hydrocarbon–water contact is either deeper than
+the entry or it is not. There is no partial outcome and no sampling — one bit of
+information, and the whole trial population splits on it.
+
+**So what 3.3 measures is the collapse between the two futures this well creates**, not
+uncertainty about a known accumulation:
+
+| | the distribution you are left with | mean | P10–P90 spread |
+|---|---|---|---|
+| **before the well** | the whole prospect, un-cut | {float(_res.mean()):.2f} | {_spread(_res):.2f} |
+| **if it finds the column** | the resource this well would have **proven** | {float(_proven.mean()) if _proven.size else float("nan"):.2f} | {_spread(_proven):.2f} |
+| **if it is dry but charged** | the resource left **up-dip**, in the attic | {float(_attic.mean()) if _attic.size else float("nan"):.2f} | {_spread(_attic):.2f} |
+
+Each outcome is narrower than the prospect it came from, and *that narrowing, weighted by
+how likely each outcome is*, is what the curve plots. The location that maximises it is the
+one whose result you can least predict in advance — which is exactly the location that
+teaches you most, whichever way it goes. A well certain to succeed and a well certain to
+fail both score zero: neither tells you anything you did not already know.
+
+**Read it as information, never as value.** Haskett's full method multiplies uncertainty
+reduction by what the information is worth and subtracts what it costs. 3.3 stops at the
+information: it has no dry-hole cost, no development case and no discount rate in it, so a
+peak on this curve is *not* an economic optimum. For the money side of the same trade see
+3.8, and for the volume side 3.7.
+
+##### A correction worth making to the paper
+
+Haskett writes that *“the risked variance of the two child distributions will sum to equal
+the variance of the parent. Both the mean and the variance are additive.”* The **mean** is —
+that is the law of total expectation, and on these trials it holds to floating point. The
+**variance is not.** The law of total variance has two terms:
+"""
+    )
+    st.latex(r"\operatorname{Var}(X) = \underbrace{E[\operatorname{Var}(X \mid G)]}_{\text{within outcomes}}"
+             r" + \underbrace{\operatorname{Var}(E[X \mid G])}_{\text{between outcomes}}")
+    st.markdown(
+        f"""
+Probability-weighting the two child variances gives only the **first** term. On the trials
+loaded now that is {_within:,.0f} against a parent variance of {_parent_var:,.0f} — so
+**{100.0 * _between / _parent_var:.0f} % of the variance is unaccounted for** by the
+additive rule.
+
+That missing term is not an error in the method; it *is* the answer. `Var(E[X | G])` — how
+far apart the two outcome means sit — is precisely the uncertainty the well removes, and it
+is what 3.3 is built from. So the paper's arithmetic claim is loose while its conclusion
+stands, and it is worth knowing which is which before quoting either.
+"""
     )
 
     # -------------------------------------------------------------- guidelines
@@ -209,8 +278,9 @@ size, never instead of them.
    figures as the contrast, not the headline.
 3. **Say which "proven" you mean.** The workbook's *PROVEN mean at well* is 14.78 MMboe —
    the mean total resource of trials whose contact falls between entry and exit. This app's
-   proven mean is 15.76 MMboe — a per-trial area split across all discovery trials. Both are
-   here; the word collides.
+   proven mean is 16.04 MMboe — the per-trial **wedge** split across all discovery trials
+   (15.76 before the apportionment moved from map area to the wedge). Both are here; the word
+   collides.
 4. **Distrust the deep end of any swept curve.** Conditional groups thin down-dip; steps
    resting on fewer than 30 trials are left undrawn rather than shown as firmly as the rest.
 5. **Treat the apex as an extrapolation.** It comes from A(z)'s shallow tail, because the
@@ -238,7 +308,7 @@ size, never instead of them.
 | **Schneider, M., Citron, G.P., Haryott, P. & Cook, D. (2023)** *Drilling an exploration prospect downdip: quantifying the trade-offs between chance of success and associated resource potential.* AAPG Bulletin **107**(5) 743–759. [doi:10.1306/09232222051](https://doi.org/10.1306/09232222051) · [open access](https://pubs.geoscienceworld.org/aapg/aapgbull/article/107/5/743/622239/Drilling-an-exploration-prospect-downdip) | The definitive reference. Whole-trial up-dip/down-dip grouping — this app's **reference engine**. Names the finer proven/possible split as *“additional complexity”* without computing it; `core/classes.py` is that complexity, implemented. Also the source of the convention that the EUR distribution is the **success case** and is determined *before* the chance, and that Pg is the chance of exceeding the **P99** EUR. |
 | **Milkov, A.V. (2021)** *Reporting the expected exploration outcome: when, why and how the probability of geological success and success-case volumes for the well differ from those for the prospect.* J. Pet. Sci. Eng. **204** 108754. [doi:10.1016/j.petrol.2021.108754](https://doi.org/10.1016/j.petrol.2021.108754) | The crest/apex reference convention, and the peer-reviewed statement that well POS is prospect POS times the contact distribution. His segment A2 falls from 0.34 at the crest to 0.07 down-dip. Also the definition this app uses for percentiles: *“P90 is defined as 90 % probability of exceeding the P90 estimated value.”* |
 | **Schneider, M. & Cook, D.M. Jr. (2017)** *Drilling a Downdip Location: Effect on Updip and Downdip Resource Estimates and Commercial Chance.* AAPG Search & Discovery **#42102**, posted 3 July 2017 — with the Rose & Associates long-form version, Houston, May 2021. [search & discovery](https://www.searchanddiscovery.com/documents/2017/42102schneider/ndx_schneider.pdf) | Equation 1 (`Pwell = Pg × Ptrap@well / Ptrap`, cap included), the P90-area reference contour, the *“No Regrets”* volume, `Pmcfs(well)` and `Pc(well)`. Both documents are in `Papers/`; the 2021 file is a Rose & Associates client report authored by Schneider and Cook, not by Rose. |
-| **Haskett, W.J. (2003)** *Optimal Appraisal Well Location Through Efficient Uncertainty Reduction and Value of Information Techniques.* SPE **84241**, SPE ATCE, Denver, 5–8 October 2003. [doi:10.2118/84241-MS](https://doi.org/10.2118/84241-MS) | Appraisal placement as value of information — B3's uncertainty-reduction curve, with the optimum found by argmax rather than by eye. |
+| **Haskett, W.J. (2003)** *Optimal Appraisal Well Location Through Efficient Uncertainty Reduction and Value of Information Techniques.* SPE **84241**, SPE ATCE, Denver, 5–8 October 2003. [doi:10.2118/84241-MS](https://doi.org/10.2118/84241-MS) | Appraisal placement as value of information — 3.3's uncertainty-reduction curve, with the optimum found by argmax rather than by eye. |
 | **Singh, V., Yemez, I., Izaguirre, E. & Racero, A. (2017)** *Optimal Subsurface Appraisal: A Key Link to the Success of Development Projects.* Am. J. Applied Sciences **14**(2) 217–230. [doi:10.3844/ajassp.2017.217.230](https://doi.org/10.3844/ajassp.2017.217.230) · open access | Appraisal-value framing around the same trade-off: what a well is worth is what it resolves, not what it finds. |
 | **Hood, K.C. (2019)** *Column Height.* Risk Coordinators' Workshop, 14 November 2019 (ExxonMobil Upstream Integrated Solutions) — and **Hood, K.C. (2024)** *Hydrocarbon Column Heights, Parts 1 & 2*, Rose & Associates blog. Both in `Papers/HCWC/` | The assessment minimum belongs to a minimum **column height**, linked to seal capacity, not to a minimum volume — decision 6, and why this app maps a column height rather than filtering on a volume. Two separate documents; the 2019 workshop deck and the 2024 blog pair are often conflated. |
 
@@ -259,7 +329,7 @@ size, never instead of them.
 **Deliberately not obtained.** Milkov & Samis (2020, AAPG Bulletin 104) and Samis &
 Milkov (2020), on the real-option value of untested up-dip volume after a dry hole.
 Both paywalled. If the attic / regret analysis becomes central they are the next two
-to get — and the B2 regret curve is the place they would land.
+to get — and 3.6's regret curve is the place they would land.
 
 ---
 
