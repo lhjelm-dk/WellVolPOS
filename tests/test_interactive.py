@@ -282,20 +282,61 @@ def test_a2_bands_use_the_outcome_colours_and_reach_100_percent(sweep):
     assert top == pytest.approx(100.0, abs=1e-6)
 
 
-def test_b4_keeps_location_blue_and_separates_it_by_pattern(r):
-    """Same reasoning as the matplotlib B4: r is a chance and A3 draws it blue,
-    so hatching carries the distinction rather than a second colour."""
-    fig = I.pfig_b4_chance_waterfall(TABLE, r, POS, scheme="none")
-    patterned = [t for t in fig.data if t.marker.pattern and t.marker.pattern.shape == "/"]
+def fig_bars(fig):
+    """The waterfall's Bar traces, ignoring the rule and its label."""
+    return [t for t in fig.data if t.type == "bar"]
+
+
+def test_b4_colours_bars_by_element_and_patterns_the_location_share(r):
+    """Colour is the element, pattern is the location share (Lars's card, 2026-08-12).
+
+    The standalone location bar under ``scheme="none"`` belongs to no element, so it
+    keeps the ``p_well`` colour -- which is also what tells it apart from the ones
+    that do.
+    """
+    from wellvolpos.viz.theme import element_colour
+
+    bars = [t for t in fig_bars(I.pfig_b4_chance_waterfall(TABLE, r, POS, scheme="none"))]
+    patterned = [t for t in bars
+                 if getattr(t.marker, "pattern", None) and t.marker.pattern.shape == "/"]
     assert len(patterned) == 1
     assert patterned[0].marker.color == colour("p_well")
+    faces = [t.marker.color for t in bars]
+    for el in ("charge", "trap", "reservoir", "retention"):
+        assert element_colour(el) in faces, el
 
 
-def test_b4_annotates_p_well_not_the_tables_own_product(r):
+def test_b4_draws_p_well_inside_its_own_log_axis(r):
+    """The label must name P_well *and land where P_well is*.
+
+    This used to be an ``add_hline``, and 5.1's y-axis is logarithmic: the rule was
+    added before ``type="log"`` was set, so 0.2030 was stored as 0.2030 and then read
+    as the exponent -- 10^0.203 = 1.60, above the axis ceiling of 1.2. The line and
+    its label were off-scale and never rendered, on the one figure whose whole purpose
+    is to total to P_well. The matplotlib twin was correct all along, so nothing
+    compared them and noticed.
+
+    The old test asserted only that the *text* existed, which it did. Checking that the
+    coordinate is inside the axis range is what would have caught it.
+    """
     fig = I.pfig_b4_chance_waterfall(TABLE, r, POS)
-    said = " ".join(a.text or "" for a in fig.layout.annotations)
-    assert f"{POS * r:.4f}" in said
+    total = POS * r
+    said = " ".join(
+        "".join(t.text) if isinstance(t.text, (list, tuple)) else (t.text or "")
+        for t in fig.data if getattr(t, "mode", None) == "text"
+    )
+    assert f"{total:.4f}" in said
     assert f"{float(np.prod(list(TABLE.values()))) * r:.4f}" not in said
+
+    rules = [t for t in fig.data
+             if getattr(t, "mode", None) == "lines" and t.y is not None and len(t.y) == 2]
+    assert len(rules) == 1, "expected exactly one P_well rule"
+    lo, hi = (10.0 ** float(v) for v in fig.layout.yaxis.range)
+    assert fig.layout.yaxis.type == "log"
+    assert lo <= float(rules[0].y[0]) <= hi, "the P_well rule is off its own axis"
+    assert float(rules[0].y[0]) == pytest.approx(total)
+    # Nothing left that a later axis change could reinterpret.
+    assert not [sh for sh in fig.layout.shapes if sh.y0 is not None]
 
 
 def test_b4_says_so_when_r_is_zero(r):

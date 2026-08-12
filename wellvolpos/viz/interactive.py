@@ -1320,10 +1320,22 @@ def pfig_b4_chance_waterfall(
             text=[f"×{v:.3f}"], textposition="outside", textfont=dict(size=10),
             hovertemplate=f"{label}<br>×{v:.4f}<br>running {t:.4f}<extra></extra>",
         )
-    fig.add_hline(
-        y=total, line=dict(color=p["muted"], width=1, dash="dot"),
-        annotation_text=f"P_well = {total:.4f}", annotation_position="top left",
-        annotation_font_size=11,
+    # **A trace, not add_hline.** This axis is logarithmic, and `add_hline` records
+    # its coordinate against the axis as it stands when called -- which was before
+    # `type="log"` was set below. So 0.2030 was stored as 0.2030 and then read as the
+    # *exponent*: 10^0.203 = 1.60, above this axis's pinned ceiling of 1.2. The line
+    # and its label were off-scale and never drawn, on the one figure whose whole
+    # purpose is to total to P_well. The matplotlib twin was right all along because
+    # axhline takes the value, so nothing compared the two and noticed.
+    fig.add_scatter(
+        x=[-0.5, len(labels) - 0.5], y=[total, total], mode="lines",
+        line=dict(color=p["muted"], width=1, dash="dot"),
+        showlegend=False, hoverinfo="skip", cliponaxis=False,
+    )
+    fig.add_scatter(
+        x=[-0.5], y=[total], mode="text", text=[f"P_well = {total:.4f}  "],
+        textposition="top right", textfont=dict(size=11, color=p["text"]),
+        showlegend=False, hoverinfo="skip",
     )
     label = SCHEME_LABELS.get(scheme, "custom weights") if isinstance(scheme, str) else "custom weights"
     fig.update_layout(
