@@ -49,6 +49,7 @@ from ..core.sweep import (
 )
 from ..io.adapters.base import TrialSet
 from .theme import (
+    FAN_POS_LEVELS,
     AREA_SCALES,
     SEQUENTIAL_CMAP,
     VALUE_CMAP,
@@ -76,6 +77,7 @@ __all__ = [
     "fig_b7_frontier",
     "fig_b8_commercial_chance",
     "fig_b9_chance_weighted",
+    "fig_b11_pos_sensitivity",
     "fig_a8_contact_distribution",
     "fig_a9_prospect_density",
     "exceedance_marks",
@@ -1104,6 +1106,47 @@ def fig_b5_allocation_dumbbell(
     fig.tight_layout()
     return fig, axes
 
+
+
+
+def fig_b11_pos_sensitivity(
+    sweep: Sweep, *, pos_prospect: float, current_z: float | None = None,
+    levels: tuple[float, ...] = FAN_POS_LEVELS,
+    zlim: tuple[float, float] | None = None, dark: bool = False,
+):
+    """B11 for the export path. Twin of ``pfig_b11_pos_sensitivity``.
+
+    See that docstring: every curve is the same shape scaled vertically, because
+    ``P_well = POS_prospect x r_location(z)`` and only the second factor moves with
+    depth. That is the content, not a limitation.
+    """
+    p = palette(dark)
+    fig, ax = new_figure(figsize=(6, 5), dark=dark)
+    r = np.asarray(sweep.r_location, dtype=float)
+
+    for level in levels:
+        if abs(level - float(pos_prospect)) < 5e-3:
+            continue
+        ax.plot(r * float(level) * 100.0, sweep.z, color=p["muted"], lw=0.9)
+        if np.isfinite(r[0]):
+            ax.annotate(f"{level:.0%}", (float(r[0] * level * 100.0), float(sweep.z[0])),
+                        xytext=(0, -8), textcoords="offset points", ha="center",
+                        fontsize=7, color=p["text_secondary"])
+
+    ax.plot(r * float(pos_prospect) * 100.0, sweep.z, color=colour("p_well", dark),
+            lw=2.6, label=f"POS in force: {pos_prospect:.0%}")
+    if current_z is not None:
+        ax.axhline(current_z, color=p["well"], ls="--", lw=1.0)
+
+    ax.set_xlim(0, 100)
+    ax.set_xlabel("P_well  (%)")
+    depth_axis(ax, zlim=zlim or (float(sweep.z.min()), float(sweep.z.max())))
+    ax.set_title("B11 · P_well sensitivity to POS_prospect "
+                 f"({reference_label(sweep.reference)})")
+    ax.grid(True, lw=0.6, alpha=0.7)
+    ax.legend(loc="lower right", fontsize=7.5)
+    fig.tight_layout()
+    return fig, ax
 
 
 def fig_b7_frontier(

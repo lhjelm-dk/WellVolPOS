@@ -58,6 +58,7 @@ from .figures import (
     exceedance_marks,
 )
 from .theme import (
+    FAN_POS_LEVELS,
     AREA_SCALES,
     PANEL_HEIGHT,
     VALUE_CMAP,
@@ -91,6 +92,7 @@ __all__ = [
     "pfig_b7_frontier",
     "pfig_b8_commercial_chance",
     "pfig_b9_chance_weighted",
+    "pfig_b11_pos_sensitivity",
     "pfig_a8_contact_distribution",
     "pfig_a9_prospect_density",
     "suggest_grid",
@@ -1987,6 +1989,81 @@ def _reservoir_section(fig, ad, ts, *, z_entry, z_exit, dark, area_scale="area",
         )
     return thickness
 
+
+
+
+# ------------------------------------------------------------------- B11
+
+
+def pfig_b11_pos_sensitivity(
+    sweep: Sweep, *, pos_prospect: float, current_z: float | None = None,
+    levels: tuple[float, ...] = FAN_POS_LEVELS,
+    zlim: tuple[float, float] | None = None, show_depth_labels: bool = True,
+    dark: bool = False, height: int | None = PANEL_HEIGHT,
+):
+    """B11 -- P_well against depth for a whole family of POS_prospect values.
+
+    The 2018 macro workbook's *"Well POS vs. Depth"* (its charts 8 and 22), which is
+    the one chart in it drawn with a hundred series: ``Well pos cal.`` columns D..CZ,
+    each of them ``<percentile> x r_location(z)``. It is a **sensitivity fan**, and it
+    answers a question none of the other figures do: *how much of my answer is the
+    chance table, and how much is the geometry?*
+
+    Because ``P_well = POS_prospect x r_location(z)`` and only the second factor
+    depends on depth, every curve here is the **same shape scaled vertically**. That
+    is not a limitation of the drawing, it is the content: the fan makes visible that
+    moving the well and revising the chance table are *independent* levers, which is
+    the whole point of never multiplying the two into one number. A reader who has
+    seen this fan cannot believe that a deeper well fixes a poor chance table.
+
+    The curve for the POS actually in force is drawn heavy and in the chance colour;
+    the rest are thin and grey, and labelled at their shallow end. So the figure reads
+    as "here is your answer, and here is the family it belongs to".
+
+    Levels are POS_prospect *deciles* rather than the workbook's hundred percentiles;
+    see :data:`FAN_POS_LEVELS`.
+    """
+    p = palette(dark)
+    fig = go.Figure()
+    r = np.asarray(sweep.r_location, dtype=float)
+
+    for level in levels:
+        if abs(level - float(pos_prospect)) < 5e-3:
+            continue                      # the live curve is drawn separately, heavier
+        fig.add_scatter(
+            x=r * float(level) * 100.0, y=sweep.z, mode="lines",
+            name=f"POS {level:.0%}",
+            line=dict(color=p["muted"], width=1.0),
+            hovertemplate=(f"if POS_prospect were {level:.0%}"
+                           "<br>P_well %{x:.1f}% at " + DEPTH_HOVER + "<extra></extra>"),
+        )
+        # Labelled at the shallow end, where the curves are furthest apart.
+        if np.isfinite(r[0]):
+            fig.add_annotation(
+                x=float(r[0] * level * 100.0), y=float(sweep.z[0]),
+                text=f"{level:.0%}", showarrow=False, yshift=-9,
+                font=dict(size=8, color=p["text_secondary"]),
+            )
+
+    fig.add_scatter(
+        x=r * float(pos_prospect) * 100.0, y=sweep.z, mode="lines",
+        name=f"POS in force: {pos_prospect:.0%}",
+        line=dict(color=colour("p_well", dark), width=3.2),
+        hovertemplate=("P<sub>well</sub> %{x:.1f}% at " + DEPTH_HOVER + "<extra></extra>"),
+    )
+    if current_z is not None:
+        _hline(fig, current_z, p["well"], "dash", "this well")
+
+    fig.update_layout(
+        title=("B11 · P<sub>well</sub> sensitivity to POS_prospect "
+               f"({reference_label(sweep.reference)})"),
+        xaxis_title="P_well  (%)",
+    )
+    fig.update_xaxes(range=[0, 100])
+    apply_plotly(fig, dark, height)
+    depth_axis_plotly(fig, zlim or (float(sweep.z.min()), float(sweep.z.max())),
+                      show_ticklabels=show_depth_labels)
+    return fig
 
 
 # ------------------------------------------------------------------- B7

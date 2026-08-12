@@ -23,6 +23,8 @@ starts at 2.1.
 
 from __future__ import annotations
 
+import re
+
 #: chart key -> displayed figure number. Order within a tab is render order, which
 #: is the order a reader meets them scrolling down.
 FIGURE_NUMBERS = {
@@ -36,13 +38,14 @@ FIGURE_NUMBERS = {
     "a2": "3.1",
     "a3": "3.2",
     "b3": "3.3",
-    "b0": "3.4",
-    "b1": "3.5",
-    "b2": "3.6",
-    "b7": "3.7",
-    "b8": "3.8",
-    "b9": "3.9",
-    "b6": "3.10",
+    "b11": "3.4",
+    "b0": "3.5",
+    "b1": "3.6",
+    "b2": "3.7",
+    "b7": "3.8",
+    "b8": "3.9",
+    "b9": "3.10",
+    "b6": "3.11",
     # ④ At this well
     "c1": "4.1",
     "c2": "4.2",
@@ -63,7 +66,7 @@ LEGACY_CODE = {
     "c1": "C1", "c2": "C2",
 }
 
-__all__ = ["FIGURE_NUMBERS", "LEGACY_CODE", "renumber_title"]
+__all__ = ["FIGURE_NUMBERS", "LEGACY_CODE", "ref", "renumber_title"]
 
 
 def renumber_title(title: str, key: str) -> str:
@@ -121,17 +124,22 @@ FIGURE_GUIDE = {
            "sits, how long the tail is, and how far the mean sits from the P50."),
     "a8": ("contact distribution and P(deeper)",
            "The HCWC distribution read back out of the trials, with the inverse cumulative "
-           "beside it. That cumulative *is* r_location at every depth, so 2.5 and 3.2 must "
+           "beside it. That cumulative *is* r_location at every depth, so {a8} and {a3} must "
            "agree everywhere."),
     "a2": ("outcome tree vs location",
            "What moving the well does to the four outcomes. Risked onto the entered POS, so "
-           "it cannot contradict 3.2."),
+           "it cannot contradict {a3}."),
     "a3": ("chance decomposition vs location",
            "`P_well` and `r_location` as separate curves — the decomposition made "
            "un-mistakable. Never multiplied into one number."),
     "b3": ("uncertainty reduction vs location",
            "Haskett's value-of-information optimum, found by argmax rather than by eye. See "
            "the section below on what it is measuring here, which is *not* an appraisal well."),
+    "b11": ("P_well sensitivity to POS_prospect",
+            "How much of your answer is the chance table rather than the geometry? Every "
+            "curve is P_well against depth for a different POS_prospect. They are all the "
+            "same shape scaled vertically, because only r_location moves with depth -- so "
+            "revising the chance table and moving the well are independent levers."),
     "b0": ("schematic section",
            "The three volumes in section. Width is a circular-closure proxy, so the shape is "
            "illustrative; the depths on y are the real quantity."),
@@ -168,7 +176,7 @@ FIGURE_GUIDE = {
            "labelled on the conditional curves only — risking scales the probability, never "
            "the volume."),
     "live": ("live section",
-             "3.4 drawn at the well you have chosen, so the classes are the ones the current "
+             "{b0} drawn at the well you have chosen, so the classes are the ones the current "
              "entry and exit actually produce."),
     "a6": ("where the four classes overlap",
            "Schneider's *“surprising overlap”*: a dry hole's attic against a discovery's "
@@ -187,6 +195,23 @@ FIGURE_GUIDE = {
 }
 
 
+def ref(text: str) -> str:
+    """Replace ``{key}`` placeholders with the figure's current number.
+
+    ``ref("the attic curve on {b2}")`` -> ``"the attic curve on 3.7"``.
+
+    Prose that spells a number out goes stale the moment a figure is inserted above
+    it, and that happened the same day the numbering was introduced: adding the
+    sensitivity fan as 3.4 pushed five figures down one, and six sentences elsewhere
+    kept pointing at the old numbers. Naming the key instead means a renumbering
+    fixes the prose along with the figures.
+    """
+    def sub(m):
+        key = m.group(1)
+        return FIGURE_NUMBERS.get(key, m.group(0))
+    return re.sub(r"\{([a-z][a-z0-9_]*)\}", sub, text)
+
+
 def guide_table() -> str:
     """The guide's figure table, in markdown, numbered from :data:`FIGURE_NUMBERS`."""
     rows = ["| Figure | The question it answers |", "|---|---|"]
@@ -197,5 +222,5 @@ def guide_table() -> str:
         # and it made every row look like it was mid-migration. LEGACY_CODE stays --
         # the export file names and this project's own notes still use the letters --
         # it just is not shown to the reader.
-        rows.append(f"| **{number}** {what} | {question} |")
+        rows.append(f"| **{number}** {what} | {ref(question)} |")
     return "\n".join(rows)

@@ -13,7 +13,7 @@ from __future__ import annotations
 import numpy as np
 import streamlit as st
 
-from ..ui.numbering import guide_table
+from ..ui.numbering import guide_table, ref
 
 from wellvolpos.core import commercial_chance, expected_volume, no_regrets, thickness_from_pay
 from wellvolpos.viz import pfig_colour_key
@@ -139,7 +139,8 @@ is assumed.
         st.caption(
             "The poster calls No Regrets *“useful to the decision-maker, however, it is an "
             "oversimplification”*, because *“for most downdip well locations, there remains a "
-            "chance the updip volume will exceed MCFS”*. That chance is exactly what 3.6 draws "
+            "chance the updip volume will exceed MCFS”*. That chance is exactly what "
+            + ref("{b2}") + " draws "
             "on the Location sweep tab — so this tool shows Rose's number **and** the thing he "
             "says it understates."
         )
@@ -150,7 +151,8 @@ is assumed.
         cc = commercial_chance(ts, groups, vc.proven, chance.p_well, mefs)
         st.markdown(cc.message())
         st.caption(
-            "Rose's `Pmcfs(well)` conditions on the **whole** well-associated volume; our 3.6 "
+            "Rose's `Pmcfs(well)` conditions on the **whole** well-associated volume; our "
+            + ref("{b2}") + " "
             "curve conditions on the **proven** volume between entry and exit. Both are "
             "legitimate and they are different numbers, so both are shown rather than one being "
             "quoted as the other. `Pc(well)` is the chance the poster says to use for EMV — a "
@@ -329,7 +331,7 @@ stands, and it is worth knowing which is which before quoting either.
 **Deliberately not obtained.** Milkov & Samis (2020, AAPG Bulletin 104) and Samis &
 Milkov (2020), on the real-option value of untested up-dip volume after a dry hole.
 Both paywalled. If the attic / regret analysis becomes central they are the next two
-to get — and 3.6's regret curve is the place they would land.
+to get — and {b2}'s regret curve is the place they would land.
 
 ---
 

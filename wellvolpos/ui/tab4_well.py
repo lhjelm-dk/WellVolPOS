@@ -29,6 +29,7 @@ from ..viz import (
 )
 from .common import C2_HEIGHT, chart as _chart, split_caveat
 from .context import Ctx
+from .numbering import ref as fig_ref
 
 
 def render(ctx: Ctx) -> None:
@@ -92,7 +93,7 @@ def render(ctx: Ctx) -> None:
                 f"of the trials that actually landed there, so it carries the model's own "
                 f"correlations. He is candid that the deterministic version *“is an "
                 f"oversimplification”*, because *“there remains a chance the updip volume will "
-                f"exceed MCFS”* — which is what 3.6's regret curve answers."
+                f"exceed MCFS”* — which is what {fig_ref('{b2}')}'s regret curve answers."
             )
 
         e = st.columns(3)
@@ -301,7 +302,7 @@ def render(ctx: Ctx) -> None:
 
         st.divider()
         a6_norm = st.radio(
-            "4.4 histogram scaling", ["density", "peak"], horizontal=True, key="w_a6_norm",
+            f"{fig_ref('{a6}')} histogram scaling", ["density", "peak"], horizontal=True, key="w_a6_norm",
             format_func=lambda k: {"density": "Density (area = 1 each)",
                                    "peak": "Normalised to each own peak"}[k],
             help=("Density is the honest default -- each class integrates to 1, so the areas "
@@ -310,7 +311,7 @@ def render(ctx: Ctx) -> None:
                   "vertical axis no longer meaning anything absolute."),
         )
         a6_curves = st.checkbox(
-            "Overlay the exceedance curves from 4.2 (conditional only)", value=False,
+            f"Overlay the exceedance curves from {fig_ref('{c2}')} (conditional only)", value=False,
             key="w_a6_curves",
             help=("The same four classes as cumulative curves, on a second x-axis in per cent. "
                   "Conditional only: a risked curve beside an unrisked histogram would be two "

@@ -40,10 +40,12 @@ from ..viz import (
     pfig_b7_frontier,
     pfig_b8_commercial_chance,
     pfig_b9_chance_weighted,
+    pfig_b11_pos_sensitivity,
     row_zlim,
 )
 from .common import chart as _chart, split_caveat
 from .context import Ctx
+from .numbering import ref as fig_ref
 from .loading import volume_sweep as _volume_sweep
 
 
@@ -192,6 +194,14 @@ def _location_sweep_tab(ctx: Ctx):
     f_a3 = pfig_a3_chance_decomposition(
         sweep, pos_prospect=pos, pos_trials=pos_trials, current_z=entry, zlim=zrow_sweep)
     f_b3 = pfig_b3_uncertainty_reduction(sweep, current_z=entry, zlim=zrow_sweep)
+    # **The sensitivity fan** (Lars, 2026-08-12), from the workbook's charts 8 and 22.
+    # It sits beside 3.2 because it is the same quantity with the chance table swept
+    # instead of fixed: 3.2 answers "what is P_well here", this answers "how much of
+    # that is the chance table rather than the geometry".
+    f_b11 = pfig_b11_pos_sensitivity(sweep, pos_prospect=pos, current_z=entry,
+                                     zlim=zrow_sweep)
+    # b11 is NOT levelled with them: it is drawn full width below the row, not as a
+    # fourth panel in it, so borrowing the row's height only padded it.
     level_row(f_a2, f_a3, f_b3)
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -200,6 +210,19 @@ def _location_sweep_tab(ctx: Ctx):
         _chart(f_a3, key="a3", height=int(f_a3.layout.height))
     with c3:
         _chart(f_b3, key="b3", height=int(f_b3.layout.height))
+    _chart(f_b11, key="b11", height=int(f_b11.layout.height))
+    st.caption(
+        "**3.4 — how much of your answer is the chance table?** Every thin grey curve is "
+        "`P_well` against depth for a different `POS_prospect`, a decile at a time; the heavy "
+        "one is the POS actually in force. The workbook draws all one hundred percentiles — "
+        "unreadable, and neighbouring curves differ by a hundredth.\n\n"
+        "**They are all the same shape, scaled vertically**, and that is the content rather "
+        "than a shortcoming of the drawing. `P_well = POS_prospect × r_location(z)`, and only "
+        "the second factor moves with depth — so revising the chance table and moving the well "
+        "are *independent* levers. A reader who has seen this fan cannot believe that drilling "
+        "deeper fixes a poor chance table, which is exactly the confusion the whole "
+        "`POS × r` separation exists to prevent."
+    )
     st.caption(
         f"Haskett (2003) optimum: {sweep.reduction_optimum:.0f}% expected uncertainty reduction "
         f"at entry {sweep.z_optimum:.1f} m TVDSS. A2's exit is a hypothetical entry + "
@@ -254,7 +277,7 @@ def _location_sweep_tab(ctx: Ctx):
                 f"{1.0 - _p_regret:.1%} chance the volume left up-dip is *below* MEFS "
                 f"({vsweep.mefs:.1f} MMboe)** — that is, a "
                 f"{1.0 - _p_regret:.1%} chance being dry here costs you nothing material. "
-                f"The complement, {_p_regret:.1%}, is the attic curve on 3.6; this is the same "
+                f"The complement, {_p_regret:.1%}, is the attic curve on {fig_ref('{b2}')}; this is the same "
                 f"number said the other way round, which is the way a decision is usually put."
             )
 
@@ -264,7 +287,7 @@ def _location_sweep_tab(ctx: Ctx):
     tb1, tb2 = st.columns(2)
     with tb1:
         b7_scale = st.radio(
-            "3.7 volume axis", ["linear", "log"], horizontal=True, key="w_b7_scale",
+            f"{fig_ref('{b7}')} volume axis", ["linear", "log"], horizontal=True, key="w_b7_scale",
             format_func=lambda k: {"linear": "Linear", "log": "Log"}[k],
             help=("Linear shows the absolute rate of exchange — how many MMboe a point "
                   "of chance buys. Log shows the proportional one, which is the readable "

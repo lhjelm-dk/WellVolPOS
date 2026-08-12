@@ -357,6 +357,10 @@ def _draw_export_figures(b: Bundle, *, dark: bool = False) -> dict[str, object]:
         b.sweep, pos_prospect=b.pos, current_z=c.entry, dark=dark)[0]
     figs["A4_resource_vs_depth"] = F.fig_a4_resource_vs_depth(
         b.ts, current_entry=c.entry, mefs=c.mefs, dark=dark)[0]
+    # The sensitivity fan needs the POS in force, which the bundle already carries
+    # -- it is the one figure whose whole subject is that number being uncertain.
+    figs["B11_pos_sensitivity"] = F.fig_b11_pos_sensitivity(
+        b.sweep, pos_prospect=b.pos, current_z=c.entry, dark=dark)[0]
     figs["B3_uncertainty_reduction"] = F.fig_b3_uncertainty_reduction(
         b.sweep, current_z=c.entry, dark=dark)[0]
     figs["B4_chance_waterfall"] = F.fig_b4_chance_waterfall(

@@ -151,6 +151,13 @@ in km2 regardless (non-negotiable 4).
 #: because a plot-relative offset drifted with the plot height and clipped.
 LEGEND_Y = -0.20
 
+#: The POS_prospect values the fan is drawn at. The workbook draws all one hundred
+#: (`Well pos cal.` columns D..CZ, one per percent) which is unreadable on screen and
+#: mostly redundant -- neighbouring curves differ by a hundredth. Ten deciles carry
+#: the same message and can be told apart.
+FAN_POS_LEVELS = (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0)
+
+
 SEQUENTIAL_CMAP = "Blues"   # single hue, light -> dark; never a rainbow
 
 #: For colour that has to be read as a *value* rather than as "more or less":
