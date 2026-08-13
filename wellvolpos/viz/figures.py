@@ -1207,7 +1207,8 @@ def fig_b11_pos_sensitivity(
 
 def fig_b12_banded_percentiles(
     bp: BandedPercentiles, *, mefs: float | None = None, show_proven: bool = True,
-    show_mean: bool = False, probability_scale: str = "probit",
+    show_mean: bool = False, well_label: str | None = None,
+    probability_scale: str = "probit",
     volume_scale: str = "log", dark: bool = False,
 ):
     """B12 for the export path. Twin of ``pfig_b12_banded_percentiles``.
@@ -1274,7 +1275,9 @@ def fig_b12_banded_percentiles(
                     va="top", color=colour("mefs", dark))
     probability_axis(ax, probability_scale)
     ax.set_title("B12 · Resource by contact-depth band "
-                 f"({BAND_MODE_LABELS[bp.mode]}, well {bp.z_entry:.0f}-{bp.z_exit:.0f} m)")
+                 f"({BAND_MODE_LABELS[bp.mode]}, "
+                 + (f"Well {well_label}: " if well_label else "well ")
+                 + f"{bp.z_entry:.0f}-{bp.z_exit:.0f} m)")
     _sub = ("solid = the whole resource in the band · "
             "dotted = the part this well would prove · colour = depth, light to dark")
     ax.annotate(_sub, (0.5, 1.005), xycoords="axes fraction", ha="center", va="bottom",

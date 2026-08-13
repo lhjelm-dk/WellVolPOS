@@ -34,6 +34,7 @@ from ..core import (
 )
 from ..viz import (
     add_well_markers,
+    add_well_points,
     PROBABILITY_SCALES,
     VOLUME_SCALES,
     TALL_PANEL_HEIGHT,
@@ -60,7 +61,7 @@ from .loading import volume_sweep as _volume_sweep
 
 
 @st.fragment
-def _inverse_section(vsweep, ts, mefs):
+def _inverse_section(vsweep, ts, mefs, wells=(), selected_well=None):
     """B6, in its own fragment.
 
     The volume-to-prove slider must not re-run either sweep: at n=60 with a
@@ -125,8 +126,10 @@ def _inverse_section(vsweep, ts, mefs):
     # A quarter taller (Lars, 2026-08-12): the leader lines, the bootstrap band and a
     # five-deep contact family all share one pair of axes, and at row height they
     # crowd each other.
-    _chart(pfig_b6_inverse(vsweep, target=target, ts=ts, mefs=mefs,
-                           statistic=stat, height=TALL_PANEL_HEIGHT), key="b6")
+    _f_b6 = pfig_b6_inverse(vsweep, target=target, ts=ts, mefs=mefs,
+                            statistic=stat, height=TALL_PANEL_HEIGHT)
+    add_well_markers(_f_b6, wells, selected=selected_well)
+    _chart(_f_b6, key="b6")
     # The worked sentence first, in the app's live numbers, because "how do I read
     # this" is the question B6 kept failing to answer (Lars, 2026-08-11).
     _worked = ""
@@ -398,10 +401,18 @@ def _location_sweep_tab(ctx: Ctx):
                   "which is where the deep locations sit and where a linear axis "
                   "compresses the whole trade into the bottom centimetre."),
         )
-        _chart(pfig_b7_frontier(vsweep, current_z=entry, chance_scale=b7_scale), key="b7")
+        # 3.8's axes are volume and chance, so a candidate is a **point** on the
+        # frontier rather than a rule -- see viz.add_well_points.
+        _f_b7 = pfig_b7_frontier(vsweep, current_z=entry, chance_scale=b7_scale)
+        add_well_points(_f_b7, vsweep, wells, selected=selected_well)
+        _chart(_f_b7, key="b7")
     with tb2:
-        _chart(pfig_b8_commercial_chance(vsweep, current_z=entry, zlim=zrow_sweep), key="b8")
-    _chart(pfig_b9_chance_weighted(vsweep, current_z=entry, zlim=zrow_sweep), key="b9")
+        _f_b8 = pfig_b8_commercial_chance(vsweep, current_z=entry, zlim=zrow_sweep)
+        add_well_markers(_f_b8, wells, selected=selected_well)
+        _chart(_f_b8, key="b8")
+    _f_b9 = pfig_b9_chance_weighted(vsweep, current_z=entry, zlim=zrow_sweep)
+    add_well_markers(_f_b9, wells, selected=selected_well)
+    _chart(_f_b9, key="b9")
     st.caption(
         f"**{fig_ref('{b9}')} — the targeting tool.** `P_well × mean volume`, swept: a falling curve times a "
         "rising one, so it peaks somewhere in between and that depth maximises the expectation. "
@@ -428,7 +439,7 @@ def _location_sweep_tab(ctx: Ctx):
         "being the number Rose says to carry into an EMV."
     )
 
-    _inverse_section(vsweep, ts, mefs)
+    _inverse_section(vsweep, ts, mefs, wells, selected_well)
 
 
 
@@ -444,6 +455,7 @@ def _band_section(ctx: Ctx):
     st.subheader("Resource by contact-depth band")
     ts, groups, vc = ctx.ts, ctx.groups, ctx.vc
     entry, exit_, mefs = ctx.entry, ctx.exit_, ctx.mefs
+    selected_well = ctx.selected_well
     split_caveat(ctx)
 
     cb1, cb2, cb3 = st.columns([1.4, 1, 1])
@@ -511,9 +523,16 @@ def _band_section(ctx: Ctx):
         st.warning(str(exc))
         return
 
+    # 3.12 takes no candidate rules and that is not an omission. Its axes are
+    # resource and probability, so a well is not a line on it -- and more than that,
+    # **the banding itself is anchored on the selected well's entry**, because a band
+    # that straddles the entry mixes dry trials with discoveries. So each candidate
+    # produces a *different figure*, not another curve on this one, and the title says
+    # which well is on screen.
     _chart(pfig_b12_banded_percentiles(
         bp, mefs=mefs, show_proven=show_proven, show_mean=show_mean,
-        probability_scale=prob_scale, volume_scale=vol_scale), key="b12")
+        probability_scale=prob_scale, volume_scale=vol_scale,
+        well_label=selected_well), key="b12")
 
     dropped = ""
     if bp.n_bands_dropped:

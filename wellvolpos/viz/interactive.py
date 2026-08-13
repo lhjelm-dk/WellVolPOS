@@ -90,6 +90,7 @@ from .theme import (
 
 __all__ = [
     "add_well_markers",
+    "add_well_points",
     "pfig_colour_key",
     "CONCEPT_KEY",
     "pfig_c1_section",
@@ -160,7 +161,7 @@ def _vline(fig, x: float, colour_: str, dash: str = "dot", label: str | None = N
 
 
 def add_well_markers(fig, wells, *, selected: str | None = None, dark: bool = False):
-    """Draw a labelled rule for every candidate well on a **depth-axis** figure.
+    """Draw a labelled rule for every candidate **except the selected one**.
 
     Applied by the tab after a figure is built rather than by passing a list into
     every figure function. Fourteen figures take ``current_z``; threading a second
@@ -168,24 +169,61 @@ def add_well_markers(fig, wells, *, selected: str | None = None, dark: bool = Fa
     to draw one extra line each would be a large change for a small effect, and every
     one of those signatures is a place the drawing could drift.
 
-    The **selected** well keeps the palette's violet and its own label; the others are
-    muted, so which one the tabs downstream are about is never in doubt. Each rule
-    carries its letter and its depth, because a row of unlabelled lines on a swept
-    figure is worse than no lines at all.
+    **The selected well is skipped because the figure has already drawn it.** Every
+    swept figure marks ``current_z`` in its own style -- b0 shades the entry-to-exit
+    interval, b11 labels it "this well" -- so adding a rule here too put two lines at
+    the same depth in two different colours. The others are muted and dotted, and each
+    carries its letter and its depth: a row of unlabelled lines on a swept figure is
+    worse than no lines at all.
 
-    Only for figures whose y-axis is a depth. 3.8 and 3.12 are exempt for the same
-    reason they are exempt from the depth rule: neither has depth on an axis.
+    Only for figures whose y-axis is a depth. 3.8 gets :func:`add_well_points`
+    instead, because its axes are volume and chance; 3.12 is re-banded by whichever
+    well is selected and names it in the title.
     """
     p = palette(dark)
     for w in wells:
-        is_sel = selected is None or w.label == selected
-        _hline(
-            fig, float(w.entry),
-            p["well"] if is_sel else p["muted"],
-            "dash" if is_sel else "dot",
-            f"{w.label} · {w.entry:,.0f} m" + (" ◀" if is_sel else ""),
+        if selected is not None and w.label == selected:
+            continue
+        _hline(fig, float(w.entry), p["muted"], "dot",
+               f"{w.label} · {w.entry:,.0f} m")
+    return fig
+
+
+def add_well_points(fig, vsweep, wells, *, selected: str | None = None,
+                    dark: bool = False, min_support: int = MIN_SUPPORT):
+    """Put every candidate on the **frontier**, where a well is a point not a depth.
+
+    3.8's axes are mean resource and ``P_well``, so a location is one point on the
+    trade-off curve rather than a horizontal line. Interpolated onto the same thinned
+    series the curve draws, so a marker can never appear at a volume the figure itself
+    declined to plot.
+
+    The selected well is skipped for the same reason as in :func:`add_well_markers`:
+    the figure draws it already, in its own style.
+    """
+    p = palette(dark)
+    n_disc = vsweep.n_discovery
+    pw = thin(vsweep.p_well, n_disc, min_support) * 100.0
+    base = (thin(vsweep.discovery_mean, n_disc, min_support)
+            if vsweep.discovery_mean is not None
+            else thin(vsweep.proven_mean, n_disc, min_support))
+    for w in wells:
+        if selected is not None and w.label == selected:
+            continue
+        x = float(np.interp(w.entry, vsweep.z, np.nan_to_num(base, nan=0.0)))
+        y = float(np.interp(w.entry, vsweep.z, np.nan_to_num(pw, nan=0.0)))
+        fig.add_scatter(
+            x=[x], y=[y], mode="markers+text",
+            marker=dict(symbol="circle-open", size=12,
+                        line=dict(color=p["muted"], width=2), color=p["muted"]),
+            text=[f"  {w.label}"], textposition="middle right",
+            textfont=dict(size=10, color=p["text_secondary"]),
+            name=f"Well {w.label}", showlegend=False,
+            hovertemplate=(f"well {w.label} at {w.entry:,.0f} m<br>"
+                           f"{x:.1f} MMboe at {y:.1f}%<extra></extra>"),
         )
     return fig
+
 
 
 # ------------------------------------------------------------------- A1
@@ -1335,6 +1373,19 @@ def pfig_b3_uncertainty_reduction(
                 hovertemplate=(label + "<br>%{x:.1f}% reduction at "
                                + DEPTH_HOVER + "<extra></extra>"),
             )
+            # A small label at the curve's own peak (Lars, 2026-08-13). Five curves
+            # in one family is more than a legend can be traced back to line by line,
+            # and the peak is where they are furthest apart and least likely to
+            # collide.
+            _arr = np.asarray(curve, dtype=float)
+            if np.isfinite(_arr).any():
+                _i = int(np.nanargmax(_arr))
+                fig.add_annotation(
+                    x=float(_arr[_i]), y=float(sweep.z[_i]),
+                    text=f"P{100 - hi:.0f}–P{100 - lo:.0f}", showarrow=False,
+                    xshift=6, xanchor="left",
+                    font=dict(size=8, color=shade),
+                )
 
     fig.add_scatter(
         x=[sweep.reduction_optimum], y=[sweep.z_optimum], mode="markers+text",
@@ -2222,7 +2273,8 @@ def pfig_b11_pos_sensitivity(
 
 def pfig_b12_banded_percentiles(
     bp: BandedPercentiles, *, mefs: float | None = None, show_proven: bool = True,
-    show_mean: bool = False, probability_scale: str = "probit",
+    show_mean: bool = False, well_label: str | None = None,
+    probability_scale: str = "probit",
     volume_scale: str = "log", dark: bool = False,
     height: int | None = BAND_PANEL_HEIGHT,
 ):
@@ -2340,7 +2392,9 @@ def pfig_b12_banded_percentiles(
     log = volume_scale == "log"
     fig.update_layout(
         title=("B12 · Resource by contact-depth band "
-               f"({BAND_MODE_LABELS[bp.mode]}, well {bp.z_entry:.0f}-{bp.z_exit:.0f} m)"
+               f"({BAND_MODE_LABELS[bp.mode]}, "
+               + (f"Well {well_label}: " if well_label else "well ")
+               + f"{bp.z_entry:.0f}-{bp.z_exit:.0f} m)"
                + "<br><sub>solid = the whole resource in the band · dotted = the part this well would prove · colour = depth, light to dark</sub>"),
         xaxis_title=("Resource (MMboe) · log scale" if log
                      else "Resource (MMboe) · linear scale"),
