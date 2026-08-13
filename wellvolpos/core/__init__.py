@@ -39,7 +39,7 @@ from .classes import (
     risked_exceedance,
     split_trials,
 )
-from .groups import group_summary, group_trials
+from .groups import boundary_ties, group_summary, group_trials
 from .structure import AreaDepth
 from .reservoir import ThicknessFromPay, thickness_from_pay
 from .rose import (
@@ -84,7 +84,7 @@ from .threshold import (
 __all__ = [
     "BAND_MODES", "BAND_MODE_LABELS", "BAND_PERCENTILES", "DEFAULT_N_BANDS",
     "BandedPercentiles", "DepthBand", "banded_percentiles", "supported_percentiles",
-    "AreaDepth", "group_trials", "group_summary", "split_trials", "class_summary",
+    "AreaDepth", "group_trials", "group_summary", "boundary_ties", "split_trials", "class_summary",
     "check_area_pay_correlation",
     "class_percentiles",
     "risked_exceedance",

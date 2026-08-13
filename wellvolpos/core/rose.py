@@ -29,6 +29,13 @@ from .groups import Groups
 from .structure import AreaDepth
 
 
+#: Default half-width for "the contact lands on the well". It reproduces the
+#: original calculation exactly, which is why it is the default -- but it is a
+#: tuning constant with a result attached, so the app exposes it rather than
+#: burying it (Lars, 2026-08-12).
+AT_WELL_WINDOW_M = 2.0
+
+
 @dataclass
 class NoRegrets:
     """Rose's "No Regrets" volume, and the workbook's probabilistic answer to it.
@@ -70,7 +77,7 @@ class NoRegrets:
 
 
 def no_regrets(
-    ts: TrialSet, ad: AreaDepth, z_entry: float, *, window_m: float = 2.0
+    ts: TrialSet, ad: AreaDepth, z_entry: float, *, window_m: float = AT_WELL_WINDOW_M
 ) -> NoRegrets:
     """Rose's No Regrets volume, plus the workbook's probabilistic counterpart.
 

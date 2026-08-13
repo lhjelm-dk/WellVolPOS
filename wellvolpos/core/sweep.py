@@ -28,7 +28,7 @@ nothing found.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -78,7 +78,7 @@ class Sweep:
     z: np.ndarray
     r_location: np.ndarray
     p_well: np.ndarray
-    uncertainty_reduction: np.ndarray  # % of the prospect's own P10-P90 spread
+    uncertainty_reduction: np.ndarray
     pos_prospect: float
     reference: ReferenceContour
     z_optimum: float
@@ -96,6 +96,13 @@ class Sweep:
     share_contact_seen: np.ndarray
     share_hc_to_exit: np.ndarray
 
+    #: The same curve over **every** trial rather than the success cases -- what
+    #: 3.3 reported before 2026-08-12. Carried so the figure can draw both and show
+    #: what the chance failures were contributing; identical to
+    #: ``uncertainty_reduction`` on a file that has none. Defaulted, so it goes at
+    #: the **end** of the dataclass -- a defaulted field inserted mid-class is a
+    #: TypeError, and this is the second time that trap has been sprung here.
+    uncertainty_reduction_all: np.ndarray | None = field(default=None, repr=False)
 
 def run_sweep(
     ts: TrialSet,
@@ -151,10 +158,15 @@ def run_sweep(
     learn = res > 0.0
     res_learn = res[learn]
     prospect_spread = _spread(res_learn)
+    # The unconditional reading is computed alongside, not instead: 3.3 draws both so
+    # the difference between them can be seen rather than taken on trust (Lars,
+    # 2026-08-12). On a file with no chance failures the two coincide exactly.
+    prospect_spread_all = _spread(res)
 
     r = np.empty(z.size)
     pw = np.empty(z.size)
     reduction_pct = np.empty(z.size)
+    reduction_pct_all = np.empty(z.size)
     share_dry = np.empty(z.size)
     share_seen = np.empty(z.size)
     share_past = np.empty(z.size)
@@ -186,6 +198,13 @@ def run_sweep(
         disc_spread = _spread(res_learn[disc_learn])
         no_disc_spread = _spread(res_learn[~disc_learn])
         expected_post = p_disc * disc_spread + (1.0 - p_disc) * no_disc_spread
+        p_all = float(discovery.mean())
+        expected_post_all = (p_all * _spread(res[discovery])
+                             + (1.0 - p_all) * _spread(res[~discovery]))
+        reduction_pct_all[i] = (
+            100.0 * (prospect_spread_all - expected_post_all) / prospect_spread_all
+            if prospect_spread_all > 0 else float("nan")
+        )
         reduction_pct[i] = (
             100.0 * (prospect_spread - expected_post) / prospect_spread
             if prospect_spread > 0 else float("nan")
@@ -196,6 +215,7 @@ def run_sweep(
 
     return Sweep(
         z=z, r_location=r, p_well=pw, uncertainty_reduction=reduction_pct,
+        uncertainty_reduction_all=reduction_pct_all,
         pos_prospect=float(pos_prospect), reference=reference,
         z_optimum=float(z[i_opt]), reduction_optimum=float(reduction_pct[i_opt]),
         z_gap=float(z_gap), share_chance_failure=1.0 - float(pos_prospect),

@@ -1223,7 +1223,7 @@ def pfig_b2_chance_vs_regret(
 
 # ------------------------------------------------------------------- B3
 def pfig_b3_uncertainty_reduction(
-    sweep: Sweep, *, current_z: float | None = None,
+    sweep: Sweep, *, current_z: float | None = None, show_all_trials: bool = True,
     zlim: tuple[float, float] | None = None, show_depth_labels: bool = True,
     dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
@@ -1266,8 +1266,23 @@ def pfig_b3_uncertainty_reduction(
     p = palette(dark)
     c = colour("p_well", dark)
     fig = go.Figure()
+    if show_all_trials and getattr(sweep, "uncertainty_reduction_all", None) is not None:
+        # The reading this figure used to give, drawn thin and grey behind the answer.
+        # On a file with chance failures the two separate, and the gap **is** the
+        # lesson: the unconditional curve is mostly reporting "we learned it was not a
+        # chance failure", which any depth tells you equally. On a file without them
+        # they coincide exactly, and that is worth seeing too.
+        fig.add_scatter(
+            x=sweep.uncertainty_reduction_all, y=sweep.z, mode="lines",
+            name="over every trial — includes the chance failures",
+            line=dict(color=p["muted"], width=1.4, dash="dot"),
+            hovertemplate=("over every trial<br>%{x:.1f}% reduction at "
+                           + DEPTH_HOVER + "<extra></extra>"),
+        )
+
     fig.add_scatter(
-        x=sweep.uncertainty_reduction, y=sweep.z, mode="lines", name="Reduction",
+        x=sweep.uncertainty_reduction, y=sweep.z, mode="lines",
+        name="over the success cases",
         line=dict(color=c, width=3), fill="tozerox",
         fillcolor=rgba("p_well", 0.15, dark),
         hovertemplate="%{x:.1f}% reduction at " + DEPTH_HOVER + "<extra></extra>",
@@ -1531,7 +1546,10 @@ def pfig_b6_inverse(
                 x=np.concatenate([targets[band], targets[band][::-1]]),
                 y=np.concatenate([z_lo[band], z_hi[band][::-1]]),
                 fill="toself", fillcolor=rgba("p_well", 0.15, dark), mode="lines",
-                line=dict(width=0), name=f"nominal {level:.0f}% CI on the {stat_label} \u2014 sampling error",
+                line=dict(width=0), # Still "CI on the ...", never "band": B6 carries two shaded regions and
+                # "band" is reserved for the geological one. Only the word "nominal"
+                # went, because it implied a coverage this app cannot certify.
+                name=f"{level:.0f}% CI on the {stat_label} — sampling error, under-covers",
                 hoverinfo="skip",
             )
 
@@ -2263,29 +2281,18 @@ def pfig_b12_banded_percentiles(
                                    "<extra></extra>"),
                 )
 
-    # Two style keys rather than doubling the legend: the bands are already named once
-    # each, and what a reader needs from a second entry is what solid and dotted mean.
-    # Drawn in a mid shade of each family's own ramp, so the key carries the hue
-    # distinction it exists to explain.
-    mid = max(n_bands // 2, 0)
-    fig.add_scatter(
-        x=[None], y=[None], mode="lines", name="total resource (solid)",
-        line=dict(color=total_shades[mid], width=2.4),
-    )
-    if show_proven:
-        fig.add_scatter(
-            x=[None], y=[None], mode="lines", name="proven at this well (dotted)",
-            line=dict(color=proven_shades[mid], width=1.8, dash="dot"),
-        )
-    if show_mean:
-        fig.add_scatter(
-            x=[None], y=[None], mode="markers", name="mean, at its own probability",
-            marker=dict(color=p["text_secondary"], size=11, symbol="diamond-open"),
-        )
+    # **No dummy legend entries.** "total resource (solid)" and "proven at this well
+    # (dotted)" used to sit here as traces with no data, and Lars twice reported that
+    # he could not find the total-resource line -- correctly, because the legend named
+    # a series that did not exist while the seven *band* entries were the thing he was
+    # looking for. In plotly a dummy is worse than ambiguous: clicking a legend entry
+    # toggles its trace, and these toggled nothing. What solid and dotted mean is a
+    # key, so it goes in the subtitle; the legend names only real series.
     log = volume_scale == "log"
     fig.update_layout(
         title=("B12 · Resource by contact-depth band "
-               f"({BAND_MODE_LABELS[bp.mode]}, well {bp.z_entry:.0f}-{bp.z_exit:.0f} m)"),
+               f"({BAND_MODE_LABELS[bp.mode]}, well {bp.z_entry:.0f}-{bp.z_exit:.0f} m)"
+               + "<br><sub>solid = the whole resource in the band · dotted = the part this well would prove · colour = depth, light to dark</sub>"),
         xaxis_title=("Resource (MMboe) · log scale" if log
                      else "Resource (MMboe) · linear scale"),
     )

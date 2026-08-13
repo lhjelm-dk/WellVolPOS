@@ -11,6 +11,7 @@ import pandas as pd
 import streamlit as st
 
 from ..core import (
+    boundary_ties,
     at_the_well_volume,
     outcome_overlap,
     REPORT_PERCENTILES,
@@ -27,6 +28,7 @@ from ..viz import (
     pfig_c2_exceedance,
     pfig_map_view,
 )
+from ..core.rose import AT_WELL_WINDOW_M
 from ..viz.theme import reference_label
 from .common import C2_HEIGHT, chart as _chart, split_caveat
 from .context import Ctx
@@ -85,7 +87,20 @@ def render(ctx: Ctx) -> None:
         # below, is the layout doing the work that this codebase's recurring bug --
         # an unrisked number under a risked label -- otherwise requires prose to do.
         st.markdown("##### Volumes if it works, in MMboe — success case, unrisked")
-        _atw, _atw_n = at_the_well_volume(ts, entry)
+        # The window is a **setting**, not a constant (Lars, 2026-08-12). No trial
+        # lands exactly on the entry, so "the volume when the contact is at the well"
+        # needs a tolerance, and the answer moves with it: wider takes in contacts
+        # that are not at the well, narrower runs out of trials. +/-2 m is the default
+        # because it is what the original calculation used, but it is a tuning
+        # constant with a result attached and it belongs on screen.
+        _atw_win = st.number_input(
+            "At-the-well window, ± m", 0.5, 25.0, AT_WELL_WINDOW_M, 0.5,
+            key="w_atw_window",
+            help="How close a trial's contact must be to the reservoir entry to count "
+                 "as landing *on* the well. Widen it for more trials and a blurrier "
+                 "answer; narrow it until the count gets too small to mean anything.",
+        )
+        _atw, _atw_n = at_the_well_volume(ts, entry, window_m=float(_atw_win))
         k = st.columns(4)
         k[0].metric("Proven mean — headline KPI", f"{cs['proven']['mean']:.2f}",
                     help="What this well would establish between entry and exit.")
@@ -99,8 +114,8 @@ def render(ctx: Ctx) -> None:
         if _atw_n:
             k[3].metric("At the well — contact on entry", f"{_atw:.2f}",
                         help=f"Mean of the {_atw_n:,} trials whose contact lands within "
-                             f"±2 m of the reservoir entry. Neither a discovery nor a "
-                             f"dry hole — the boundary case.")
+                             f"±{_atw_win:g} m of the reservoir entry. Neither a discovery "
+                             f"nor a dry hole — the boundary case.")
 
         if _atw_n:
             _span = gs["discovery"]["mean"] - cs["attic_dry_hole"]["mean"]
@@ -148,6 +163,20 @@ def render(ctx: Ctx) -> None:
 
     st.divider()
     sh = groups.risked_shares(chance.pos_prospect, chance.p_well)
+    # The knife edge, stated (Lars, 2026-08-12). A discovery is `contact > z_entry`
+    # *strictly*, so a contact exactly on the entry is a dry hole -- correct, since
+    # that is zero column at the well, but invisible. An invisible tie is where a
+    # boundary rule goes wrong quietly: one prospect-B trial sitting exactly on
+    # 2205.0 m was enough to invert a band's percentiles in 3.12.
+    _ties, _tie_frac = boundary_ties(ts, entry)
+    if _ties:
+        st.caption(
+            f"**On the knife edge:** {_ties:,} success trials ({_tie_frac:.1%}) have their "
+            f"contact within ±0.5 m of the reservoir entry. A discovery here is *contact "
+            f"deeper than the entry*, strictly — a contact exactly on it means zero column "
+            f"at the well and counts as dry. Move the entry a metre and these trials change "
+            f"sides, which is worth knowing before reading a small difference as a signal."
+        )
     st.markdown(
         f"**Outcome tree**, over {ts.n_trials:,} trials — chance failure "
         f"{sh['chance_failure']:.1%} · dry with attic {sh['dry_with_attic']:.1%} · "

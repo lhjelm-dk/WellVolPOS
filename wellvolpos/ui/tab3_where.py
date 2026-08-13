@@ -142,8 +142,12 @@ def _inverse_section(vsweep, ts, mefs):
         + "**The proven-volume relation, read backwards.** Marker colour is P_well at that depth — the "
         "cost side of the trade — because a second y-axis is not allowed and the trade is the "
         "point. The shaded band is the bootstrap interval on the proven mean, inverted through "
-        "the same curve, so it widens down-dip where the discovery group thins. The level is "
-        "nominal: a percentile bootstrap under-covers on small skewed samples.\n\n"
+        "the same curve, so it widens down-dip where the discovery group thins.\n\n"
+        "**Read the band as a width, not as a guarantee.** It is a percentile bootstrap, "
+        "which under-covers on small, skewed samples — and the discovery group is both, at "
+        "the deep end. So the true coverage is *below* the level it is drawn at, by an amount "
+        "this app does not know. What it is good for is comparing one part of the curve with "
+        "another: where the band is wide, the estimate is thin.\n\n"
         "**It answers a guarantee, not a first touch**, which is why the axis says *or deeper*. "
         "The depth returned is the shallowest one from which the proven mean stays at or above "
         "your target all the way down. A sampled proven-mean curve wobbles wherever the discovery "
@@ -204,7 +208,8 @@ def _location_sweep_tab(ctx: Ctx):
     f_a2 = pfig_a2_outcome_tree(sweep, current_z=entry, zlim=zrow_sweep)
     f_a3 = pfig_a3_chance_decomposition(
         sweep, pos_prospect=pos, pos_trials=pos_trials, current_z=entry, zlim=zrow_sweep)
-    f_b3 = pfig_b3_uncertainty_reduction(sweep, current_z=entry, zlim=zrow_sweep)
+    f_b3 = pfig_b3_uncertainty_reduction(sweep, current_z=entry, zlim=zrow_sweep,
+                                         height=TALL_PANEL_HEIGHT)
     # **The sensitivity fan** (Lars, 2026-08-12), from the workbook's charts 8 and 22.
     # It sits beside 3.2 because it is the same quantity with the chance table swept
     # instead of fixed: 3.2 answers "what is P_well here", this answers "how much of
@@ -213,14 +218,48 @@ def _location_sweep_tab(ctx: Ctx):
                                      zlim=zrow_sweep)
     # b11 is NOT levelled with them: it is drawn full width below the row, not as a
     # fourth panel in it, so borrowing the row's height only padded it.
-    level_row(f_a2, f_a3, f_b3)
-    c1, c2, c3 = st.columns(3)
+    # 3.3 is **not** in the row (Lars, 2026-08-12). It carries two curves and an
+    # argument about which population they are over, and a third of the width was not
+    # enough for either. It is drawn full width directly under the row instead, which
+    # is also where the reader meets it after 3.2.
+    level_row(f_a2, f_a3)
+    c1, c2 = st.columns(2)
     with c1:
         _chart(f_a2, key="a2", height=int(f_a2.layout.height))
     with c2:
         _chart(f_a3, key="a3", height=int(f_a3.layout.height))
-    with c3:
-        _chart(f_b3, key="b3", height=int(f_b3.layout.height))
+    _chart(f_b3, key="b3")
+    st.caption(
+        "**3.3 — how much would a well here *tell* you?** The expected shrinkage of the "
+        "prospect's P10–P90 range once you know which side of the well the contact fell on. "
+        "The trials split in two — deeper than the entry, or not — which is Haskett's "
+        "*discrete learning*: one bit, no partial outcome, and the whole population splits "
+        "on it. The P10–P90 range stands in for variance because that is Haskett's own "
+        "recommendation, made because *“the ideal situation would have all team members "
+        "fully statistics literate… This ideal state is rare.”*"
+        "\n\n"
+        "**It is his measure, not his setting.** Haskett (2003) is about **appraisal** — a "
+        "discovery exists and you are siting well *two*. He is explicit: *“Appraisal "
+        "activities must be distinguished from exploration and development activities… In "
+        "order to appraise there first needs to be a successful exploration effort.”* Here "
+        "there is no discovery yet, and one branch of the split is a dry hole. The machinery "
+        "carries over; the conclusion does not."
+        "\n\n"
+        "**So read the peak as the most *informative* depth, not the best one.** The measure "
+        "values learning *dry* exactly as much as learning *large* — it has no dry-hole cost, "
+        f"no development case and no discount rate in it. For where the well is *worth* "
+        f"drilling see {fig_ref('{b9}')} and {fig_ref('{b8}')}."
+        "\n\n"
+        "**The two curves are two populations, and the gap between them is the point.** The "
+        "solid curve is over the **success cases**, which is the same conditioning "
+        "`r_location` uses: a chance failure is a property of the prospect, not of where the "
+        "well goes. The dotted grey curve is over **every trial**. Where a file carries "
+        "chance failures the parent's P90 is zero, which inflates the range and makes the "
+        "grey curve mostly report *“we learned it was not a chance failure”* — something a "
+        "well at any depth tells you equally. On the reference data that moved the apparent "
+        "optimum 92 m up-dip and nearly doubled the percentage. Where a file has no chance "
+        "failures the two curves coincide exactly, which is worth seeing as well."
+    )
     _chart(f_b11, key="b11", height=int(f_b11.layout.height))
     st.caption(
         "**3.4 — how much of your answer is the chance table?** Every thin grey curve is "

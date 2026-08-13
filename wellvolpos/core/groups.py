@@ -111,6 +111,34 @@ def group_trials(ts: TrialSet, z_entry: float, z_exit: float | None = None) -> G
     return Groups(success, discovery, dry, failure, seen, past)
 
 
+def boundary_ties(ts: "TrialSet", z_entry: float, tol_m: float = 0.5) -> tuple[int, float]:
+    """Success trials whose contact sits within ``tol_m`` of the well entry.
+
+    :func:`group_trials` calls a discovery ``contact > z_entry``, **strictly**, so a
+    trial whose contact lands exactly on the entry is a dry hole. That is the right
+    reading -- a contact at the entry is zero column at the well -- but it is
+    invisible, and an invisible tie is where a boundary rule goes wrong quietly. One
+    prospect-B trial sits exactly on 2205.0 m and it was enough to invert a whole
+    band's percentiles in 3.12 before the band rule was made to match the engine's.
+
+    Returns ``(count, fraction_of_success_trials)`` so a caller can say how much of
+    the answer is sitting on the knife edge. Reported rather than acted on: nothing
+    changes because of it, but a reader who moves the entry by a metre and sees a
+    number move deserves to know why.
+    """
+    import numpy as _np
+
+    res = _np.asarray(ts.col("resource"), dtype=float)
+    contact = _np.asarray(ts.col("contact"), dtype=float)
+    success = res > 0.0
+    n_succ = int(success.sum())
+    if not n_succ:
+        return 0, 0.0
+    near = success & (_np.abs(contact - float(z_entry)) <= float(tol_m))
+    n = int(near.sum())
+    return n, n / n_succ
+
+
 def group_summary(ts: TrialSet, groups: Groups) -> dict[str, dict[str, float]]:
     """Percentiles and mean for each reference group.
 

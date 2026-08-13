@@ -945,18 +945,29 @@ def fig_b6_inverse(
     return fig, ax
 
 
-def fig_b3_uncertainty_reduction(sweep: Sweep, *, current_z: float | None = None, dark: bool = False):
-    """Haskett (2003) uncertainty-reduction curve vs entry depth, optimum marked.
+def fig_b3_uncertainty_reduction(sweep: Sweep, *, current_z: float | None = None,
+                                 show_all_trials: bool = True, dark: bool = False):
+    """B3 for the export path. Twin of ``pfig_b3_uncertainty_reduction``.
 
-    ``sweep.z_optimum`` is found by argmax over the sweep grid rather than
-    eyeballed -- see :func:`wellvolpos.core.sweep.run_sweep`.
+    See that docstring: Haskett's *measure* on Haskett's own P10-P90 proxy, but not
+    Haskett's setting -- his paper is about appraisal after a discovery, and the peak
+    here is the most *informative* depth rather than the best one.
+
+    Two curves, and the gap between them is the argument: solid over the **success
+    cases**, which is the conditioning ``r_location`` already uses, and dotted grey
+    over every trial. ``sweep.z_optimum`` is found by argmax over the sweep grid
+    rather than eyeballed.
     """
     fig, ax = new_figure(figsize=(6, 5), dark=dark)
     p = palette(dark)
     c = colour("p_well", dark)
 
+    if show_all_trials and getattr(sweep, "uncertainty_reduction_all", None) is not None:
+        ax.plot(sweep.uncertainty_reduction_all, sweep.z, color=p["muted"], lw=1.3,
+                ls=":", label="over every trial — includes the chance failures")
     ax.fill_betweenx(sweep.z, 0, sweep.uncertainty_reduction, color=c, alpha=0.15)
-    ax.plot(sweep.uncertainty_reduction, sweep.z, color=c, lw=2.0)
+    ax.plot(sweep.uncertainty_reduction, sweep.z, color=c, lw=2.0,
+            label="over the success cases")
     ax.plot([sweep.reduction_optimum], [sweep.z_optimum], "o", color=p["text"], zorder=5)
     ax.annotate(
         f"max {sweep.reduction_optimum:.0f}% @ {sweep.z_optimum:.0f} m",
@@ -967,9 +978,16 @@ def fig_b3_uncertainty_reduction(sweep: Sweep, *, current_z: float | None = None
         ax.axhline(current_z, color=p["text_secondary"], ls="--", lw=1.0)
 
     depth_axis(ax, zlim=(float(sweep.z.min()), float(sweep.z.max())))
-    top = float(np.nanmax(sweep.uncertainty_reduction)) if np.isfinite(sweep.uncertainty_reduction).any() else 5.0
+    _tops = [sweep.uncertainty_reduction]
+    if getattr(sweep, "uncertainty_reduction_all", None) is not None:
+        _tops.append(sweep.uncertainty_reduction_all)
+    _all = np.concatenate([np.asarray(t, dtype=float) for t in _tops])
+    top = float(np.nanmax(_all)) if np.isfinite(_all).any() else 5.0
     ax.set_xlim(0, max(5.0, top * 1.15))
     ax.set_xlabel("Expected uncertainty reduction (%)")
+    handles, _ = ax.get_legend_handles_labels()
+    if handles:
+        ax.legend(loc="lower right", fontsize=7)
     ax.set_title("B3 · How much a well here would tell you — expected reduction "
                  "in the prospect's P10–P90 range")
     fig.tight_layout()
@@ -1217,16 +1235,11 @@ def fig_b12_banded_percentiles(
                         [float(probability_coords(band.proven_mean_p, probability_scale))],
                         color=pshade, marker="D", mfc="none", ms=6, mew=1.3, ls="none")
 
+    # The style key is in the subtitle, not the legend -- see the plotly twin: as
+    # legend entries these read as extra bands and sent the reader hunting for a line
+    # that was never a separate series.
     handles, labels = ax.get_legend_handles_labels()
-    mid = max(n_bands // 2, 0)
-    key = [Line2D([], [], color=total_shades[mid], lw=1.8,
-                  label="total resource (solid)")]
-    if show_proven:
-        key.append(Line2D([], [], color=proven_shades[mid], lw=1.5, ls=":",
-                          label="proven at this well (dotted)"))
-    if show_mean:
-        key.append(Line2D([], [], color=p["text_secondary"], marker="D", mfc="none",
-                          ls="none", ms=7, label="mean, at its own probability"))
+    key = []
     if mefs:
         ax.axvline(float(mefs), color=colour("mefs", dark), ls="--", lw=1.0)
 
@@ -1253,6 +1266,10 @@ def fig_b12_banded_percentiles(
     probability_axis(ax, probability_scale)
     ax.set_title("B12 · Resource by contact-depth band "
                  f"({BAND_MODE_LABELS[bp.mode]}, well {bp.z_entry:.0f}-{bp.z_exit:.0f} m)")
+    _sub = ("solid = the whole resource in the band · "
+            "dotted = the part this well would prove · colour = depth, light to dark")
+    ax.annotate(_sub, (0.5, 1.005), xycoords="axes fraction", ha="center", va="bottom",
+                fontsize=7, color=p["text_secondary"])
     ax.grid(True, which="both", lw=0.6, alpha=0.7)
     ax.legend(handles=handles + key, loc="lower left", fontsize=6.5)
     fig.tight_layout()
