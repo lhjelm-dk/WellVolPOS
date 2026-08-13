@@ -18,6 +18,7 @@ import pandas as pd
 import streamlit as st
 
 from ..core import (
+    check_column_heights,
     ELEMENT_LABELS,
     ELEMENTS,
     class_percentiles,
@@ -226,6 +227,38 @@ def render(ctx: Ctx) -> None:
                 "the minimum-flowable mapping, the map view's contours and the section's "
                 "crest all measure from this apex. It is shown here so the size of the "
                 "extrapolation is visible before any of them is quoted."
+            )
+
+            st.divider()
+            st.markdown("**Is any trial too thin to flow?**")
+            # The check Lars asked for on 2026-08-13. Two questions, and only the first
+            # is a defect: a success trial at or above the apex has a positive volume
+            # and no column at once, which is a contradiction rather than a thin
+            # accumulation. The second is a what-if, and its treatment is settled --
+            # **sub-minimum trials lower POS**, because an accumulation too thin to flow
+            # is a failed well and belongs in the denominator, not a smaller success.
+            _mch = st.number_input(
+                "Minimum column height to test (m), 0 = none", 0.0, 500.0, 0.0, 5.0,
+                key="w_min_column",
+                help="Reported, never applied: nothing in the app filters on it. It is "
+                     "here so the cost of a minimum can be argued about with the count "
+                     "in front of you.",
+            )
+            _cc = check_column_heights(ts, _apex, _mch if _mch > 0 else None)
+            if _cc.contradicts:
+                st.error(_cc.message())
+            elif _cc.binds:
+                st.warning(_cc.message())
+            else:
+                st.success(_cc.message())
+            st.caption(
+                "**A trial with its contact at or above the apex would be a contradiction** "
+                "— positive volume, no column — and would mean either the apex "
+                "extrapolation has overshot or the export is inconsistent. Ideally there "
+                "are none, and on both demo files there are none. If a minimum column "
+                "height is set, sub-minimum trials are counted as **chance failures**, so "
+                "the cut lowers POS rather than renormalising what is left: too thin to "
+                "flow is a failed well, not a smaller discovery."
             )
 
     if not has_area:

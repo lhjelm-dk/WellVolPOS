@@ -20,7 +20,7 @@ worth carrying in the assessment at all, not the smallest worth developing.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -166,6 +166,86 @@ def commercial_chance(
 
 
 # ------------------------------------------------- the volume *at* the well
+@dataclass(frozen=True)
+class RosePartition:
+    """Schneider & Cook's updip / downdip split of the closure, at the well.
+
+    They partition the accumulation **at the well location**, which is a different cut
+    from this app's, and the two are easy to confuse because both use the word
+    "below". Ours splits at the *penetrated interval* -- entry to exit -- because a
+    well proves what it drills through; theirs splits at a single point, because their
+    well is a map location rather than a trajectory.
+
+    ==================  ============================================================
+    Rose updip          crest -> well.  What a dry hole leaves behind. His
+                        deterministic *"No Regrets"* volume is this, evaluated at the
+                        means rather than per trial.
+    Rose downdip        well -> contact.  The extra volume the well opens up by
+                        being deeper.
+    ==================  ============================================================
+
+    ``updip + downdip`` is the whole accumulation given a discovery, so it equals this
+    app's **well-associated** volume exactly. Measured on prospect B at entry 2205 m,
+    exit 2255 m: 122.05 + 49.65 = 171.69 MMboe.
+
+    The relation to our own classes, which is what stops the two vocabularies being
+    mixed:
+
+    * Rose updip is our **proven** *only when exit = entry*; with a real penetration
+      our proven reaches deeper by the entry-to-exit slice (30.49 MMboe there).
+    * Rose downdip is our **possible below exit** plus that same slice.
+
+    Both are means over the discovery trials, since neither quantity exists for a dry
+    hole.
+    """
+
+    updip: np.ndarray = field(repr=False)
+    downdip: np.ndarray = field(repr=False)
+    n_discovery: int
+    z_entry: float
+
+    @property
+    def updip_mean(self) -> float:
+        return float(self.updip.mean()) if self.updip.size else float("nan")
+
+    @property
+    def downdip_mean(self) -> float:
+        return float(self.downdip.mean()) if self.downdip.size else float("nan")
+
+    @property
+    def total_mean(self) -> float:
+        """Their sum -- which must equal the well-associated mean."""
+        return self.updip_mean + self.downdip_mean
+
+
+def rose_partition(
+    ts: "TrialSet", ad: "AreaDepth", z_entry: float, *,
+    thickness=None, apex: float | None = None,
+) -> RosePartition:
+    """Split each discovery trial at the well, Schneider & Cook's way.
+
+    Implemented by running this app's own per-trial split with **exit = entry**, which
+    is exactly what their partition is: with no penetrated interval, "proven" collapses
+    to crest-to-well and "possible" becomes well-to-contact. So the two vocabularies
+    share one piece of arithmetic and cannot drift apart -- the wedge apportionment,
+    the thickness inversion and the apex are all the same ones the rest of the app
+    uses.
+    """
+    from .classes import split_trials
+    from .groups import group_trials
+
+    groups = group_trials(ts, float(z_entry), float(z_entry))
+    vc = split_trials(ts, ad, groups, float(z_entry), float(z_entry),
+                      thickness=thickness, apex=apex)
+    disc = np.asarray(groups.discovery, dtype=bool)
+    return RosePartition(
+        updip=np.asarray(vc.proven, dtype=float)[disc],
+        downdip=np.asarray(vc.possible, dtype=float)[disc],
+        n_discovery=int(disc.sum()),
+        z_entry=float(z_entry),
+    )
+
+
 def at_the_well_volume(
     ts: TrialSet, z_entry: float, *, window_m: float = 2.0
 ) -> tuple[float, int]:

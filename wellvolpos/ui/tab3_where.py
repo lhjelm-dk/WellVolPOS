@@ -234,9 +234,10 @@ def _location_sweep_tab(ctx: Ctx):
         "prospect's P10–P90 range once you know which side of the well the contact fell on. "
         "The trials split in two — deeper than the entry, or not — which is Haskett's "
         "*discrete learning*: one bit, no partial outcome, and the whole population splits "
-        "on it. The P10–P90 range stands in for variance because that is Haskett's own "
-        "recommendation, made because *“the ideal situation would have all team members "
-        "fully statistics literate… This ideal state is rare.”*"
+        "on it. The inter-percentile range stands in for variance because that is what "
+        "Haskett himself recommends — a range is read straight off a distribution "
+        "everyone already has in front of them, and it moves with variance, so nothing "
+        "is lost by using the more legible of the two."
         "\n\n"
         "**It is his measure, not his setting.** Haskett (2003) is about **appraisal** — a "
         "discovery exists and you are siting well *two*. He is explicit: *“Appraisal "
@@ -259,6 +260,12 @@ def _location_sweep_tab(ctx: Ctx):
         "well at any depth tells you equally. On the reference data that moved the apparent "
         "optimum 92 m up-dip and nearly doubled the percentage. Where a file has no chance "
         "failures the two curves coincide exactly, which is worth seeing as well."
+        "\n\n"
+        "**The dashed curve is the same measure on a P20–P80 range** instead of P10–P90. "
+        "Haskett's choice of range is a convention rather than a result, so this is how "
+        "much of the answer rests on it — and on both demo prospects the optimum moves "
+        "only a few metres, which is the reassuring answer. If the two ever peak in "
+        "different places, the tails are doing the work and the recommendation is fragile."
     )
     _chart(f_b11, key="b11", height=int(f_b11.layout.height))
     st.caption(

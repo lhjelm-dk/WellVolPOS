@@ -45,9 +45,11 @@ from .reservoir import ThicknessFromPay, thickness_from_pay
 from .rose import (
     CommercialChance,
     NoRegrets,
+    RosePartition,
     at_the_well_volume,
     commercial_chance,
     no_regrets,
+    rose_partition,
     outcome_overlap,
 )
 from .stats import (
@@ -74,8 +76,10 @@ from .sweep import (
     volume_target_curve,
 )
 from .threshold import (
+    ColumnCheck,
     ThresholdMapping,
     apply_min_column_height,
+    check_column_heights,
     compare_definitions,
     spread_at_fixed_column,
     volume_percentile_threshold,
@@ -100,9 +104,10 @@ __all__ = [
     "Sweep", "run_sweep", "VolumeSweep", "run_volume_sweep",
     "InverseResult", "TARGET_STATISTICS", "TARGET_STATISTIC_LABELS", "invert_volume_target", "volume_target_curve", "find_crossing",
     "ThicknessFromPay", "thickness_from_pay",
-    "NoRegrets", "no_regrets", "at_the_well_volume", "outcome_overlap", "CommercialChance", "commercial_chance",
+    "NoRegrets", "no_regrets", "RosePartition", "rose_partition", "at_the_well_volume", "outcome_overlap", "CommercialChance", "commercial_chance",
     "MIN_SUPPORT", "Support", "bootstrap_mean_ci", "bootstrap_proportion_ci",
     "describe_support", "support_mask", "thin",
-    "ThresholdMapping", "apply_min_column_height", "compare_definitions",
+    "ThresholdMapping", "apply_min_column_height",
+    "ColumnCheck", "check_column_heights", "compare_definitions",
     "spread_at_fixed_column", "volume_percentile_threshold",
 ]

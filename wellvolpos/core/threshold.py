@@ -50,6 +50,95 @@ class ThresholdMapping:
     message: str
 
 
+@dataclass(frozen=True)
+class ColumnCheck:
+    """What the trials say about column height, against the apex and a minimum."""
+
+    apex: float
+    n_success: int
+    #: Success trials whose contact is at or above the apex: a positive volume with a
+    #: zero or negative column, which cannot both be true.
+    n_no_column: int
+    min_column: float
+    max_column: float
+    #: Success trials below ``min_column_height``, and what treating them as chance
+    #: failures would do to POS. ``None`` when no minimum is set.
+    min_column_height: float | None = None
+    n_sub_minimum: int = 0
+    pos_before: float = float("nan")
+    pos_after: float = float("nan")
+
+    @property
+    def contradicts(self) -> bool:
+        return self.n_no_column > 0
+
+    @property
+    def binds(self) -> bool:
+        return self.n_sub_minimum > 0
+
+    def message(self) -> str:
+        if self.contradicts:
+            return (f"**{self.n_no_column:,} success trials have their contact at or above "
+                    f"the apex ({self.apex:,.0f} m)** — a positive volume with no column, "
+                    f"which cannot both be true. Either the apex extrapolation has "
+                    f"overshot or the export is inconsistent; treat every column-height "
+                    f"figure with suspicion until it is resolved.")
+        if self.min_column_height is None:
+            return (f"No trial has its contact at or above the apex, so every success case "
+                    f"carries a real column — {self.min_column:,.0f} m at the thinnest.")
+        if not self.binds:
+            return (f"A {self.min_column_height:,.0f} m minimum excludes nothing: the "
+                    f"thinnest column in the trials is {self.min_column:,.0f} m, so the cut "
+                    f"does not bind and POS is unchanged.")
+        return (f"A {self.min_column_height:,.0f} m minimum would reclassify "
+                f"**{self.n_sub_minimum:,} trials** as chance failures — too thin to flow "
+                f"is a failed well, not a small success — taking POS from "
+                f"{self.pos_before:.4f} to **{self.pos_after:.4f}**.")
+
+
+def check_column_heights(
+    ts: TrialSet, apex: float, min_column_height: float | None = None
+) -> ColumnCheck:
+    """Column heights implied by the trials, against the apex and an optional minimum.
+
+    Two separate questions, and only the first is a defect:
+
+    1. **Is any success trial at or above the apex?** That is a positive volume with a
+       zero or negative column -- a contradiction rather than a thin accumulation.
+       Zero on both demo files, which is what a clean file looks like.
+    2. **How many trials would a minimum column height exclude, and what would that do
+       to POS?** Sub-minimum trials **lower POS** (Lars, 2026-08-13): they become
+       chance failures rather than leaving the population, because an accumulation too
+       thin to flow is a failed well and belongs in the denominator.
+
+    Reported, never applied. Nothing in the app filters on this -- it is here so a
+    minimum can be argued about with the count in front of you.
+    """
+    res = np.asarray(ts.col("resource"), dtype=float)
+    contact = np.asarray(ts.col("contact"), dtype=float)
+    success = res > 0.0
+    n_success = int(success.sum())
+    columns = contact[success] - float(apex)
+    n_no_column = int((columns <= 0.0).sum())
+
+    out = dict(
+        apex=float(apex), n_success=n_success, n_no_column=n_no_column,
+        min_column=float(columns.min()) if columns.size else float("nan"),
+        max_column=float(columns.max()) if columns.size else float("nan"),
+    )
+    if min_column_height is None:
+        return ColumnCheck(**out)
+
+    n_sub = int((columns < float(min_column_height)).sum())
+    n_total = res.size
+    pos_before = n_success / n_total if n_total else float("nan")
+    pos_after = (n_success - n_sub) / n_total if n_total else float("nan")
+    return ColumnCheck(
+        **out, min_column_height=float(min_column_height), n_sub_minimum=n_sub,
+        pos_before=pos_before, pos_after=pos_after,
+    )
+
+
 def apply_min_column_height(
     ts: TrialSet, ad: AreaDepth | None, apex: float, min_column_height: float
 ) -> ThresholdMapping:

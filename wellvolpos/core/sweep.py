@@ -42,11 +42,17 @@ from .stats import MIN_SUPPORT, bootstrap_mean_ci, thin
 from .structure import AreaDepth
 
 
-def _spread(values: np.ndarray) -> float:
-    """P10-P90 range in the petroleum convention (P90 low, P10 high)."""
+def _spread(values: np.ndarray, lo: float = 10.0, hi: float = 90.0) -> float:
+    """Inter-percentile range, defaulting to P10-P90 in the petroleum convention.
+
+    ``lo``/``hi`` are ordinary percentiles, so the default 10/90 is the petroleum
+    P90-P10. A narrower pair (20/80) is offered on 3.3 because the answer should not
+    depend much on where the range is cut -- and if it does, that is worth knowing
+    rather than hiding behind one choice.
+    """
     if values.size == 0:
         return 0.0
-    return float(np.percentile(values, 90.0) - np.percentile(values, 10.0))
+    return float(np.percentile(values, hi) - np.percentile(values, lo))
 
 
 def _sweep_grid(
@@ -103,6 +109,11 @@ class Sweep:
     #: the **end** of the dataclass -- a defaulted field inserted mid-class is a
     #: TypeError, and this is the second time that trap has been sprung here.
     uncertainty_reduction_all: np.ndarray | None = field(default=None, repr=False)
+    #: The same measure on the **P20-P80** range instead of P10-P90, over the success
+    #: cases. Haskett's choice of range is a convention rather than a result, so this
+    #: is how much of the answer rests on it: if the two curves peak in the same place
+    #: the choice does not matter, and if they do not, that is the finding.
+    uncertainty_reduction_p20_p80: np.ndarray | None = field(default=None, repr=False)
 
 def run_sweep(
     ts: TrialSet,
@@ -162,11 +173,16 @@ def run_sweep(
     # the difference between them can be seen rather than taken on trust (Lars,
     # 2026-08-12). On a file with no chance failures the two coincide exactly.
     prospect_spread_all = _spread(res)
+    # The same measure on a narrower range (Lars, 2026-08-13). Haskett's choice of
+    # P10-P90 is a convention, not a result, so drawing P20-P80 beside it shows how
+    # much of the answer depends on that choice.
+    prospect_spread_2080 = _spread(res_learn, 20.0, 80.0)
 
     r = np.empty(z.size)
     pw = np.empty(z.size)
     reduction_pct = np.empty(z.size)
     reduction_pct_all = np.empty(z.size)
+    reduction_pct_2080 = np.empty(z.size)
     share_dry = np.empty(z.size)
     share_seen = np.empty(z.size)
     share_past = np.empty(z.size)
@@ -198,6 +214,14 @@ def run_sweep(
         disc_spread = _spread(res_learn[disc_learn])
         no_disc_spread = _spread(res_learn[~disc_learn])
         expected_post = p_disc * disc_spread + (1.0 - p_disc) * no_disc_spread
+        expected_post_2080 = (
+            p_disc * _spread(res_learn[disc_learn], 20.0, 80.0)
+            + (1.0 - p_disc) * _spread(res_learn[~disc_learn], 20.0, 80.0)
+        )
+        reduction_pct_2080[i] = (
+            100.0 * (prospect_spread_2080 - expected_post_2080) / prospect_spread_2080
+            if prospect_spread_2080 > 0 else float("nan")
+        )
         p_all = float(discovery.mean())
         expected_post_all = (p_all * _spread(res[discovery])
                              + (1.0 - p_all) * _spread(res[~discovery]))
@@ -216,6 +240,7 @@ def run_sweep(
     return Sweep(
         z=z, r_location=r, p_well=pw, uncertainty_reduction=reduction_pct,
         uncertainty_reduction_all=reduction_pct_all,
+        uncertainty_reduction_p20_p80=reduction_pct_2080,
         pos_prospect=float(pos_prospect), reference=reference,
         z_optimum=float(z[i_opt]), reduction_optimum=float(reduction_pct[i_opt]),
         z_gap=float(z_gap), share_chance_failure=1.0 - float(pos_prospect),

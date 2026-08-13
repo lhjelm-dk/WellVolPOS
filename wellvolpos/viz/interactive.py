@@ -1224,6 +1224,7 @@ def pfig_b2_chance_vs_regret(
 # ------------------------------------------------------------------- B3
 def pfig_b3_uncertainty_reduction(
     sweep: Sweep, *, current_z: float | None = None, show_all_trials: bool = True,
+    show_p20_p80: bool = True,
     zlim: tuple[float, float] | None = None, show_depth_labels: bool = True,
     dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
@@ -1287,6 +1288,19 @@ def pfig_b3_uncertainty_reduction(
         fillcolor=rgba("p_well", 0.15, dark),
         hovertemplate="%{x:.1f}% reduction at " + DEPTH_HOVER + "<extra></extra>",
     )
+    if show_p20_p80 and getattr(sweep, "uncertainty_reduction_p20_p80", None) is not None:
+        # The same measure on a narrower range. Haskett's P10-P90 is a convention, not
+        # a result, so this is how much of the answer rests on it -- and on both demo
+        # prospects the optimum moves only a few metres, which is the reassuring
+        # outcome and worth being able to see rather than assert.
+        fig.add_scatter(
+            x=sweep.uncertainty_reduction_p20_p80, y=sweep.z, mode="lines",
+            name="success cases, P20–P80 range",
+            line=dict(color=colour("tested", dark), width=1.4, dash="dash"),
+            hovertemplate=("P20–P80<br>%{x:.1f}% reduction at "
+                           + DEPTH_HOVER + "<extra></extra>"),
+        )
+
     fig.add_scatter(
         x=[sweep.reduction_optimum], y=[sweep.z_optimum], mode="markers+text",
         marker=dict(color=p["text"], size=9),
@@ -1302,7 +1316,7 @@ def pfig_b3_uncertainty_reduction(
     fig.update_layout(
         title=("B3 · How much a well here would tell you — expected reduction in the "
                "prospect's P10–P90 range"),
-        xaxis_title="Expected uncertainty reduction (%)", showlegend=False,
+        xaxis_title="Expected reduction in the prospect's inter-percentile range (%)", showlegend=False,
     )
     fig.update_xaxes(range=[0, max(5.0, top * 1.25)])
     apply_plotly(fig, dark, height)

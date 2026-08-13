@@ -946,7 +946,8 @@ def fig_b6_inverse(
 
 
 def fig_b3_uncertainty_reduction(sweep: Sweep, *, current_z: float | None = None,
-                                 show_all_trials: bool = True, dark: bool = False):
+                                 show_all_trials: bool = True,
+                                 show_p20_p80: bool = True, dark: bool = False):
     """B3 for the export path. Twin of ``pfig_b3_uncertainty_reduction``.
 
     See that docstring: Haskett's *measure* on Haskett's own P10-P90 proxy, but not
@@ -968,6 +969,9 @@ def fig_b3_uncertainty_reduction(sweep: Sweep, *, current_z: float | None = None
     ax.fill_betweenx(sweep.z, 0, sweep.uncertainty_reduction, color=c, alpha=0.15)
     ax.plot(sweep.uncertainty_reduction, sweep.z, color=c, lw=2.0,
             label="over the success cases")
+    if show_p20_p80 and getattr(sweep, "uncertainty_reduction_p20_p80", None) is not None:
+        ax.plot(sweep.uncertainty_reduction_p20_p80, sweep.z, color=colour("tested", dark),
+                lw=1.3, ls="--", label="success cases, P20–P80 range")
     ax.plot([sweep.reduction_optimum], [sweep.z_optimum], "o", color=p["text"], zorder=5)
     ax.annotate(
         f"max {sweep.reduction_optimum:.0f}% @ {sweep.z_optimum:.0f} m",
@@ -979,12 +983,13 @@ def fig_b3_uncertainty_reduction(sweep: Sweep, *, current_z: float | None = None
 
     depth_axis(ax, zlim=(float(sweep.z.min()), float(sweep.z.max())))
     _tops = [sweep.uncertainty_reduction]
-    if getattr(sweep, "uncertainty_reduction_all", None) is not None:
-        _tops.append(sweep.uncertainty_reduction_all)
+    for _extra in ("uncertainty_reduction_all", "uncertainty_reduction_p20_p80"):
+        if getattr(sweep, _extra, None) is not None:
+            _tops.append(getattr(sweep, _extra))
     _all = np.concatenate([np.asarray(t, dtype=float) for t in _tops])
     top = float(np.nanmax(_all)) if np.isfinite(_all).any() else 5.0
     ax.set_xlim(0, max(5.0, top * 1.15))
-    ax.set_xlabel("Expected uncertainty reduction (%)")
+    ax.set_xlabel("Expected reduction in the prospect's inter-percentile range (%)")
     handles, _ = ax.get_legend_handles_labels()
     if handles:
         ax.legend(loc="lower right", fontsize=7)

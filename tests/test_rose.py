@@ -195,3 +195,66 @@ def test_the_overlap_is_quantified_three_ways_and_they_order(reduced, area_depth
     assert 0.0 < o["p_attic_beats_proven"] < o["proven_below_max_attic"] <= 1.0
     assert 0.0 < o["p_attic_beats_proven"] < o["attic_above_min_proven"] <= 1.0
     assert o["p_attic_beats_proven"] == pytest.approx(0.068, abs=0.005)
+
+def test_rose_updip_and_downdip_sum_to_the_well_associated_volume(reduced, area_depth, groups):
+    """Their partition is at the well; ours at the penetrated interval.
+
+    Both sum to the accumulation given a discovery, which is the identity that lets the
+    two vocabularies sit on one page without being mixed. It is also how the mislabel
+    was caught: our well-associated mean was described as Rose's "downdip", and on
+    prospect B that is 171.69 against 49.65.
+    """
+    import numpy as np
+
+    from wellvolpos.core import group_summary, rose_partition, thickness_from_pay
+
+    from .conftest import ENTRY
+
+    th = thickness_from_pay(reduced, area_depth).thickness
+    rp = rose_partition(reduced, area_depth, ENTRY, thickness=th,
+                        apex=area_depth.apex_estimate())
+    gs = group_summary(reduced, groups)
+    assert rp.n_discovery == int(np.asarray(groups.discovery).sum())
+    assert np.isclose(rp.total_mean, gs["discovery"]["mean"], rtol=1e-9)
+    # And his downdip is emphatically not the whole accumulation.
+    assert rp.downdip_mean < 0.3 * gs["discovery"]["mean"]
+
+
+def test_a_success_trial_at_or_above_the_apex_is_flagged(reduced, area_depth):
+    """Positive volume with no column is a contradiction, not a thin accumulation.
+
+    Neither demo file has one, which is what a clean file looks like -- so the test
+    also plants one to prove the check can see it.
+    """
+    import numpy as np
+
+    from wellvolpos.core import check_column_heights
+
+    apex = float(area_depth.apex_estimate())
+    clean = check_column_heights(reduced, apex)
+    assert not clean.contradicts
+    assert clean.min_column > 0.0
+
+    # Move the apex below the shallowest contact and the same trials now have none.
+    planted = check_column_heights(reduced, apex + clean.min_column + 1.0)
+    assert planted.contradicts
+    assert planted.n_no_column > 0
+
+
+def test_a_minimum_column_lowers_pos_rather_than_renormalising(reduced, area_depth):
+    """Settled with Lars, 2026-08-13: too thin to flow is a failed well.
+
+    So a sub-minimum trial goes into POS's denominator as a chance failure; it does
+    not leave the population. The count and the two POS values are reported, never
+    applied -- nothing in the app filters on this.
+    """
+    from wellvolpos.core import check_column_heights
+
+    apex = float(area_depth.apex_estimate())
+    base = check_column_heights(reduced, apex)
+    cut = check_column_heights(reduced, apex, base.min_column + 20.0)
+    assert cut.binds and cut.n_sub_minimum > 0
+    assert cut.pos_after < cut.pos_before
+    # Lowered, not renormalised: the denominator is unchanged.
+    n_total = reduced.col("resource").size
+    assert abs(cut.pos_after - (base.n_success - cut.n_sub_minimum) / n_total) < 1e-12

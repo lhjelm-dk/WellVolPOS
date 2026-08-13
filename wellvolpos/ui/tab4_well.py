@@ -11,6 +11,8 @@ import pandas as pd
 import streamlit as st
 
 from ..core import (
+    thickness_from_pay,
+    rose_partition,
     boundary_ties,
     at_the_well_volume,
     outcome_overlap,
@@ -81,6 +83,10 @@ def render(ctx: Ctx) -> None:
     if has_area:
         cs = class_summary(vc, groups)
         gs = group_summary(ts, groups)
+        # Same thickness and apex the split above used, so Rose's cut and ours cannot
+        # disagree about the geometry.
+        _thickness = thickness_from_pay(ts, ad).thickness
+        _apex = float(ad.apex_estimate())
         # ------------------------------------------------------ the success case
         # Every number in this block is **conditional** on its own outcome and none of
         # them is risked. Keeping them in one block, away from the expected volumes
@@ -131,6 +137,36 @@ def render(ctx: Ctx) -> None:
                 f"candid that the deterministic version *“is an oversimplification”*, because "
                 f"*“there remains a chance the updip volume will exceed MCFS”* — which is what "
                 f"{fig_ref('{b2}')}'s regret curve answers."
+            )
+
+        # ----------------------------------------------- the same closure, Rose's way
+        # Added 2026-08-13. Their partition is at the *well*, ours at the *penetrated
+        # interval*, and both are useful -- but mixing the vocabularies silently is how
+        # a number gets quoted under the wrong name, which had already happened once
+        # here. Shown side by side so the two cuts can be compared rather than
+        # confused.
+        _rp = rose_partition(ts, ad, entry, thickness=_thickness, apex=_apex)
+        if _rp.n_discovery:
+            st.markdown("##### The same closure cut Rose's way — split at the well, not at "
+                        "the penetrated interval")
+            rc = st.columns(3)
+            rc[0].metric("Rose updip — crest to well", f"{_rp.updip_mean:.2f}",
+                         help="What a dry hole leaves behind. His deterministic "
+                              "'No Regrets' volume is this, taken at the means.")
+            rc[1].metric("Rose downdip — well to contact", f"{_rp.downdip_mean:.2f}",
+                         help="The extra volume the well opens up by being deeper. NOT "
+                              "the whole accumulation.")
+            rc[2].metric("Their sum", f"{_rp.total_mean:.2f}",
+                         help="Equals the well-associated mean above, by construction.")
+            st.caption(
+                f"**Two cuts of one closure.** Rose splits at the well; this app splits at "
+                f"the interval the well actually penetrates, because a well proves what it "
+                f"drills through. So his updip ({_rp.updip_mean:.2f}) is our proven "
+                f"({cs['proven']['mean']:.2f}) *minus* the entry-to-exit slice, and his "
+                f"downdip ({_rp.downdip_mean:.2f}) is our possible-below-exit "
+                f"({cs['possible']['mean']:.2f}) *plus* that same slice — "
+                f"{cs['proven']['mean'] - _rp.updip_mean:.2f} MMboe here. Both partitions sum "
+                f"to the well-associated volume; neither is the well-associated volume."
             )
 
         # ------------------------------------------------------ risked, and separate
