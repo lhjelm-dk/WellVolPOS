@@ -42,6 +42,12 @@ from .stats import MIN_SUPPORT, bootstrap_mean_ci, thin
 from .structure import AreaDepth
 
 
+#: The extra inter-percentile ranges 3.3 draws beside Haskett's P10-P90, narrowest
+#: first. P1-P99 leans on the very tails, so on a thin conditional group it is the
+#: first to become noise -- which is itself worth being able to see.
+REDUCTION_RANGES = ((20.0, 80.0), (5.0, 95.0), (1.0, 99.0))
+
+
 def _spread(values: np.ndarray, lo: float = 10.0, hi: float = 90.0) -> float:
     """Inter-percentile range, defaulting to P10-P90 in the petroleum convention.
 
@@ -109,11 +115,11 @@ class Sweep:
     #: the **end** of the dataclass -- a defaulted field inserted mid-class is a
     #: TypeError, and this is the second time that trap has been sprung here.
     uncertainty_reduction_all: np.ndarray | None = field(default=None, repr=False)
-    #: The same measure on the **P20-P80** range instead of P10-P90, over the success
-    #: cases. Haskett's choice of range is a convention rather than a result, so this
-    #: is how much of the answer rests on it: if the two curves peak in the same place
-    #: the choice does not matter, and if they do not, that is the finding.
-    uncertainty_reduction_p20_p80: np.ndarray | None = field(default=None, repr=False)
+    #: The same measure on other inter-percentile ranges, keyed by ``(lo, hi)`` -- see
+    #: :data:`REDUCTION_RANGES`. Haskett's P10-P90 is a convention rather than a
+    #: result, so these are how much of the answer rests on it: peaking together means
+    #: the recommendation is robust, peaking apart means the tails are carrying it.
+    uncertainty_reduction_ranges: dict | None = field(default=None, repr=False)
 
 def run_sweep(
     ts: TrialSet,
@@ -176,13 +182,19 @@ def run_sweep(
     # The same measure on a narrower range (Lars, 2026-08-13). Haskett's choice of
     # P10-P90 is a convention, not a result, so drawing P20-P80 beside it shows how
     # much of the answer depends on that choice.
-    prospect_spread_2080 = _spread(res_learn, 20.0, 80.0)
+    #: Percentile pairs the reduction curve is computed at, widest last. P10-P90 is
+    #: Haskett's; the rest are here because his choice is a convention and the answer
+    #: should not depend much on it. Where they peak together the recommendation is
+    #: robust; where they do not, the tails are doing the work and it is fragile.
+    prospect_spread_extra = {
+        pair: _spread(res_learn, *pair) for pair in REDUCTION_RANGES
+    }
 
     r = np.empty(z.size)
     pw = np.empty(z.size)
     reduction_pct = np.empty(z.size)
     reduction_pct_all = np.empty(z.size)
-    reduction_pct_2080 = np.empty(z.size)
+    reduction_extra = {pair: np.empty(z.size) for pair in REDUCTION_RANGES}
     share_dry = np.empty(z.size)
     share_seen = np.empty(z.size)
     share_past = np.empty(z.size)
@@ -214,14 +226,13 @@ def run_sweep(
         disc_spread = _spread(res_learn[disc_learn])
         no_disc_spread = _spread(res_learn[~disc_learn])
         expected_post = p_disc * disc_spread + (1.0 - p_disc) * no_disc_spread
-        expected_post_2080 = (
-            p_disc * _spread(res_learn[disc_learn], 20.0, 80.0)
-            + (1.0 - p_disc) * _spread(res_learn[~disc_learn], 20.0, 80.0)
-        )
-        reduction_pct_2080[i] = (
-            100.0 * (prospect_spread_2080 - expected_post_2080) / prospect_spread_2080
-            if prospect_spread_2080 > 0 else float("nan")
-        )
+        for pair in REDUCTION_RANGES:
+            parent = prospect_spread_extra[pair]
+            post = (p_disc * _spread(res_learn[disc_learn], *pair)
+                    + (1.0 - p_disc) * _spread(res_learn[~disc_learn], *pair))
+            reduction_extra[pair][i] = (
+                100.0 * (parent - post) / parent if parent > 0 else float("nan")
+            )
         p_all = float(discovery.mean())
         expected_post_all = (p_all * _spread(res[discovery])
                              + (1.0 - p_all) * _spread(res[~discovery]))
@@ -240,7 +251,7 @@ def run_sweep(
     return Sweep(
         z=z, r_location=r, p_well=pw, uncertainty_reduction=reduction_pct,
         uncertainty_reduction_all=reduction_pct_all,
-        uncertainty_reduction_p20_p80=reduction_pct_2080,
+        uncertainty_reduction_ranges=dict(reduction_extra),
         pos_prospect=float(pos_prospect), reference=reference,
         z_optimum=float(z[i_opt]), reduction_optimum=float(reduction_pct[i_opt]),
         z_gap=float(z_gap), share_chance_failure=1.0 - float(pos_prospect),

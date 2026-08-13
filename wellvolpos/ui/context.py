@@ -97,3 +97,11 @@ class Ctx:
         the entry alone -- which is what makes it safe to sweep.
         """
         return self.exit_ - self.entry
+    #: Every candidate location currently defined -- Well A always, plus any of
+    #: B, C and D that have been added. Tab (3) draws them all as rules on its
+    #: swept figures and compares them; tab (4) is about exactly one.
+    wells: tuple = ()
+    #: The label of the one carried into tabs (4) and (5). ``entry`` and
+    #: ``exit_`` above are *that* well's, so everything downstream -- the
+    #: grouping, the split, the chance -- is unchanged by the others existing.
+    selected_well: str = "A"

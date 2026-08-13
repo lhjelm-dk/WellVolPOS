@@ -89,6 +89,7 @@ from .theme import (
 )
 
 __all__ = [
+    "add_well_markers",
     "pfig_colour_key",
     "CONCEPT_KEY",
     "pfig_c1_section",
@@ -155,6 +156,35 @@ def _vline(fig, x: float, colour_: str, dash: str = "dot", label: str | None = N
         annotation_text=label, annotation_position="top", annotation_font_size=10
     ) if label else {}
     fig.add_vline(x=x, line=dict(color=colour_, width=1.0, dash=dash), **kw)
+    return fig
+
+
+def add_well_markers(fig, wells, *, selected: str | None = None, dark: bool = False):
+    """Draw a labelled rule for every candidate well on a **depth-axis** figure.
+
+    Applied by the tab after a figure is built rather than by passing a list into
+    every figure function. Fourteen figures take ``current_z``; threading a second
+    parameter through all of them -- and their matplotlib twins, and their tests --
+    to draw one extra line each would be a large change for a small effect, and every
+    one of those signatures is a place the drawing could drift.
+
+    The **selected** well keeps the palette's violet and its own label; the others are
+    muted, so which one the tabs downstream are about is never in doubt. Each rule
+    carries its letter and its depth, because a row of unlabelled lines on a swept
+    figure is worse than no lines at all.
+
+    Only for figures whose y-axis is a depth. 3.8 and 3.12 are exempt for the same
+    reason they are exempt from the depth rule: neither has depth on an axis.
+    """
+    p = palette(dark)
+    for w in wells:
+        is_sel = selected is None or w.label == selected
+        _hline(
+            fig, float(w.entry),
+            p["well"] if is_sel else p["muted"],
+            "dash" if is_sel else "dot",
+            f"{w.label} · {w.entry:,.0f} m" + (" ◀" if is_sel else ""),
+        )
     return fig
 
 
@@ -1224,7 +1254,7 @@ def pfig_b2_chance_vs_regret(
 # ------------------------------------------------------------------- B3
 def pfig_b3_uncertainty_reduction(
     sweep: Sweep, *, current_z: float | None = None, show_all_trials: bool = True,
-    show_p20_p80: bool = True,
+    show_ranges: bool = True,
     zlim: tuple[float, float] | None = None, show_depth_labels: bool = True,
     dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
@@ -1288,18 +1318,23 @@ def pfig_b3_uncertainty_reduction(
         fillcolor=rgba("p_well", 0.15, dark),
         hovertemplate="%{x:.1f}% reduction at " + DEPTH_HOVER + "<extra></extra>",
     )
-    if show_p20_p80 and getattr(sweep, "uncertainty_reduction_p20_p80", None) is not None:
-        # The same measure on a narrower range. Haskett's P10-P90 is a convention, not
-        # a result, so this is how much of the answer rests on it -- and on both demo
-        # prospects the optimum moves only a few metres, which is the reassuring
-        # outcome and worth being able to see rather than assert.
-        fig.add_scatter(
-            x=sweep.uncertainty_reduction_p20_p80, y=sweep.z, mode="lines",
-            name="success cases, P20–P80 range",
-            line=dict(color=colour("tested", dark), width=1.4, dash="dash"),
-            hovertemplate=("P20–P80<br>%{x:.1f}% reduction at "
-                           + DEPTH_HOVER + "<extra></extra>"),
-        )
+    ranges = getattr(sweep, "uncertainty_reduction_ranges", None) or {}
+    if show_ranges and ranges:
+        # The same measure on narrower and wider ranges. Haskett's P10-P90 is a
+        # convention, not a result, so the family is how much of the answer rests on
+        # it: peaking together means the recommendation is robust, peaking apart means
+        # the tails are carrying it. P1-P99 leans hardest on the tails and is the
+        # first to become noise on a thin conditional group.
+        shades = concept_shades("tested", max(len(ranges), 1), dark)
+        for shade, (pair, curve) in zip(shades, sorted(ranges.items(), reverse=True)):
+            lo, hi = pair
+            label = f"P{100 - hi:.0f}–P{100 - lo:.0f} range"
+            fig.add_scatter(
+                x=curve, y=sweep.z, mode="lines", name=f"success cases, {label}",
+                line=dict(color=shade, width=1.2, dash="dash"),
+                hovertemplate=(label + "<br>%{x:.1f}% reduction at "
+                               + DEPTH_HOVER + "<extra></extra>"),
+            )
 
     fig.add_scatter(
         x=[sweep.reduction_optimum], y=[sweep.z_optimum], mode="markers+text",

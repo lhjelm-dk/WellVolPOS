@@ -85,6 +85,7 @@ from wellvolpos.ui.common import badge as _badge
 # from the tab split, and two copies of a default is a drift waiting to happen.
 from wellvolpos.ui.conventions import CHANCE_DEFAULTS, PLAY_DEFAULTS
 from wellvolpos.ui.loading import load as _load
+from wellvolpos.ui.wells import read_selected, read_wells
 from wellvolpos.ui.tabstyle import inject as _inject_tab_style
 from wellvolpos.viz import (
     AREA_SCALES,
@@ -205,14 +206,16 @@ elif choice in DEMOS:
     source = Source.from_any(DEMOS[choice])
 
 if source is None:
-    # The sidebar's controls cannot exist yet — the depth sliders take their range
-    # from the contact column — but a sidebar that *vanishes* reads as a crash, so
-    # it says why instead of disappearing.
-    st.sidebar.subheader("Well")
+    # The sidebar's controls cannot exist yet -- MEFS scales with the resource column
+    # and the conventions need a loaded file -- but a sidebar that *vanishes* reads as
+    # a crash, so it says why instead of disappearing. The well geometry moved to
+    # tab ③ on 2026-08-13 and is named here so a reader looking for it is told where
+    # it went rather than left to search.
+    st.sidebar.subheader("Settings")
     st.sidebar.info(
-        "Waiting for trial data.\n\nThe well and convention controls take their range from the "
-        "contact column, so they appear once a file is loaded. Pick a demo or upload a file in "
-        "**tab ①**."
+        "Waiting for trial data.\n\nThe threshold and convention controls take their range "
+        "from the loaded file, so they appear once one is chosen. Pick a demo or upload a "
+        "file in **tab ①**.\n\nWell locations are set on **tab ③**, where they are compared."
     )
     with tabs[0]:
         st.info(
@@ -308,8 +311,12 @@ with tabs[0]:
                 st.error(str(e))
             else:
                 st.session_state.update({
-                    "w_entry": float(np.clip(loaded.entry, zmin, zmax)),
-                    "w_exit": float(np.clip(loaded.exit, zmin, zmax)),
+                    # A case carries one well, so it restores Well A and leaves any
+                    # other candidates alone -- they are an investigation, not a
+                    # setting the case was saved with.
+                    "w_well_A_entry": float(np.clip(loaded.entry, zmin, zmax)),
+                    "w_well_A_exit": float(np.clip(loaded.exit, zmin, zmax)),
+                    "w_selected_well": "A",
                     "w_mefs": loaded.mefs,
                     "w_ref": ReferenceContour(loaded.reference),
                     "w_scheme": loaded.scheme,
@@ -330,22 +337,19 @@ with tabs[0]:
                 st.warning(w)
     _case_save_slot = cc2
 
-st.sidebar.subheader("Well")
-# Defaults derived from the data, not hardcoded. They used to be 3500/3550 m -- the
-# reference well of prospect A's workbook -- which put prospect B's entry at its
-# deepest contact of 2400 m and then collapsed the exit slider's range to a single
-# point. The parity suite still pins 3500/3550; those live in tests/conftest.py,
-# where they belong, because they are a property of that workbook and not of the UI.
-_succ = ts.col("contact")[ts.col("resource") > 0]
-_default_entry = float(np.round(np.median(_succ) / 5.0) * 5.0) if _succ.size else zmin
-_default_entry = float(np.clip(_default_entry, zmin, zmax))
-entry = st.sidebar.slider("Reservoir entry depth (m TVDSS)", zmin, zmax,
-                          _default_entry, 5.0, key="w_entry")
-# ``max_value`` cannot equal ``min_value``, and an exit at or below the deepest
-# contact is meaningful -- it says the well passes through the whole reservoir -- so
-# the range is widened rather than clamped.
-exit_ = st.sidebar.slider("Reservoir exit depth (m TVDSS)", entry, max(zmax, entry + 5.0),
-                          min(entry + 50.0, max(zmax, entry + 5.0)), 5.0, key="w_exit")
+# **The well geometry is no longer in the sidebar** (Lars, 2026-08-13). The app now
+# holds up to four candidate locations rather than one, which is what a location
+# decision actually compares, and four pairs of sliders do not belong in a sidebar
+# beside four global conventions. They are created in tab (3), where the comparison
+# is, and read here -- the same arrangement the chance table uses, and it works for
+# the same reason: `entry` and `exit_` are needed before any tab renders, a widget
+# owns its key, and the next rerun sees the change with no second copy of the state.
+#
+# `entry`/`exit_` are the **selected** well's, so everything downstream is untouched
+# by the others existing.
+wells = read_wells(ts, zmin, zmax)
+_selected = read_selected(wells)
+entry, exit_ = _selected.entry, _selected.exit
 # MEFS scales with the prospect: 14 MMboe is a sensible threshold against prospect
 # A's 16 MMboe discovery mean and a rounding error against prospect B's 121.
 _default_mefs = float(np.round(np.mean(ts.col("resource")[ts.col("resource") > 0]) * 0.85))
@@ -558,6 +562,7 @@ ctx = Ctx(
     ts=ts, dataset=choice, source=source, overrides=overrides, qc=qc,
     ad=ad if has_area else None, has_area=has_area,
     entry=entry, exit_=exit_,
+    wells=wells, selected_well=_selected.label,
     mefs=mefs, ref=ref, scheme=scheme, area_scale=area_scale,
     elements=elements, play_elements=play_elements, play_chance=play_chance,
     risking_convention=risking_convention, pos=pos, pos_source=pos_source,

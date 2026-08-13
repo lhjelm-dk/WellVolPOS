@@ -947,7 +947,7 @@ def fig_b6_inverse(
 
 def fig_b3_uncertainty_reduction(sweep: Sweep, *, current_z: float | None = None,
                                  show_all_trials: bool = True,
-                                 show_p20_p80: bool = True, dark: bool = False):
+                                 show_ranges: bool = True, dark: bool = False):
     """B3 for the export path. Twin of ``pfig_b3_uncertainty_reduction``.
 
     See that docstring: Haskett's *measure* on Haskett's own P10-P90 proxy, but not
@@ -969,9 +969,13 @@ def fig_b3_uncertainty_reduction(sweep: Sweep, *, current_z: float | None = None
     ax.fill_betweenx(sweep.z, 0, sweep.uncertainty_reduction, color=c, alpha=0.15)
     ax.plot(sweep.uncertainty_reduction, sweep.z, color=c, lw=2.0,
             label="over the success cases")
-    if show_p20_p80 and getattr(sweep, "uncertainty_reduction_p20_p80", None) is not None:
-        ax.plot(sweep.uncertainty_reduction_p20_p80, sweep.z, color=colour("tested", dark),
-                lw=1.3, ls="--", label="success cases, P20–P80 range")
+    _ranges = getattr(sweep, "uncertainty_reduction_ranges", None) or {}
+    if show_ranges and _ranges:
+        _shades = concept_shades("tested", max(len(_ranges), 1), dark)
+        for _shade, (_pair, _curve) in zip(_shades, sorted(_ranges.items(), reverse=True)):
+            _lo, _hi = _pair
+            ax.plot(_curve, sweep.z, color=_shade, lw=1.1, ls="--",
+                    label=f"success cases, P{100 - _hi:.0f}–P{100 - _lo:.0f} range")
     ax.plot([sweep.reduction_optimum], [sweep.z_optimum], "o", color=p["text"], zorder=5)
     ax.annotate(
         f"max {sweep.reduction_optimum:.0f}% @ {sweep.z_optimum:.0f} m",
@@ -983,9 +987,9 @@ def fig_b3_uncertainty_reduction(sweep: Sweep, *, current_z: float | None = None
 
     depth_axis(ax, zlim=(float(sweep.z.min()), float(sweep.z.max())))
     _tops = [sweep.uncertainty_reduction]
-    for _extra in ("uncertainty_reduction_all", "uncertainty_reduction_p20_p80"):
-        if getattr(sweep, _extra, None) is not None:
-            _tops.append(getattr(sweep, _extra))
+    if getattr(sweep, "uncertainty_reduction_all", None) is not None:
+        _tops.append(sweep.uncertainty_reduction_all)
+    _tops.extend(_ranges.values())
     _all = np.concatenate([np.asarray(t, dtype=float) for t in _tops])
     top = float(np.nanmax(_all)) if np.isfinite(_all).any() else 5.0
     ax.set_xlim(0, max(5.0, top * 1.15))

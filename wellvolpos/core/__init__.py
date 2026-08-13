@@ -8,6 +8,14 @@ from .bands import (
     banded_percentiles,
     supported_percentiles,
 )
+from .compare import (
+    COMPARE_PERCENTILES,
+    WellComparison,
+    chance_table,
+    compare_wells,
+    risked_table,
+    volume_table,
+)
 from .chance import (
     RiskSummary,
     SUMMARY_COLUMNS,
@@ -62,6 +70,7 @@ from .stats import (
     thin,
 )
 from .sweep import (
+    REDUCTION_RANGES,
     ENTRY_DEPTH_PERCENTILES,
     entry_depth_percentiles,
     InverseResult,
@@ -86,6 +95,9 @@ from .threshold import (
 )
 
 __all__ = [
+    "REDUCTION_RANGES",
+    "COMPARE_PERCENTILES", "WellComparison", "compare_wells",
+    "chance_table", "volume_table", "risked_table",
     "BAND_MODES", "BAND_MODE_LABELS", "BAND_PERCENTILES", "DEFAULT_N_BANDS",
     "BandedPercentiles", "DepthBand", "banded_percentiles", "supported_percentiles",
     "AreaDepth", "group_trials", "group_summary", "boundary_ties", "split_trials", "class_summary",

@@ -11,6 +11,10 @@ import pandas as pd
 import streamlit as st
 
 from ..core import (
+    chance_table,
+    compare_wells,
+    risked_table,
+    volume_table,
     thickness_from_pay,
     rose_partition,
     boundary_ties,
@@ -47,11 +51,26 @@ def render(ctx: Ctx) -> None:
     elements, play_elements, play_chance = ctx.elements, ctx.play_elements, ctx.play_chance
     qc, gap = ctx.qc, ctx.gap
     source, overrides = ctx.source, ctx.overrides
+    wells, selected_well = ctx.wells, ctx.selected_well
 
     def _split_caveat() -> None:
         split_caveat(ctx)
 
-    st.subheader("At this well")
+    # --------------------------------------------------------- which well is this?
+    # Exactly one candidate is carried onto this tab. It answers "what do I get at
+    # the depth I chose", which is a question about one well -- letting four through
+    # would turn every figure here into a comparison and lose what the tab is for.
+    # The comparison itself is the table below.
+    if len(wells) > 1:
+        st.radio(
+            "Which well option is this tab about?", [w.label for w in wells],
+            horizontal=True, key="w_selected_well",
+            format_func=lambda k: next(w.describe() for w in wells if w.label == k),
+            help="Defined on tab ③. Every figure and metric below is about this one; "
+                 "the others appear only in the comparison table.",
+        )
+
+    st.subheader(f"At Well {selected_well} — {entry:,.0f}–{exit_:,.0f} m")
     _split_caveat()
 
     # --------------------------------------------------------------- the chance
@@ -195,6 +214,70 @@ def render(ctx: Ctx) -> None:
             f"can happen: this well either finds something near {gs['discovery']['mean']:.1f} "
             "MMboe or it finds nothing. Quote them beside the chance and the size, never "
             "instead of them."
+        )
+
+    # ------------------------------------------------------------ the comparison
+    # The gap the review named: an assessor does not ask "what does a well at 2205 m
+    # give me", they ask "A, B or C". Every candidate goes through exactly the
+    # functions this one did -- same thickness, same apex, same reference contour --
+    # so the columns are comparable by construction rather than by intention.
+    if len(wells) > 1:
+        st.divider()
+        st.subheader("Compare the candidates")
+        _rows = compare_wells(
+            ts, ad if has_area else None,
+            [(w.label, w.entry, w.exit) for w in wells],
+            pos_prospect=chance.pos_prospect, reference=ref,
+        )
+
+        st.markdown("**Chance** — what each location does to the odds")
+        st.dataframe(
+            pd.DataFrame(chance_table(_rows)), hide_index=True, width="stretch",
+            column_config={
+                "Entry (m)": st.column_config.NumberColumn(format="%.0f"),
+                "Exit (m)": st.column_config.NumberColumn(format="%.0f"),
+                "POS prospect": st.column_config.NumberColumn(format="percent"),
+                "r location": st.column_config.NumberColumn(format="percent"),
+                "P well": st.column_config.NumberColumn(format="percent"),
+                "Discovery trials": st.column_config.NumberColumn(format="%d"),
+            },
+        )
+
+        _concepts = ["proven", "well_associated", "possible", "attic"] if has_area \
+            else ["well_associated", "attic"]
+        _vol = [r for c in _concepts for r in volume_table(_rows, c)]
+        st.markdown("**Volumes, MMboe — success case, conditional on the outcome each "
+                    "concept belongs to**")
+        st.dataframe(
+            pd.DataFrame(_vol), hide_index=True, width="stretch",
+            column_config={c: st.column_config.NumberColumn(format="%.2f")
+                           for c in ("P90", "P50", "Mean", "P10")},
+        )
+
+        st.markdown("**Risked volumes, MMboe** — mean × chance")
+        st.dataframe(
+            pd.DataFrame(risked_table(_rows)), hide_index=True, width="stretch",
+            column_config={
+                "P well": st.column_config.NumberColumn(format="percent"),
+                "Expected proven": st.column_config.NumberColumn(format="%.2f"),
+                "Expected well associated": st.column_config.NumberColumn(format="%.2f"),
+            },
+        )
+        _best_p = max(_rows, key=lambda r: r.p_well)
+        _best_v = max(_rows, key=lambda r: r.proven.get("mean", float("-inf"))
+                      if r.proven else float("-inf"))
+        _best_e = max(_rows, key=lambda r: r.expected_proven)
+        st.caption(
+            f"**Three different winners is the normal outcome, and the point.** Well "
+            f"**{_best_p.label}** has the best chance ({_best_p.p_well:.1%}), well "
+            f"**{_best_v.label}** the largest proven volume if it works, and well "
+            f"**{_best_e.label}** the largest chance-weighted volume. The last is the "
+            f"one a portfolio adds up; none of them is an economic answer, because "
+            f"none of them knows what a well costs.\n\n"
+            f"**Percentiles are conditional and risked figures are kept apart.** A "
+            f"risked *percentile* is not reported at all: risking scales the "
+            f"probability attached to a volume, never the volume, so the P50 volume "
+            f"does not change — its exceedance probability does."
         )
 
     st.divider()

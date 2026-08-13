@@ -33,6 +33,7 @@ from ..core import (
     volume_target_curve,
 )
 from ..viz import (
+    add_well_markers,
     PROBABILITY_SCALES,
     VOLUME_SCALES,
     TALL_PANEL_HEIGHT,
@@ -53,6 +54,7 @@ from ..viz import (
 )
 from .common import chart as _chart, split_caveat
 from .context import Ctx
+from .wells import well_editor
 from .numbering import ref as fig_ref
 from .loading import volume_sweep as _volume_sweep
 
@@ -179,10 +181,30 @@ def _location_sweep_tab(ctx: Ctx):
     ref, pos = ctx.ref, ctx.pos
     pos_trials, gap = ctx.pos_trials, ctx.gap
     source, overrides = ctx.source, ctx.overrides
+    wells, selected_well = ctx.wells, ctx.selected_well
 
     def _split_caveat() -> None:
         split_caveat(ctx)
 
+    # The well geometry lives here now, not in the sidebar (Lars, 2026-08-13): this
+    # tab is where locations are compared, and a location decision compares two or
+    # three of them rather than nudging one. The widgets own the keys; app.py reads
+    # them at the top of the script, before any tab renders.
+    st.subheader("Well options")
+    st.caption(
+        "**Well A is the default and always exists.** Add B, C and D to put candidate "
+        "locations side by side — they appear as labelled rules on every swept figure "
+        "below, and as rows in the comparison on tab ④. Exactly one is carried into "
+        "tab ④'s own figures, which are about a single well; choose it there."
+    )
+    well_editor(wells, float(ts.col("contact").min()), float(ts.col("contact").max()))
+    if len(wells) > 1:
+        st.caption(
+            "**" + " · ".join(w.describe() for w in wells) + "** — "
+            f"Well **{selected_well}** is the one tab ④ is currently about."
+        )
+
+    st.divider()
     st.subheader("Location sweep")
     _split_caveat()
     # The sweeps carry the well's *own* entry-to-exit spacing, so a swept
@@ -222,6 +244,13 @@ def _location_sweep_tab(ctx: Ctx):
     # argument about which population they are over, and a third of the width was not
     # enough for either. It is drawn full width directly under the row instead, which
     # is also where the reader meets it after 3.2.
+    # Every candidate as a labelled rule, on every figure whose y-axis is a depth.
+    # Applied here rather than threaded through fourteen figure signatures and their
+    # twins; 3.8 and 3.12 are skipped for the same reason they are exempt from the
+    # depth rule, neither having depth on an axis.
+    for _f in (f_a2, f_a3, f_b3, f_b11):
+        add_well_markers(_f, wells, selected=selected_well)
+
     level_row(f_a2, f_a3)
     c1, c2 = st.columns(2)
     with c1:
@@ -229,6 +258,17 @@ def _location_sweep_tab(ctx: Ctx):
     with c2:
         _chart(f_a3, key="a3", height=int(f_a3.layout.height))
     _chart(f_b3, key="b3")
+    # A warning box rather than a line of caption (Lars, 2026-08-13). It is the one
+    # thing about this figure that gets misread, and a caption below eleven other
+    # figures is not where a caveat survives contact with a reader in a hurry.
+    st.warning(
+        "**3.3 measures information, not value.** The peak is the depth whose result "
+        "you can least predict — it values learning *dry* exactly as much as learning "
+        "*large*, and it contains no dry-hole cost, no development case and no "
+        f"discount rate. It is **not** a recommended location. For that, read "
+        f"{fig_ref('{b9}')} (chance-weighted volume) and {fig_ref('{b8}')} "
+        f"(commercial chance)."
+    )
     st.caption(
         "**3.3 — how much would a well here *tell* you?** The expected shrinkage of the "
         "prospect's P10–P90 range once you know which side of the well the contact fell on. "
@@ -299,6 +339,8 @@ def _location_sweep_tab(ctx: Ctx):
     f_b0 = pfig_b0_section(ad, z_entry=entry, z_exit=exit_, zlim=zrow_sweep)
     f_b1 = pfig_b1_volume_split(vsweep, current_z=entry, zlim=zrow_sweep)
     f_b2 = pfig_b2_chance_vs_regret(vsweep, current_z=entry, zlim=zrow_sweep)
+    for _f in (f_b0, f_b1, f_b2):
+        add_well_markers(_f, wells, selected=selected_well)
     level_row(f_b0, f_b1, f_b2)
     d1, d2, d3 = st.columns(3)
     with d1:

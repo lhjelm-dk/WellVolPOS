@@ -38,9 +38,11 @@ def fresh():
 
 def test_the_app_runs_on_the_demo_data_with_no_exception(fresh):
     assert not fresh.exception
-    assert [s.label for s in fresh.sidebar.slider] == [
-        "Reservoir entry depth (m TVDSS)", "Reservoir exit depth (m TVDSS)",
-    ]
+    # The sidebar carries the threshold and the conventions. The well geometry moved
+    # to tab (3) on 2026-08-13 -- see the test below -- because a location decision
+    # compares candidates, and four pairs of sliders do not belong in a sidebar
+    # beside four global conventions.
+    assert fresh.sidebar.slider.len == 0
 
 
 def test_choosing_upload_does_not_take_the_sidebar_away():
@@ -51,13 +53,16 @@ def test_choosing_upload_does_not_take_the_sidebar_away():
     at.selectbox[0].select("Upload your own…").run()
 
     assert not at.exception
-    # The sliders genuinely cannot exist: their range comes from the contact
-    # column. So the sidebar explains itself rather than vanishing.
+    # The controls genuinely cannot exist: their ranges come from the loaded file.
+    # So the sidebar explains itself rather than vanishing.
     assert at.sidebar.slider.len == 0
-    assert [h.value for h in at.sidebar.subheader] == ["Well"]
+    assert [h.value for h in at.sidebar.subheader] == ["Settings"]
     said = " ".join(e.value for e in at.sidebar.info)
     assert "Waiting for trial data" in said
     assert "tab ①" in said
+    # And it says where the well geometry went, rather than leaving a reader to
+    # hunt for sliders that are no longer in the sidebar at all.
+    assert "tab ③" in said
 
 
 def test_going_back_to_a_demo_restores_the_controls():
@@ -67,7 +72,29 @@ def test_going_back_to_a_demo_restores_the_controls():
     assert at.sidebar.slider.len == 0
     at.selectbox[0].select("Prospect A — reduced (7 columns)").run()
     assert not at.exception
-    assert at.sidebar.slider.len == 2
+    # The sidebar keeps the threshold and the conventions; the well geometry is on
+    # tab ③ since 2026-08-13, because a location decision compares candidates and
+    # four pairs of sliders do not belong beside four global conventions.
+    assert at.sidebar.number_input.len >= 1
+    assert [h.value for h in at.sidebar.subheader] == ["Conventions"]
+
+
+def test_the_well_geometry_lives_in_a_tab_and_defaults_to_one_candidate(fresh):
+    """Well A always exists, so no tab downstream can find itself without a well.
+
+    The sliders are created in tab ③ and read at the top of ``app.py`` -- the same
+    arrangement the chance table uses, and for the same reason: the selected well's
+    depths are needed before any tab renders.
+    """
+    from wellvolpos.ui.wells import MAX_WELLS, WELL_LABELS
+
+    assert not fresh.exception
+    labels = [s.label for s in fresh.slider]
+    assert any("Reservoir entry" in l and l.endswith("A") for l in labels), labels
+    assert any("Reservoir exit" in l and l.endswith("A") for l in labels), labels
+    # One candidate by default, so B/C/D are opt-in rather than clutter.
+    assert not any(l.endswith("B") for l in labels), labels
+    assert len(WELL_LABELS) == MAX_WELLS
 
 
 def test_case_load_and_save_sit_together_in_tab_one_not_the_sidebar(fresh):
