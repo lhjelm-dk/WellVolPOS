@@ -8,6 +8,12 @@ from .bands import (
     banded_percentiles,
     supported_percentiles,
 )
+from .dependence import (
+    ENTRY_ONLY,
+    EXIT_DEPENDENT,
+    DeviationCheck,
+    check_deviation,
+)
 from .compare import (
     COMPARE_PERCENTILES,
     WellComparison,
@@ -95,6 +101,7 @@ from .threshold import (
 )
 
 __all__ = [
+    "ENTRY_ONLY", "EXIT_DEPENDENT", "DeviationCheck", "check_deviation",
     "REDUCTION_RANGES",
     "COMPARE_PERCENTILES", "WellComparison", "compare_wells",
     "chance_table", "volume_table", "risked_table",

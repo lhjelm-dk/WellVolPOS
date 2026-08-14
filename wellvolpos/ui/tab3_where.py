@@ -21,6 +21,7 @@ import pandas as pd
 import streamlit as st
 
 from ..core import (
+    thickness_from_pay,
     chance_table,
     compare_wells,
     risked_table,
@@ -201,11 +202,19 @@ def _location_sweep_tab(ctx: Ctx):
     st.subheader("Well options")
     st.caption(
         "**Well A is the default and always exists.** Add B, C and D to put candidate "
-        "locations side by side — they appear as labelled rules on every swept figure "
-        "below, and as rows in the comparison on tab ④. Exactly one is carried into "
-        "tab ④'s own figures, which are about a single well; choose it there."
+        "locations side by side: they appear as labelled rules on every swept figure "
+        "below, and as rows in the comparison at the foot of this tab. Exactly one is "
+        "carried onto tab ④, which is the write-up of a single well; choose it there."
+        "\n\n"
+        "The verdict under each pair of sliders checks the entry-to-exit spacing "
+        "against the **reservoir thickness recovered from the trials**. A vertical "
+        "well sees exactly that thickness, so a wider spacing is a commitment to a "
+        "**deviated** well tracking down-dip inside the layer — legitimate, and the "
+        "volumes are computed as though you had drilled one."
     )
-    well_editor(wells, float(ts.col("contact").min()), float(ts.col("contact").max()))
+    _th = thickness_from_pay(ts, ad).thickness if has_area else None
+    well_editor(wells, float(ts.col("contact").min()),
+                float(ts.col("contact").max()), thickness=_th)
     if len(wells) > 1:
         st.caption(
             "**" + " · ".join(w.describe() for w in wells) + "** — "
@@ -351,8 +360,7 @@ def _location_sweep_tab(ctx: Ctx):
     # remain are what this row was for: what the well proves, and what it risks.
     # **One per line** (Lars, 2026-08-14). Three depth panels in a row left each of
     # them a third of the width, and all three carry percentile families now.
-    f_b1 = pfig_b1_volume_split(vsweep, current_z=entry, zlim=zrow_sweep,
-                                height=TALL_PANEL_HEIGHT)
+    # Built after `_others` below, so the per-candidate proven curves can go on it.
     f_b2 = pfig_b2_chance_vs_regret(vsweep, current_z=entry, zlim=zrow_sweep,
                                     height=TALL_PANEL_HEIGHT)
     # A sweep per *distinct entry-to-exit spacing*, because the unproven volume below
@@ -369,6 +377,8 @@ def _location_sweep_tab(ctx: Ctx):
         _others.append((_w.label, _volume_sweep(
             source.name, source.data, tuple(sorted(overrides.items())),
             pos, _g, mefs, ref.value, ctx.at_well_window)))
+    f_b1 = pfig_b1_volume_split(vsweep, current_z=entry, others=_others,
+                                zlim=zrow_sweep, height=TALL_PANEL_HEIGHT)
     f_b13 = pfig_b13_below_exit(vsweep, current_z=entry, others=_others,
                                 zlim=zrow_sweep, height=TALL_PANEL_HEIGHT)
     for _f in (f_b1, f_b2, f_b13):

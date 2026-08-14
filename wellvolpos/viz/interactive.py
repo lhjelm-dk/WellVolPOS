@@ -1133,6 +1133,7 @@ def pfig_b0_section(
 # ------------------------------------------------------------------- B1
 def pfig_b1_volume_split(
     vsweep: VolumeSweep, *, current_z: float | None = None,
+    others: "Sequence[tuple[str, VolumeSweep]] | None" = None,
     min_support: int = MIN_SUPPORT, zlim: tuple[float, float] | None = None,
     show_depth_labels: bool = True, dark: bool = False,
     height: int | None = PANEL_HEIGHT,
@@ -1199,6 +1200,22 @@ def pfig_b1_volume_split(
                 hovertemplate=(f"{label} {tag}<br>%{{x:.2f}} MMboe at " + DEPTH_HOVER
                                + "<extra></extra>"),
             )
+
+    # **A proven curve per candidate spacing.** Proven is one of only two quantities
+    # that move when the *exit* moves -- see core/dependence.py -- so a candidate with
+    # a different entry-to-exit spacing has a different proven curve, and drawing one
+    # at the selected well's spacing answers the wrong question for the others. The
+    # attic and the at-the-well volume are entry-only, so one curve each is right for
+    # every candidate and drawing more would be noise.
+    for label, sweep_i in (others or ()):
+        fig.add_scatter(
+            x=thin(sweep_i.proven_mean, sweep_i.n_discovery, min_support), y=sweep_i.z,
+            mode="lines", name=f"Proven — Well {label} spacing",
+            line=dict(color=colour("proven", dark), width=1.4, dash="dash"),
+            hovertemplate=(f"Well {label} spacing ({sweep_i.z_gap:.0f} m)"
+                           "<br>proven %{x:.2f} MMboe at " + DEPTH_HOVER
+                           + "<extra></extra>"),
+        )
 
     if vsweep.mefs is not None:
         _vline(fig, vsweep.mefs, colour("minimum", dark), "dot", "MEFS")

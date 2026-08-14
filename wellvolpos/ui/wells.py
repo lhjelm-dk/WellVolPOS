@@ -136,7 +136,8 @@ def read_selected(wells: tuple[WellOption, ...]) -> WellOption:
     return wells[0]
 
 
-def well_editor(wells: tuple[WellOption, ...], zmin: float, zmax: float) -> None:
+def well_editor(wells: tuple[WellOption, ...], zmin: float, zmax: float,
+                thickness=None) -> None:
     """The controls, drawn wherever the tab wants them.
 
     Creates the widgets that own the keys :func:`read_wells` reads. Nothing is
@@ -166,6 +167,17 @@ def well_editor(wells: tuple[WellOption, ...], zmin: float, zmax: float) -> None
                 min_value=entry, max_value=max(zmax, entry + 5.0), step=5.0,
                 key=_key(w.label, "exit"),
             )
+            # **Is this spacing a vertical well?** The reservoir has a thickness and a
+            # vertical well sees exactly that, so the entry-to-exit spacing is not a
+            # free choice unless the well is deviated. Said here, where it is chosen.
+            if thickness is not None:
+                from ..core.dependence import check_deviation
+
+                chk = check_deviation(thickness, w.exit - w.entry)
+                icon = {"vertical": "⟂", "deviated": "⟋", "partial": "⊣",
+                        "unknown": "?"}[chk.verdict]
+                st.caption(f"{icon} **{chk.verdict}** — {w.exit - w.entry:,.0f} m of "
+                           f"section, reservoir {chk.thickness_p50:,.0f} m")
 
     add, remove = st.columns([1, 1])
     with add:

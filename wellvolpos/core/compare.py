@@ -129,7 +129,13 @@ def compare_wells(
             disc = np.asarray(groups.discovery, dtype=bool)
             dry = np.asarray(groups.dry_with_attic, dtype=bool)
             proven = _stats(vc.proven[disc])
-            possible = _stats(vc.below_lkh[disc])
+            # **``hc_to_exit``, not ``discovery``.** The unproven volume exists only
+            # where the well left the reservoir still in hydrocarbons, and that is the
+            # conditioning ``class_summary`` uses -- so taking it over every discovery
+            # here made this table disagree with tab ④'s about the same quantity under
+            # the same label: n 4701 against 2749, P50 1.68 against 20.16 on prospect B
+            # (Lars, 2026-08-14). Two tables in one app, one of them wrong.
+            possible = _stats(vc.below_lkh[np.asarray(groups.hc_to_exit, dtype=bool)])
             well_assoc = _stats(vc.discovery_total[disc])
             attic = _stats(vc.attic[dry])
         else:
@@ -166,9 +172,10 @@ def chance_table(rows: Sequence[WellComparison]) -> list[dict]:
 def volume_table(rows: Sequence[WellComparison], concept: str = "proven") -> list[dict]:
     """The volumetric block for one concept: **conditional**, in MMboe.
 
-    Conditional on the outcome the concept belongs to -- a discovery for proven,
-    possible and well-associated, a charged dry hole for the attic -- which is where
-    percentiles are defined. The chance is in :func:`chance_table` and the product in
+    Conditional on the outcome the concept belongs to -- a discovery for proven and
+    well-associated, a charged dry hole for the attic, and *the well leaving the
+    reservoir in hydrocarbons* for the unproven volume below LKH -- which is where
+    each one's percentiles are defined. The chance is in :func:`chance_table` and the product in
     :func:`risked_table`; keeping the three apart is what stops a risked number being
     read as a percentile.
     """
