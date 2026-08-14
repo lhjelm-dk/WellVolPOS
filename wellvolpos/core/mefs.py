@@ -139,3 +139,72 @@ _CONDITIONS = {
     "hc_to_exit": "the well leaving the reservoir in hydrocarbons",
     "dry_with_attic": "a charged dry hole",
 }
+
+
+# --------------------------------------------------------------- 4.2's four cases
+@dataclass(frozen=True)
+class Crossing:
+    """Where one of 4.2's curves crosses the MEFS line, on both readings."""
+
+    name: str
+    role: str
+    #: ``P(volume > MEFS | the case happens)`` -- the solid curve's height at the line.
+    conditional: float
+    #: The chance the case happens at all. The dashed curve is the solid one scaled by
+    #: this, so it starts here rather than at 100 %.
+    chance: float
+    n: int
+
+    @property
+    def risked(self) -> float:
+        """The dashed curve's height at the line: ``chance × conditional``.
+
+        Risking scales the **probability** and never the volume, which is why this is
+        a product rather than a second pass over different trials.
+        """
+        return self.chance * self.conditional
+
+
+def c2_cases(ts, groups, vc, pos_prospect: float, p_well: float):
+    """The four concepts 4.2 draws, with the chance each one is risked by.
+
+    **One definition, used by the figure and by the caption that quotes its numbers.**
+    They were about to be two lists in two modules, which is how a caption comes to
+    assert something the figure beside it denies -- a mistake this codebase has made
+    twice with numbers written against one demo file.
+
+    The up-dip case needs its **own** chance: dry but charged is
+    ``POS_prospect − P_well``, not ``P_well``. That is the one entry a second copy of
+    this list would most likely get wrong, because the other three look like they take
+    the obvious chance and this one does not.
+    """
+    res = ts.col("resource")
+    disc, dry = groups.discovery, groups.dry_with_attic
+    return [
+        ("Prospect resource potential", res[res > 0], float(pos_prospect), "prospect"),
+        ("Well associated resource potential", res[disc], float(p_well), "well_associated"),
+        ("Resource tested by well", vc.proven[disc], float(p_well), "tested"),
+        ("Up-dip volume", res[dry], float(max(pos_prospect - p_well, 0.0)), "up_dip"),
+    ]
+
+
+def c2_crossings(ts, groups, vc, pos_prospect: float, p_well: float,
+                 mefs: float) -> tuple[Crossing, ...]:
+    """``P(> MEFS)`` for each of 4.2's concepts, conditional and risked.
+
+    Lars, 2026-08-14: *"can I get a probability curve in 4.2 for exceedance MEFS,
+    risked and unrisked."* Each exceedance curve on 4.2 already **is** a probability
+    curve, so the threshold's probability is a *crossing* rather than a new series --
+    eight of them, four concepts on two readings. The figure marks them; this returns
+    the numbers, because eight labels along one vertical line overlap.
+    """
+    out = []
+    for name, values, chance_of, role in c2_cases(ts, groups, vc, pos_prospect, p_well):
+        x = np.asarray(values, dtype=float)
+        x = x[np.isfinite(x)]
+        out.append(Crossing(
+            name=name, role=role,
+            conditional=float((x > mefs).mean()) if x.size else float("nan"),
+            chance=float(chance_of), n=int(x.size),
+        ))
+    return tuple(out)

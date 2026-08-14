@@ -38,6 +38,7 @@ from ..core.chance import (
     step_element,
 )
 from ..core.chance import waterfall_steps as chance_waterfall_steps
+from ..core.mefs import c2_cases
 from ..core.classes import (
     conditional_exceedance,
     READING_DASH,
@@ -2827,15 +2828,11 @@ def pfig_c2_exceedance(
     # so the dashed curve starts at ``chance`` by construction rather than by being
     # zero-padded with the trial file's own masks -- see that docstring for the four
     # times this went wrong.
-    disc, dry = groups.discovery, groups.dry_with_attic
-    cases = [
-        ("Prospect resource potential", res[res > 0], pos_prospect, "prospect"),
-        ("Well associated resource potential", res[disc], p_well, "well_associated"),
-        ("Resource tested by well", vc.proven[disc], p_well, "tested"),
-        # The up-dip case needs its *own* chance: dry but charged, which is
-        # POS_prospect - P_well, not P_well.
-        ("Up-dip volume", res[dry], max(pos_prospect - p_well, 0.0), "up_dip"),
-    ]
+    # **The four cases live in core**, because the caption under this figure quotes
+    # their MEFS crossings and two copies of the list is how the two come to disagree.
+    # The up-dip case takes its own chance -- dry but charged, POS_prospect - P_well,
+    # not P_well -- which is the entry a second copy would get wrong.
+    cases = c2_cases(ts, groups, vc, pos_prospect, p_well)
     spans: dict[str, tuple[float, float, str]] = {}
     for name, values, chance_of, role in cases:
         for reading, chance_used in (("conditional", 1.0), ("unconditional", chance_of)):
@@ -2869,6 +2866,32 @@ def pfig_c2_exceedance(
                 show_text=reading == "conditional",
                 textposition="middle right",
             )
+            # **Where this curve crosses MEFS** (Lars, 2026-08-14, who asked for a
+            # risked and unrisked probability of exceeding it here). Each exceedance
+            # curve already *is* a probability curve, so the threshold's probability
+            # is a crossing rather than a new series -- and there are eight of them,
+            # four concepts on two readings.
+            #
+            # **No text.** On prospect A three of the four conditional crossings sit
+            # within a percentage point of each other, so eight labels along one
+            # vertical line overlap into illegibility on what this figure's own
+            # comments already call the busiest in the app. The mark carries the
+            # number in its hover and the caption under the figure lists all eight.
+            #
+            # Filled = conditional, open = risked, matching solid and dashed.
+            if mefs is not None and v.size:
+                y_at = float(np.interp(float(mefs), v, pct))
+                fig.add_scatter(
+                    x=[float(mefs)], y=[y_at], mode="markers",
+                    marker=dict(
+                        symbol="circle" if reading == "conditional" else "circle-open",
+                        size=9, color=colour(role, dark),
+                        line=dict(color=colour(role, dark), width=2)),
+                    name=f"{name} at MEFS", legendgroup=name, showlegend=False,
+                    hovertemplate=(f"{name}<br>{READING_LABELS[reading]}<br>"
+                                   f"<b>{y_at:.1f}%</b> chance of exceeding MEFS "
+                                   f"{float(mefs):.2f} MMboe<extra></extra>"),
+                )
         positive = np.sort(np.asarray(values, dtype=float))
         positive = positive[np.isfinite(positive) & (positive > 0)]
         if positive.size:

@@ -36,6 +36,7 @@ from ..core.chance import (
     step_element,
 )
 from ..core.chance import waterfall_steps as chance_waterfall_steps
+from ..core.mefs import c2_cases
 from ..core.classes import (
     READING_LABELS,
     VolumeClasses,
@@ -1866,12 +1867,9 @@ def fig_c2_exceedance(
     fig, ax_exc = new_figure(figsize=(8.6, 6.2), dark=dark)
 
     disc, dry = groups.discovery, groups.dry_with_attic
-    cases = [
-        ("Prospect resource potential", res[res > 0], pos_prospect, "prospect"),
-        ("Well associated resource potential", res[disc], p_well, "well_associated"),
-        ("Resource tested by well", vc.proven[disc], p_well, "tested"),
-        ("Up-dip volume", res[dry], max(pos_prospect - p_well, 0.0), "up_dip"),
-    ]
+    # One definition, shared with the plotly twin and with the caption that
+    # quotes these curves' MEFS crossings -- see core/mefs.c2_cases.
+    cases = c2_cases(ts, groups, vc, pos_prospect, p_well)
     spans: dict[str, tuple[float, float, str]] = {}
     for name, values, chance_of, role in cases:
         for reading, chance_used in (("conditional", 1.0), ("unconditional", chance_of)):
@@ -1889,6 +1887,14 @@ def fig_c2_exceedance(
             _mark_exceedance_mpl(ax_exc, values, role, dark, chance=chance_used,
                                  show_text=reading == "conditional", size=4.0,
                                  ha="left")
+            # Where this curve crosses MEFS -- see the plotly twin. Filled =
+            # conditional, open = risked; no text, because eight labels along one
+            # vertical line overlap on this figure.
+            if mefs is not None and v.size:
+                y_at = float(np.interp(float(mefs), v, pct))
+                ax_exc.plot([float(mefs)], [y_at], marker="o", ms=6,
+                            mfc=colour(role, dark) if reading == "conditional" else "none",
+                            mec=colour(role, dark), mew=1.6, zorder=6)
         vals = np.sort(np.asarray(values, dtype=float))
         positive = vals[np.isfinite(vals) & (vals > 0)]
         if positive.size:

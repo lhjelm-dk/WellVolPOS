@@ -127,3 +127,44 @@ def test_the_bracket_names_the_two_rungs_the_threshold_falls_between(readout):
     # The attic never clears 14 MMboe on this file, and the wording says so rather
     # than naming a pair of rungs that do not bracket anything.
     assert "below every rung" in r.by_key("attic_dry_hole").bracket()
+
+
+def test_the_four_c2_crossings_agree_with_the_curves_the_figure_draws(reduced):
+    """4.2's marked crossings and the table under it come from one definition.
+
+    Lars, 2026-08-14. Two lists in two modules is how a caption comes to assert
+    something the figure beside it denies, so ``c2_cases`` is shared and this checks
+    the crossings really are the heights of the curves at the line.
+    """
+    import wellvolpos.viz.interactive as I
+    from wellvolpos.core import c2_cases, c2_crossings
+    from wellvolpos.core.classes import risked_exceedance
+
+    ad = AreaDepth.from_trials(reduced.col("contact"), reduced.col("area"))
+    g = group_trials(reduced, ENTRY, EXIT)
+    vc = split_trials(reduced, ad, g, ENTRY, EXIT)
+    pos, pw, mefs = 0.7605, 0.4576, 14.0
+
+    cx = c2_crossings(reduced, g, vc, pos, pw, mefs)
+    assert len(cx) == 4
+
+    # The risked height is the conditional one scaled by the case's own chance --
+    # risking moves the probability, never the volume.
+    for c in cx:
+        assert c.risked == pytest.approx(c.chance * c.conditional, abs=1e-12)
+        assert 0.0 <= c.conditional <= 1.0
+
+    # The up-dip case carries its own chance: dry but charged, POS - P_well.
+    updip = next(c for c in cx if c.name == "Up-dip volume")
+    assert updip.chance == pytest.approx(max(pos - pw, 0.0), abs=1e-12)
+    assert updip.chance != pytest.approx(pw, abs=1e-6)
+
+    # And each number is the height of the curve the figure actually plots.
+    fig = I.pfig_c2_exceedance(reduced, g, vc, pos_prospect=pos, p_well=pw, mefs=mefs)
+    marks = {t.name: t for t in fig.data
+             if t.name and t.name.endswith("at MEFS") and t.mode == "markers"}
+    assert len(marks) >= 1
+    values = {n: vals for n, vals, _, _ in c2_cases(reduced, g, vc, pos, pw)}
+    for c in cx:
+        v, pct = risked_exceedance(values[c.name], 1.0)
+        assert float(np.interp(mefs, v, pct)) == pytest.approx(c.conditional * 100.0, abs=0.5)

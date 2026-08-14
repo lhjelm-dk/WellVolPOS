@@ -31,7 +31,7 @@ from ..viz import (
     pfig_c2_exceedance,
     pfig_map_view,
 )
-from ..core import MEFS_RUNGS, mefs_readout
+from ..core import MEFS_RUNGS, c2_crossings, mefs_readout
 from ..core.rose import AT_WELL_WINDOW_M, commercial_chance
 from ..viz.theme import reference_label
 from .common import C2_HEIGHT, chart as _chart, split_caveat
@@ -493,7 +493,44 @@ def render(ctx: Ctx) -> None:
             "location penalty, made visible.\n\n"
             "The braces below show the nesting — up-dip inside tested inside well associated "
             "inside prospect — and the axis carries no negative labels: that space is for the "
-            "braces, not for probabilities."
+            "braces, not for probabilities.\n\n"
+            f"**The ringed markers on the MEFS line are the eight crossings** — filled on the "
+            f"solid curves, open on the dashed. Each exceedance curve *is* a probability "
+            f"curve, so the chance of clearing MEFS is where the curve meets the line rather "
+            f"than a separate series. The numbers are tabulated below rather than printed on "
+            f"the figure, because several of them land within a percentage point of each "
+            f"other and eight labels on one vertical line overlap."
+        )
+
+        # ------------------------------------------- the eight crossings, tabulated
+        # Lars, 2026-08-14: *"can I get a probability curve in 4.2 for exceedance MEFS,
+        # risked and unrisked."* Same numbers the figure marks -- both come from
+        # core.mefs.c2_cases, so the table cannot describe curves the figure did not
+        # draw.
+        _cx = c2_crossings(ts, groups, vc, chance.pos_prospect, chance.p_well, mefs)
+        st.markdown(f"###### Chance of exceeding MEFS / MCFS, {mefs:,.1f} MMboe")
+        st.dataframe(
+            pd.DataFrame([{
+                "Volume": c.name,
+                "Unrisked — conditional": f"{c.conditional:.1%}",
+                "× chance of the case": f"{c.chance:.1%}",
+                "Risked — unconditional": f"{c.risked:.1%}",
+                "Trials": f"{c.n:,}",
+            } for c in _cx]),
+            hide_index=True, width="stretch",
+        )
+        st.caption(
+            "**Unrisked is the solid curve's height at the line, risked is the dashed "
+            "one's** — and the middle column is exactly what separates them, because "
+            "risking scales the *probability* and never the volume. So the risked "
+            "column is the product of the two beside it, not a second pass over "
+            "different trials.\n\n"
+            "**The up-dip row is risked by its own chance** — dry but charged, "
+            f"`POS − P_well` = {max(chance.pos_prospect - chance.p_well, 0.0):.1%}, "
+            "not P_well. It is the volume you leave behind if this well is dry, so "
+            "the event it is conditional on is the one where the well fails.\n\n"
+            "The well-associated unrisked figure is Rose's `Pmcfs(well)` from the "
+            "chance block at the top of this tab; its risked twin is `Pc(well)`."
         )
 
         st.divider()

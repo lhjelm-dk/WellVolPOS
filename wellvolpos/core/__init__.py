@@ -18,7 +18,10 @@ from .mefs import (
     CONCEPTS as MEFS_CONCEPTS,
     RUNGS as MEFS_RUNGS,
     ConceptReadout,
+    Crossing,
     MefsReadout,
+    c2_cases,
+    c2_crossings,
     mefs_readout,
 )
 from .chance import (
@@ -103,6 +106,7 @@ __all__ = [
     "ENTRY_ONLY", "EXIT_DEPENDENT", "DeviationCheck", "check_deviation",
     "REDUCTION_RANGES",
     "MEFS_CONCEPTS", "MEFS_RUNGS", "ConceptReadout", "MefsReadout", "mefs_readout",
+    "Crossing", "c2_cases", "c2_crossings",
     "BAND_MODES", "BAND_MODE_LABELS", "BAND_PERCENTILES", "DEFAULT_N_BANDS",
     "BandedPercentiles", "DepthBand", "banded_percentiles", "supported_percentiles",
     "AreaDepth", "group_trials", "group_summary", "boundary_ties", "split_trials", "class_summary",
