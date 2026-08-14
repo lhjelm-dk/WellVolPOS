@@ -159,9 +159,9 @@ def test_below_lkh_draws_a_curve_per_distinct_entry_to_exit_spacing(full):
     near = run_volume_sweep(full, ad, 0.43, n=20, z_gap=50.0, mefs=103.0)
     deep = run_volume_sweep(full, ad, 0.43, n=20, z_gap=150.0, mefs=103.0)
 
-    fig = I.pfig_b13_below_exit(near, current_z=2205.0, others=[("B", deep)])
+    fig = I.pfig_b13_below_exit(near, current_z=2205.0, others=[("Well B (150 m)", deep)])
     names = [t.name for t in fig.data if t.name]
-    assert any(n == "Mean — Well B spacing" for n in names), names
+    assert any(n.endswith("— Well B (150 m)") for n in names), names
 
     # And the physics: a deeper exit leaves less unproven, everywhere both are drawn.
     ok = np.isfinite(near.below_lkh_mean_if_any) & np.isfinite(deep.below_lkh_mean_if_any)
@@ -287,8 +287,75 @@ def test_3_5_draws_a_proven_curve_per_candidate_spacing(full):
     near = run_volume_sweep(full, ad, 0.43, n=20, z_gap=50.0, mefs=14.0)
     deep = run_volume_sweep(full, ad, 0.43, n=20, z_gap=150.0, mefs=14.0)
 
-    fig = I.pfig_b1_volume_split(near, current_z=3500.0, others=[("B", deep)])
+    fig = I.pfig_b1_volume_split(near, current_z=3500.0, others=[("Well B (150 m)", deep)])
     names = [t.name for t in fig.data if t.name]
-    assert "Proven — Well B spacing" in names, names
+    assert "Proven mean — Well B (150 m)" in names, names
     # The attic is entry-only, so exactly one attic curve however many candidates.
     assert sum(1 for n in names if n.startswith("Attic |")) == 1
+
+
+#: Every tab-③ figure that *reads* an exit-dependent field, and the field it reads.
+#: Derived below from ``core.dependence`` rather than trusted here -- this maps a
+#: figure to the constructor arguments needed to build it, nothing more.
+_EXIT_DEPENDENT_FIGURES = {
+    "pfig_b1_volume_split": dict(current_z=3500.0),
+    "pfig_b13_below_exit": dict(current_z=3500.0),
+    "pfig_b2_chance_vs_regret": dict(current_z=3500.0),
+    "pfig_b7_frontier": dict(current_z=3500.0),
+    "pfig_b9_chance_weighted": dict(current_z=3500.0),
+    "pfig_b6_inverse": dict(target=10.0),
+}
+
+
+def test_every_exit_dependent_figure_on_tab_3_can_draw_a_candidate(full):
+    """The audit, run as a test rather than kept as a list someone maintains.
+
+    Lars, 2026-08-14: *"it is important that you check the entire app for these
+    issues."* The failure this guards is silent -- a figure draws an exit-dependent
+    quantity at the selected well's spacing, every candidate's rule sits on it, and
+    the reader takes values off the bold curve at each rule. Nothing looks wrong; the
+    numbers are simply another well's.
+
+    So: any tab-③ figure whose source reads a field named in ``EXIT_DEPENDENT`` must
+    (a) accept ``others`` and (b) actually put a trace on the figure when given one.
+    A new figure that reads ``proven_mean`` and forgets the hook fails here.
+    """
+    import inspect
+    import re as _re
+
+    from wellvolpos.core.dependence import EXIT_DEPENDENT
+
+    ad = AreaDepth.from_trials(full.col("contact"), full.col("area"))
+    near = run_volume_sweep(full, ad, 0.43, n=20, z_gap=50.0, mefs=14.0)
+    deep = run_volume_sweep(full, ad, 0.43, n=20, z_gap=150.0, mefs=14.0)
+
+    reads_exit_dependent = []
+    for name in dir(I):
+        if not name.startswith("pfig_"):
+            continue
+        key = name.split("_")[1]
+        if key not in RULE_FIGURES | POINT_FIGURES | RE_BANDED:
+            continue
+        src = inspect.getsource(getattr(I, name))
+        fields = set(_re.findall(r"\.(\w+)", src))
+        if any(f == e or f.startswith(e + "_") for f in fields for e in EXIT_DEPENDENT):
+            reads_exit_dependent.append(name)
+
+    # 3.12 re-bands on the selected entry, so a candidate is a different figure.
+    exempt = {"pfig_b12_banded_percentiles"}
+    for name in sorted(set(reads_exit_dependent) - exempt):
+        fn = getattr(I, name)
+        assert "others" in inspect.signature(fn).parameters, (
+            f"{name} draws an exit-dependent quantity but cannot take candidates")
+        assert name in _EXIT_DEPENDENT_FIGURES, (
+            f"{name} is exit-dependent and not covered by this test")
+
+        # **Checked by name, not by trace count.** B6 gives up its
+        # alternate-statistic fan when candidates are present -- one spread at a
+        # time -- so it nets *fewer* traces while gaining the candidate the reader
+        # asked for. A count would call that a regression.
+        kwargs = _EXIT_DEPENDENT_FIGURES[name]
+        fig = fn(near, others=[("Well B (150 m)", deep)], **kwargs)
+        names = [t.name for t in fig.data if t.name]
+        assert any(n.endswith("— Well B (150 m)") for n in names), (
+            f"{name} accepts `others` but draws no trace named for them: {names}")

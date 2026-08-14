@@ -88,9 +88,11 @@ from .theme import (
     palette,
     reference_label,
     rgba,
+    spacing_label,
 )
 
 __all__ = [
+    "add_spacing_curves",
     "add_well_markers",
     "add_well_points",
     "pfig_colour_key",
@@ -161,6 +163,43 @@ def _vline(fig, x: float, colour_: str, dash: str = "dot", label: str | None = N
     ) if label else {}
     fig.add_vline(x=x, line=dict(color=colour_, width=1.0, dash=dash), **kw)
     return fig
+
+
+def add_spacing_curves(fig, others, xy, *, label: str, role: str = "muted",
+                       dark: bool = False, width: float = 1.4, dash: str = "dash",
+                       unit: str = "MMboe", fmt: str = ".2f"):
+    """Draw one curve per candidate **entry-to-exit spacing**.
+
+    A quantity listed in :data:`wellvolpos.core.dependence.EXIT_DEPENDENT` -- proven,
+    and the unproven volume below LKH, plus everything downstream of them -- takes a
+    *different value for every spacing*. So a figure drawing one of them against depth
+    is drawing the selected well's spacing and nothing else, and a candidate whose
+    exit sits 100 m below its entry is simply not on it (Lars, 2026-08-14: *"why don't
+    I see optional wells in eg plot 3.7"*).
+
+    A candidate's depth *rule* is not a substitute. The rule says where the well
+    enters; reading a value off the bold curve at that depth answers the question for
+    the **selected** well's spacing, which is the wrong answer under a label that
+    names another well.
+
+    ``xy`` maps a :class:`VolumeSweep` to an ``(x, y)`` pair, or to ``None`` when that
+    sweep cannot supply the series -- so one helper serves depth-on-y figures, the
+    volume-against-chance frontier and the inverse alike, each passing its own axes.
+
+    Candidates that share a spacing share a curve, and ``label`` in the caller names
+    them together: two identical lines are not two pieces of information.
+    """
+    for well_label, sweep_i in (others or ()):
+        pair = xy(sweep_i)
+        if pair is None:
+            continue
+        x, y = pair
+        fig.add_scatter(
+            x=x, y=y, mode="lines", name=f"{label} — {well_label}",
+            line=dict(color=colour(role, dark), width=width, dash=dash),
+            hovertemplate=(f"{well_label} ({sweep_i.z_gap:.0f} m spacing)<br>"
+                           f"{label} %{{x:{fmt}}} {unit}<extra></extra>"),
+        )
 
 
 def add_well_markers(fig, wells, *, selected: str | None = None, dark: bool = False):
@@ -1207,15 +1246,11 @@ def pfig_b1_volume_split(
     # at the selected well's spacing answers the wrong question for the others. The
     # attic and the at-the-well volume are entry-only, so one curve each is right for
     # every candidate and drawing more would be noise.
-    for label, sweep_i in (others or ()):
-        fig.add_scatter(
-            x=thin(sweep_i.proven_mean, sweep_i.n_discovery, min_support), y=sweep_i.z,
-            mode="lines", name=f"Proven — Well {label} spacing",
-            line=dict(color=colour("proven", dark), width=1.4, dash="dash"),
-            hovertemplate=(f"Well {label} spacing ({sweep_i.z_gap:.0f} m)"
-                           "<br>proven %{x:.2f} MMboe at " + DEPTH_HOVER
-                           + "<extra></extra>"),
-        )
+    add_spacing_curves(
+        fig, others,
+        lambda sw: (thin(sw.proven_mean, sw.n_discovery, min_support), sw.z),
+        label="Proven mean", role="proven", dark=dark,
+    )
 
     if vsweep.mefs is not None:
         _vline(fig, vsweep.mefs, colour("minimum", dark), "dot", "MEFS")
@@ -1224,8 +1259,8 @@ def pfig_b1_volume_split(
 
     fig.update_layout(
         title=("B1 · Volume split vs location "
-               f"(exit = entry + {vsweep.z_gap:.0f} m, "
-               f"{reference_label(vsweep.reference)})"
+               f"({spacing_label(vsweep.z_gap, [s.z_gap for _, s in (others or ())])}"
+               f", {reference_label(vsweep.reference)})"
                "<br><sub>bold = mean · dotted = P90 / P50 / P10 · "
                "each volume conditional on its own outcome</sub>"),
         xaxis_title="Mean volume (MMboe)",
@@ -1298,17 +1333,12 @@ def pfig_b13_below_exit(
     # spacing sweeps a different curve entirely -- a deeper exit proves more of the
     # column and leaves less unproven -- so a single curve drawn at the selected
     # well's spacing said nothing about the others. Each is swept with its own gap.
-    for label, sweep_i in (others or ()):
-        if sweep_i.below_lkh_mean_if_any is None:
-            continue
-        fig.add_scatter(
-            x=thin(sweep_i.below_lkh_mean_if_any, sweep_i.n_discovery, min_support),
-            y=sweep_i.z, mode="lines", name=f"Mean — Well {label} spacing",
-            line=dict(color=p["muted"], width=1.4, dash="dash"),
-            hovertemplate=(f"Well {label} spacing ({sweep_i.z_gap:.0f} m)"
-                           "<br>mean %{x:.2f} MMboe below LKH at " + DEPTH_HOVER
-                           + "<extra></extra>"),
-        )
+    add_spacing_curves(
+        fig, others,
+        lambda sw: (None if sw.below_lkh_mean_if_any is None else
+                    (thin(sw.below_lkh_mean_if_any, sw.n_discovery, min_support), sw.z)),
+        label="Mean unproven below LKH", role="below_lkh", dark=dark,
+    )
 
     if vsweep.mefs is not None:
         _vline(fig, vsweep.mefs, colour("minimum", dark), "dot", "MEFS")
@@ -1317,7 +1347,7 @@ def pfig_b13_below_exit(
 
     fig.update_layout(
         title=("B13 · Unproven below LKH — the volume under the well "
-               f"(exit = entry + {vsweep.z_gap:.0f} m)"
+               f"({spacing_label(vsweep.z_gap, [s.z_gap for _, s in (others or ())])})"
                "<br><sub>conditional on the well leaving the reservoir in "
                "hydrocarbons · bold = mean · dotted = P90 / P50 / P10</sub>"),
         xaxis_title="Unproven volume below LKH (MMboe)",
@@ -1332,6 +1362,7 @@ def pfig_b13_below_exit(
 # ------------------------------------------------------------------- B2
 def pfig_b2_chance_vs_regret(
     vsweep: VolumeSweep, *, current_z: float | None = None, zlim: tuple[float, float] | None = None,
+    others: "Sequence[tuple[str, VolumeSweep]] | None" = None,
     show_depth_labels: bool = True, min_support: int = MIN_SUPPORT,
     dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
@@ -1390,6 +1421,25 @@ def pfig_b2_chance_vs_regret(
             line=dict(color=colour(role, dark), width=width),
             hovertemplate=name + "<br>%{x:.1f}% at " + DEPTH_HOVER + "<extra></extra>",
         )
+    # **Both threshold curves are exit-dependent**, so a candidate with its own
+    # entry-to-exit spacing crosses MEFS at a different depth. The attic curve is not
+    # -- it is conditioned on the entry alone -- so it stays a single line for every
+    # candidate, which is exactly the distinction core/dependence.py records.
+    add_spacing_curves(
+        fig, others,
+        lambda sw: (thin(sw.p_proven_exceeds_mefs, sw.n_discovery, min_support) * 100.0,
+                    sw.z),
+        label="P(proven > MEFS)", role="proven", dark=dark, unit="%", fmt=".1f",
+    )
+    add_spacing_curves(
+        fig, others,
+        lambda sw: (None if sw.p_below_lkh_exceeds_mefs is None else
+                    (thin(sw.p_below_lkh_exceeds_mefs, sw.n_discovery, min_support) * 100.0,
+                     sw.z)),
+        label="P(unproven below LKH > MEFS)", role="below_lkh", dark=dark,
+        unit="%", fmt=".1f",
+    )
+
     # Named for the curves that actually meet -- see the matplotlib twin: these
     # two are not on one scale, so "chance = regret" would be a claim the
     # figure does not support.
@@ -1403,7 +1453,8 @@ def pfig_b2_chance_vs_regret(
     fig.update_layout(
         title=(
             f"B2 · Chance vs regret (MEFS {vsweep.mefs:.1f} MMboe, "
-            f"{reference_label(vsweep.reference)})"
+            f"{reference_label(vsweep.reference)}, "
+            f"{spacing_label(vsweep.z_gap, [s.z_gap for _, s in (others or ())])})"
         ),
         xaxis_title="Probability (%)",
     )
@@ -1696,6 +1747,7 @@ def pfig_b5_allocation_dumbbell(
 def pfig_b6_inverse(
     vsweep: VolumeSweep, *, target: float | None = None, n_targets: int = 40,
     ts: TrialSet | None = None, mefs: float | None = None, statistic: str = "mean",
+    others: "Sequence[tuple[str, VolumeSweep]] | None" = None,
     zlim: tuple[float, float] | None = None,
     show_depth_labels: bool = True, dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
@@ -1883,7 +1935,12 @@ def pfig_b6_inverse(
     # P90 is the low case and needs the deepest well; P10 the high case and the
     # shallowest. So the three fan out around the chosen one, and the width of that
     # fan is how much the answer depends on which discovery you are asking about.
-    for other in ("p90", "p50", "p10"):
+    # **One spread at a time.** With candidates present this fan is suppressed in
+    # favour of theirs, below. Both are spreads of the *same* requirement -- one over
+    # which discovery you are asking about, one over which well you drill -- and six
+    # thin violet lines on one figure is the state Lars reported B6 in before it was
+    # split: *"I am not sure what the curves mean."*
+    for other in (() if others else ("p90", "p50", "p10")):
         if other == statistic:
             continue
         try:
@@ -1931,8 +1988,34 @@ def pfig_b6_inverse(
                 showlegend=False, hoverinfo="skip",
             )
 
+    # **A requirement curve per candidate spacing.** The requirement inverts the
+    # proven-mean relation, and proven is exit-dependent, so a candidate that
+    # penetrates further needs a *shallower* entry to prove the same volume. Drawn
+    # without markers and without a band: the selected well keeps both, because a
+    # second P_well scale and a second CI would each be read as belonging to the
+    # curve they sit nearest.
+    for well_label, sweep_i in (others or ()):
+        try:
+            o_targets, o_z, _ = volume_target_curve(sweep_i, n=n_targets, ts=ts,
+                                                    statistic=statistic)
+        except ValueError:
+            continue
+        good = np.isfinite(o_z)
+        if good.sum() < 2:
+            continue
+        fig.add_scatter(
+            x=o_targets[good], y=o_z[good], mode="lines",
+            line=dict(color=colour("well", dark), width=1.2, dash="dash"),
+            name=f"Required entry \u2014 {well_label}",
+            hovertemplate=(f"{well_label} ({sweep_i.z_gap:.0f} m spacing)"
+                           "<br>to prove %{x:.2f} MMboe<br>enter at "
+                           + DEPTH_HOVER + "<extra></extra>"),
+        )
+
     fig.update_layout(
-        title=f"B6 \u00b7 Inverse \u2014 how deep must the well go to prove a {stat_label} volume?",
+        title=(f"B6 \u00b7 Inverse \u2014 how deep must the well go to prove a "
+               f"{stat_label} volume? "
+               f"({spacing_label(vsweep.z_gap, [s.z_gap for _, s in (others or ())])})"),
         # Both readings named on the axis itself. One pair of axes carrying two
         # definitions of volume and two kinds of depth is only honest if the axis
         # says so -- unlabelled, this is the figure Lars could not read.
@@ -2068,6 +2151,7 @@ def pfig_a8_contact_distribution(
 def pfig_b9_chance_weighted(
     vsweep: VolumeSweep, *, current_z: float | None = None,
     zlim: tuple[float, float] | None = None, show_depth_labels: bool = True,
+    others: "Sequence[tuple[str, VolumeSweep]] | None" = None,
     min_support: int = MIN_SUPPORT, dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
     """B9 -- chance-weighted resource against location: where the expectation peaks.
@@ -2158,6 +2242,16 @@ def pfig_b9_chance_weighted(
                            "<br>%{x:.2f} MMboe at " + DEPTH_HOVER + "<extra></extra>"),
         )
 
+    # Proven x P_well per candidate spacing. The well-associated series beside it is
+    # entry-only, so it needs no twin -- and drawing one would say the expectation
+    # moves with the exit when it does not.
+    add_spacing_curves(
+        fig, others,
+        lambda sw: (thin(sw.p_well, sw.n_discovery, min_support)
+                    * thin(sw.proven_mean, sw.n_discovery, min_support), sw.z),
+        label="Proven MEAN × P_well", role="proven", dark=dark,
+    )
+
     best_note = []
     for name, mean, role in series:
         weighted = pw * mean
@@ -2185,7 +2279,9 @@ def pfig_b9_chance_weighted(
         _hline(fig, current_z, p["text"], "dash")
 
     fig.update_layout(
-        title="B9 · Chance-weighted resource vs location (expected, not a volume anyone finds)",
+        title=("B9 · Chance-weighted resource vs location (expected, not a volume "
+               "anyone finds; "
+               f"{spacing_label(vsweep.z_gap, [s.z_gap for _, s in (others or ())])})"),
         xaxis_title="P_well × mean volume  (MMboe, expected)",
     )
     fig.update_xaxes(rangemode="tozero")
@@ -2555,6 +2651,7 @@ def pfig_b12_banded_percentiles(
 # ------------------------------------------------------------------- B7
 def pfig_b7_frontier(
     vsweep: VolumeSweep, *, current_z: float | None = None, min_support: int = MIN_SUPPORT,
+    others: "Sequence[tuple[str, VolumeSweep]] | None" = None,
     label_every: int = 4, chance_scale: str = "linear",
     dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
@@ -2620,6 +2717,16 @@ def pfig_b7_frontier(
                        "<br>P_well %{y:.1f}%<extra></extra>"),
     )
 
+    # **The proven frontier is per spacing.** The well-associated frontier above it
+    # is not -- both of its axes are entry-only quantities, so every candidate sits on
+    # that one curve and only the *point* moves, which is what add_well_points draws.
+    add_spacing_curves(
+        fig, others,
+        lambda sw: (thin(sw.proven_mean, sw.n_discovery, min_support),
+                    thin(sw.p_well, sw.n_discovery, min_support) * 100.0),
+        label="Proven mean", role="tested", dark=dark, width=1.2, dash="dot",
+    )
+
     # Depth labels along the frontier: without them the curve is a shape with no
     # handle on it, and "where do I drill" is answered in metres.
     base = assoc if assoc is not None else proven
@@ -2648,8 +2755,9 @@ def pfig_b7_frontier(
 
     log = chance_scale == "log"
     fig.update_layout(
-        title=(f"B7 · Chance against volume — the location trade-off "
-               f"({reference_label(vsweep.reference)})"),
+        title=("B7 · Chance against volume — the location trade-off "
+               f"({reference_label(vsweep.reference)}, "
+               f"{spacing_label(vsweep.z_gap, [s.z_gap for _, s in (others or ())])})"),
         xaxis_title="Mean resource (MMboe)",
         yaxis_title=("P_well  (%, log scale 1–110 — equal steps are equal "
                      "*proportional* loss of chance)" if log else "P_well  (%)"),

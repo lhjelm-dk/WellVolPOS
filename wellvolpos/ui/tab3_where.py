@@ -67,7 +67,7 @@ from .loading import volume_sweep as _volume_sweep
 
 
 @st.fragment
-def _inverse_section(vsweep, ts, mefs, wells=(), selected_well=None):
+def _inverse_section(vsweep, ts, mefs, wells=(), selected_well=None, others=()):
     """B6, in its own fragment.
 
     The volume-to-prove slider must not re-run either sweep: at n=60 with a
@@ -132,7 +132,7 @@ def _inverse_section(vsweep, ts, mefs, wells=(), selected_well=None):
     # A quarter taller (Lars, 2026-08-12): the leader lines, the bootstrap band and a
     # five-deep contact family all share one pair of axes, and at row height they
     # crowd each other.
-    _f_b6 = pfig_b6_inverse(vsweep, target=target, ts=ts, mefs=mefs,
+    _f_b6 = pfig_b6_inverse(vsweep, target=target, ts=ts, mefs=mefs, others=others,
                             statistic=stat, height=TALL_PANEL_HEIGHT)
     add_well_markers(_f_b6, wells, selected=selected_well)
     _chart(_f_b6, key="b6")
@@ -205,6 +205,14 @@ def _location_sweep_tab(ctx: Ctx):
         "locations side by side: they appear as labelled rules on every swept figure "
         "below, and as rows in the comparison at the foot of this tab. Exactly one is "
         "carried onto tab ④, which is the write-up of a single well; choose it there."
+        "\n\n"
+        "**A rule is not always enough.** The *exit* moves exactly two quantities — "
+        "**proven** and the **unproven volume below LKH** — so a candidate with its "
+        "own entry-to-exit spacing has its own curve for those, drawn dashed and "
+        "named for it. Everything else here (P_well and r, the attic, the volume at "
+        "the well) depends on the **entry alone**, so one curve serves every "
+        "candidate and its rule is the whole story. Candidates that share a spacing "
+        "share a curve and are named together on it."
         "\n\n"
         "The verdict under each pair of sliders checks the entry-to-exit spacing "
         "against the **reservoir thickness recovered from the trials**. A vertical "
@@ -360,23 +368,35 @@ def _location_sweep_tab(ctx: Ctx):
     # remain are what this row was for: what the well proves, and what it risks.
     # **One per line** (Lars, 2026-08-14). Three depth panels in a row left each of
     # them a third of the width, and all three carry percentile families now.
-    # Built after `_others` below, so the per-candidate proven curves can go on it.
-    f_b2 = pfig_b2_chance_vs_regret(vsweep, current_z=entry, zlim=zrow_sweep,
-                                    height=TALL_PANEL_HEIGHT)
-    # A sweep per *distinct entry-to-exit spacing*, because the unproven volume below
-    # LKH depends on the exit: a candidate that penetrates further proves more of the
-    # column and leaves less unproven. Candidates sharing a spacing share a curve, and
-    # the sweep is cached, so this costs one run per distinct gap rather than per well.
-    _others = []
-    _seen_gaps = {round(gap, 3)}
+    # **A sweep per distinct entry-to-exit spacing.** Proven and the unproven volume
+    # below LKH are the only two quantities the *exit* moves (core/dependence.py), so
+    # every figure drawing one of them needs a curve per candidate spacing and the
+    # rest need exactly one curve for all of them.
+    #
+    # Candidates that share a spacing share a curve and are **named together** on it,
+    # because two identical lines are not two pieces of information -- but a candidate
+    # is never silently absent, which is what the earlier dedup did to every well that
+    # happened to match the selected one (Lars, 2026-08-14: *"why don't I see optional
+    # wells in eg plot 3.7"*). The sweep is cached, so this costs one run per distinct
+    # gap rather than one per well.
+    _by_gap: dict[float, list[str]] = {}
     for _w in wells:
         _g = round(_w.exit - _w.entry, 3)
-        if _g in _seen_gaps or _g <= 0:
-            continue
-        _seen_gaps.add(_g)
-        _others.append((_w.label, _volume_sweep(
+        if _g > 0:
+            _by_gap.setdefault(_g, []).append(_w.label)
+    _sel_gap = round(gap, 3)
+    _others = []
+    for _g, _labels in sorted(_by_gap.items()):
+        if _g == _sel_gap:
+            continue                       # the figure's own bold series is this one
+        _name = ("Wells " if len(_labels) > 1 else "Well ") + ", ".join(_labels)
+        _others.append((f"{_name} ({_g:.0f} m)", _volume_sweep(
             source.name, source.data, tuple(sorted(overrides.items())),
             pos, _g, mefs, ref.value, ctx.at_well_window)))
+    _shared = _by_gap.get(_sel_gap, [])
+
+    f_b2 = pfig_b2_chance_vs_regret(vsweep, current_z=entry, others=_others,
+                                    zlim=zrow_sweep, height=TALL_PANEL_HEIGHT)
     f_b1 = pfig_b1_volume_split(vsweep, current_z=entry, others=_others,
                                 zlim=zrow_sweep, height=TALL_PANEL_HEIGHT)
     f_b13 = pfig_b13_below_exit(vsweep, current_z=entry, others=_others,
@@ -496,7 +516,8 @@ def _location_sweep_tab(ctx: Ctx):
         )
         # 3.8's axes are volume and chance, so a candidate is a **point** on the
         # frontier rather than a rule -- see viz.add_well_points.
-        _f_b7 = pfig_b7_frontier(vsweep, current_z=entry, chance_scale=b7_scale)
+        _f_b7 = pfig_b7_frontier(vsweep, current_z=entry, others=_others,
+                                 chance_scale=b7_scale)
         add_well_points(_f_b7, vsweep, wells, selected=selected_well)
         _chart(_f_b7, key="b7")
     # 3.9 is full width (Lars, 2026-08-14). It carries three curves and a starred
@@ -507,7 +528,8 @@ def _location_sweep_tab(ctx: Ctx):
     _chart(_f_b8, key="b8")
     # A quarter taller (Lars, 2026-08-14): two starred peaks and a grey percentile
     # family share one pair of axes, and at row height the peaks are hard to place.
-    _f_b9 = pfig_b9_chance_weighted(vsweep, current_z=entry, zlim=zrow_sweep,
+    _f_b9 = pfig_b9_chance_weighted(vsweep, current_z=entry, others=_others,
+                                    zlim=zrow_sweep,
                                     height=TALL_PANEL_HEIGHT)
     add_well_markers(_f_b9, wells, selected=selected_well)
     _chart(_f_b9, key="b9")
@@ -602,7 +624,7 @@ def _location_sweep_tab(ctx: Ctx):
         )
 
 
-    _inverse_section(vsweep, ts, mefs, wells, selected_well)
+    _inverse_section(vsweep, ts, mefs, wells, selected_well, _others)
 
 
 
