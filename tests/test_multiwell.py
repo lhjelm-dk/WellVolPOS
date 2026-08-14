@@ -143,3 +143,47 @@ def test_3_12_names_the_well_it_was_banded_on(full):
 def test_the_labels_and_the_limit_agree():
     assert len(WELL_LABELS) == MAX_WELLS
     assert WELL_LABELS[0] == "A", "Well A is the one that always exists"
+
+
+def test_below_lkh_draws_a_curve_per_distinct_entry_to_exit_spacing(full):
+    """The unproven volume depends on the **exit**, so each candidate sweeps its own.
+
+    A well that penetrates further proves more of the column and leaves less
+    unproven -- 1.73 MMboe against 24.28 at 2232 m for a 150 m penetration against a
+    50 m one on this file. A single curve drawn at the selected well's spacing said
+    nothing about the others, which is what Lars reported.
+    """
+    from wellvolpos.core import run_volume_sweep
+
+    ad = AreaDepth.from_trials(full.col("contact"), full.col("area"))
+    near = run_volume_sweep(full, ad, 0.43, n=20, z_gap=50.0, mefs=103.0)
+    deep = run_volume_sweep(full, ad, 0.43, n=20, z_gap=150.0, mefs=103.0)
+
+    fig = I.pfig_b13_below_exit(near, current_z=2205.0, others=[("B", deep)])
+    names = [t.name for t in fig.data if t.name]
+    assert any(n == "Mean — Well B spacing" for n in names), names
+
+    # And the physics: a deeper exit leaves less unproven, everywhere both are drawn.
+    ok = np.isfinite(near.below_lkh_mean_if_any) & np.isfinite(deep.below_lkh_mean_if_any)
+    assert ok.sum() > 5
+    assert np.all(deep.below_lkh_mean_if_any[ok] <= near.below_lkh_mean_if_any[ok] + 1e-9)
+
+
+def test_the_at_the_well_window_reaches_the_swept_curve(reduced, area_depth):
+    """Tab ④'s metric and 3.5's curve are the same quantity and must use one window.
+
+    The curve kept the 2.0 m default while the metric used whatever had been typed,
+    so the two could disagree with nothing on screen saying why (found 2026-08-14).
+    """
+    from wellvolpos.core import run_volume_sweep
+
+    narrow = run_volume_sweep(reduced, area_depth, 0.76, n=12, z_gap=50.0,
+                              at_well_window=1.0)
+    wide = run_volume_sweep(reduced, area_depth, 0.76, n=12, z_gap=50.0,
+                            at_well_window=10.0)
+    assert narrow.at_well_window == 1.0 and wide.at_well_window == 10.0
+    # A wider window takes in more trials at every depth that has any.
+    ok = (narrow.at_well_n > 0) & (wide.at_well_n > 0)
+    assert ok.any()
+    assert np.all(wide.at_well_n[ok] >= narrow.at_well_n[ok])
+    assert wide.at_well_n.sum() > narrow.at_well_n.sum()

@@ -343,31 +343,78 @@ def _location_sweep_tab(ctx: Ctx):
     st.divider()
     with st.spinner("Sweeping the volume split…"):
         vsweep = _volume_sweep(source.name, source.data,
-                               tuple(sorted(overrides.items())), pos, gap, mefs, ref.value)
+                               tuple(sorted(overrides.items())), pos, gap, mefs, ref.value,
+                               ctx.at_well_window)
     # **The schematic section is not drawn here** (Lars, 2026-08-14). 4.3 draws the
     # same section at the chosen well, from the same A(z), and two copies of one
     # figure on two tabs is one more place for them to disagree. The two curves that
     # remain are what this row was for: what the well proves, and what it risks.
-    f_b1 = pfig_b1_volume_split(vsweep, current_z=entry, zlim=zrow_sweep)
-    # The below-exit volume on its own axes (Lars, 2026-08-14): four volumes and four
-    # percentile ladders on one figure was unreadable, and this one is conditional on a
-    # different event from the other three anyway.
-    f_b13 = pfig_b13_below_exit(vsweep, current_z=entry, zlim=zrow_sweep)
-    f_b2 = pfig_b2_chance_vs_regret(vsweep, current_z=entry, zlim=zrow_sweep)
-    for _f in (f_b1, f_b13, f_b2):
+    # **One per line** (Lars, 2026-08-14). Three depth panels in a row left each of
+    # them a third of the width, and all three carry percentile families now.
+    f_b1 = pfig_b1_volume_split(vsweep, current_z=entry, zlim=zrow_sweep,
+                                height=TALL_PANEL_HEIGHT)
+    f_b2 = pfig_b2_chance_vs_regret(vsweep, current_z=entry, zlim=zrow_sweep,
+                                    height=TALL_PANEL_HEIGHT)
+    # A sweep per *distinct entry-to-exit spacing*, because the unproven volume below
+    # LKH depends on the exit: a candidate that penetrates further proves more of the
+    # column and leaves less unproven. Candidates sharing a spacing share a curve, and
+    # the sweep is cached, so this costs one run per distinct gap rather than per well.
+    _others = []
+    _seen_gaps = {round(gap, 3)}
+    for _w in wells:
+        _g = round(_w.exit - _w.entry, 3)
+        if _g in _seen_gaps or _g <= 0:
+            continue
+        _seen_gaps.add(_g)
+        _others.append((_w.label, _volume_sweep(
+            source.name, source.data, tuple(sorted(overrides.items())),
+            pos, _g, mefs, ref.value, ctx.at_well_window)))
+    f_b13 = pfig_b13_below_exit(vsweep, current_z=entry, others=_others,
+                                zlim=zrow_sweep, height=TALL_PANEL_HEIGHT)
+    for _f in (f_b1, f_b2, f_b13):
         add_well_markers(_f, wells, selected=selected_well)
-    level_row(f_b1, f_b13, f_b2)
-    d1, d2, d3 = st.columns(3)
-    with d1:
-        _chart(f_b1, key="b1", height=int(f_b1.layout.height))
-    with d2:
-        _chart(f_b13, key="b13", height=int(f_b13.layout.height))
-    with d3:
-        _chart(f_b2, key="b2", height=int(f_b2.layout.height))
-    # Both conditional groups, because they thin at opposite ends: the discovery
-    # group fails down-dip, the dry-with-attic group up-dip where almost nothing
-    # is dry. Reporting only the first left the missing top of B1's orange curve
-    # unexplained.
+    _chart(f_b1, key="b1")
+    sup_disc = describe_support(vsweep.n_discovery, vsweep.z, name="discovery")
+    sup_dry = describe_support(vsweep.n_dry, vsweep.z, name="dry-with-attic")
+    st.caption(
+        f"**{fig_ref('{b1}')} — what the well proves, what it leaves, and the seam between "
+        f"them.** Three volumes swept against entry depth at a fixed {vsweep.z_gap:.0f} m "
+        f"entry-to-exit spacing, each with a bold mean and a dotted P90 / P50 / P10 in its "
+        f"own colour."
+        "\n\n"
+        f"**At the well** is the boundary case, and the one worth dwelling on: the mean "
+        f"**total** resource of the trials whose *contact* lands within "
+        f"±{vsweep.at_well_window:g} m of the reservoir entry — neither a discovery nor a dry "
+        f"hole, but the accumulation you get if the contact turns out to be exactly at your "
+        f"well. It runs between the attic and the proven curves at every depth because that "
+        f"is literally what it is, and it sits much closer to the attic than most people "
+        f"expect. The window is set on tab ④, beside the metric of the same name."
+        "\n\n"
+        f"Both conditional groups thin at opposite ends — the discovery group fails down-dip, "
+        f"the dry-with-attic group up-dip where almost nothing is dry. {sup_disc.message()} "
+        f"{sup_dry.message()}"
+    )
+
+    st.divider()
+    _chart(f_b2, key="b2")
+    st.caption(
+        f"**{fig_ref('{b2}')} — chance against regret.** `P_well` falls down-dip while the "
+        f"chance a dry hole leaves something material up-dip rises, and the dotted rule marks "
+        f"where those two particular curves meet. **It is not a risked comparison**: `P_well` "
+        f"is unconditional and the regret curve is conditional on a dry *and* charged outcome, "
+        f"so the crossing is where two different scales happen to cross rather than a "
+        f"break-even."
+        "\n\n"
+        f"`P(unproven below LKH > MEFS | discovery)` is conditional on a **discovery**, not on "
+        f"the well exiting in hydrocarbons — so a discovery that leaves nothing below LKH "
+        f"correctly counts as failing the test. That is what makes it comparable with the "
+        f"proven curve beside it, which is conditional on a discovery too. The other reading "
+        f"follows by division: `P(> MEFS | HC to exit) = P(> MEFS | discovery) ÷ "
+        f"P(HC to exit | discovery)`."
+    )
+
+    st.divider()
+    _chart(f_b13, key="b13")
     # The two unproven-below-LKH readings, in the app's own live numbers. Lars asked
     # what the curve meant and the honest answer is that one curve could not say it:
     # the unconditional mean is diluted by the discoveries that leave nothing below
@@ -396,17 +443,12 @@ def _location_sweep_tab(ctx: Ctx):
             f"cannot be added to proven; quoted alone it overstates the prize exactly the way "
             f"a success-case volume quoted without POS does. This is `POS × r` one level down."
         )
-
-    sup_disc = describe_support(vsweep.n_discovery, vsweep.z, name="discovery")
-    sup_dry = describe_support(vsweep.n_dry, vsweep.z, name="dry-with-attic")
     st.caption(
-        f"{fig_ref('{b1}')}/{fig_ref('{b2}')} sweep entry with a fixed {vsweep.z_gap:.0f} m "
-        f"entry-to-exit spacing, on the same "
-        f"depth range as the row above. {fig_ref('{b2}')}'s dotted rule marks where those two "
-        f"particular curves "
-        f"meet — it is not a risked comparison, since P_well is unconditional and the regret "
-        f"curve is conditional on a dry *and* charged outcome. {sup_disc.message()} "
-        f"{sup_dry.message()}"
+        f"**{fig_ref('{b13}')} — and it is different for every candidate.** This volume "
+        f"depends on the **exit**, so a well that penetrates further proves more of the "
+        f"column and leaves less unproven. Each distinct entry-to-exit spacing among your "
+        f"candidates is swept separately and drawn as its own dashed grey curve; candidates "
+        f"sharing a spacing share a curve."
     )
 
     # **P(up-dip <= MEFS) at this well** (Lars, 2026-08-12) -- the workbook's

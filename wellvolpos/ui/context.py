@@ -105,3 +105,9 @@ class Ctx:
     #: ``exit_`` above are *that* well's, so everything downstream -- the
     #: grouping, the split, the chance -- is unchanged by the others existing.
     selected_well: str = "A"
+    #: Half-width of the "contact lands on the well" window, in metres. Feeds both
+    #: tab ④'s metric and 3.5's swept curve, which is why it is resolved once here
+    #: rather than read separately in each -- they disagreed about the same quantity
+    #: until 2026-08-14, the curve keeping the 2.0 m default while the metric used
+    #: whatever had been typed.
+    at_well_window: float = 2.0

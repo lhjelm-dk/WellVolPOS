@@ -706,7 +706,7 @@ def fig_b1_volume_split(
         families.append(
             (vsweep.at_well_mean, vsweep.at_well_p90, vsweep.at_well_p50,
              vsweep.at_well_p10, vsweep.at_well_n,
-             f"At the well (contact within ±{vsweep.at_well_window:g} m)", None, "-."))
+             f"At the well (contact within ±{vsweep.at_well_window:g} m)", None, "-"))
 
     for mean, p90, p50, p10, counts, label, role, style in families:
         col = colour(role, dark) if role else p["muted"]

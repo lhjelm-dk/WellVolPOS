@@ -33,7 +33,8 @@ def load(name: str, data: bytes, mapping_items: tuple = ()):
 
 @st.cache_data(show_spinner=False)
 def volume_sweep(name: str, data: bytes, mapping_items: tuple,
-                 pos: float, gap: float, mefs: float, reference: str):
+                 pos: float, gap: float, mefs: float, reference: str,
+                 at_well_window: float = 2.0):
     """The proven/possible sweep, cached on the settings that determine it.
 
     The most expensive computation on the page -- it re-splits every trial at every
@@ -47,4 +48,10 @@ def volume_sweep(name: str, data: bytes, mapping_items: tuple,
     return run_volume_sweep(
         ts_, ad_, pos, z_gap=gap, mefs=mefs,
         reference=ReferenceContour(reference), n_boot=400,
+        # **The window is a setting and reaches the sweep** (found 2026-08-14). Tab ④'s
+        # at-the-well metric took the user's window while this curve kept the 2.0 m
+        # default, so the metric and the curve above it could disagree about the same
+        # quantity with nothing on screen saying why. It is part of the cache key,
+        # because changing it changes every point of the curve.
+        at_well_window=float(at_well_window),
     )

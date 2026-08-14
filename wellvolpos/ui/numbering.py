@@ -44,8 +44,11 @@ FIGURE_NUMBERS = {
     # copies of one figure on two tabs is one more place for them to disagree.
     # The figure function survives -- 4.3 *is* it -- and keeps its export key.
     "b1": "3.5",
-    "b13": "3.6",
-    "b2": "3.7",
+    # 3.6 before 3.7 on Lars's order (2026-08-14): the regret curve reads directly
+    # off the volume split above it, and the unproven volume is the follow-on
+    # question -- "and how much is under the well I have just described".
+    "b2": "3.6",
+    "b13": "3.7",
     "b7": "3.8",
     "b8": "3.9",
     "b9": "3.10",

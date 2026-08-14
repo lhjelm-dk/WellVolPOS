@@ -86,6 +86,7 @@ from wellvolpos.ui.common import badge as _badge
 # from the tab split, and two copies of a default is a drift waiting to happen.
 from wellvolpos.ui.conventions import CHANCE_DEFAULTS, PLAY_DEFAULTS
 from wellvolpos.ui.loading import load as _load
+from wellvolpos.core.rose import AT_WELL_WINDOW_M
 from wellvolpos.ui.wells import read_selected, read_wells
 from wellvolpos.ui.tabstyle import inject as _inject_tab_style
 from wellvolpos.viz import (
@@ -350,6 +351,10 @@ with tabs[0]:
 wells = read_wells(ts, zmin, zmax)
 _selected = read_selected(wells)
 entry, exit_ = _selected.entry, _selected.exit
+# The at-the-well window, read here for the same reason the chance table is: it feeds
+# a *swept curve* on tab ③ as well as the metric on tab ④, and the sweep runs before
+# either tab renders. Seeded with setdefault so the widget on tab ④ still owns the key.
+at_well_window = float(st.session_state.setdefault("w_atw_window", AT_WELL_WINDOW_M))
 with tabs[0]:
     st.divider()
     st.subheader("Import")
@@ -596,6 +601,7 @@ ctx = Ctx(
     ad=ad if has_area else None, has_area=has_area,
     entry=entry, exit_=exit_,
     wells=wells, selected_well=_selected.label,
+    at_well_window=at_well_window,
     mefs=mefs, ref=ref, scheme=scheme, area_scale=area_scale,
     elements=elements, play_elements=play_elements, play_chance=play_chance,
     risking_convention=risking_convention, pos=pos, pos_source=pos_source,

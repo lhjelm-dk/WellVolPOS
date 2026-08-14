@@ -23,6 +23,8 @@ an explicit ``hovertemplate`` in domain units.
 
 from __future__ import annotations
 
+from typing import Sequence
+
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -1180,8 +1182,10 @@ def pfig_b1_volume_split(
         fig.add_scatter(
             x=thin(mean, counts, min_support), y=vsweep.z, mode="lines",
             name=f"{label} {cond}".strip(),
-            line=dict(color=col, width=3 if role else 2,
-                      dash="solid" if role else "dashdot"),
+            # **Solid, like the other two** (Lars, 2026-08-14). It was dash-dot to mark
+            # it as a seam between classes rather than a class, but that read as a
+            # lesser curve; the neutral grey already carries the distinction.
+            line=dict(color=col, width=3 if role else 2.4, dash="solid"),
             hovertemplate=(f"{label}<br>%{{x:.2f}} MMboe at " + DEPTH_HOVER
                            + "<extra></extra>"),
         )
@@ -1218,6 +1222,7 @@ def pfig_b1_volume_split(
 
 def pfig_b13_below_exit(
     vsweep: VolumeSweep, *, current_z: float | None = None,
+    others: "Sequence[tuple[str, VolumeSweep]] | None" = None,
     min_support: int = MIN_SUPPORT, zlim: tuple[float, float] | None = None,
     show_depth_labels: bool = True, dark: bool = False,
     height: int | None = PANEL_HEIGHT,
@@ -1271,6 +1276,23 @@ def pfig_b13_below_exit(
             hovertemplate=(f"{tag} %{{x:.2f}} MMboe below the exit at " + DEPTH_HOVER
                            + "<extra></extra>"),
         )
+    # **One curve per candidate**, because this volume depends on the *exit* and each
+    # well has its own (Lars, 2026-08-14). A candidate with a different entry-to-exit
+    # spacing sweeps a different curve entirely -- a deeper exit proves more of the
+    # column and leaves less unproven -- so a single curve drawn at the selected
+    # well's spacing said nothing about the others. Each is swept with its own gap.
+    for label, sweep_i in (others or ()):
+        if sweep_i.below_lkh_mean_if_any is None:
+            continue
+        fig.add_scatter(
+            x=thin(sweep_i.below_lkh_mean_if_any, sweep_i.n_discovery, min_support),
+            y=sweep_i.z, mode="lines", name=f"Mean — Well {label} spacing",
+            line=dict(color=p["muted"], width=1.4, dash="dash"),
+            hovertemplate=(f"Well {label} spacing ({sweep_i.z_gap:.0f} m)"
+                           "<br>mean %{x:.2f} MMboe below LKH at " + DEPTH_HOVER
+                           + "<extra></extra>"),
+        )
+
     if vsweep.mefs is not None:
         _vline(fig, vsweep.mefs, colour("minimum", dark), "dot", "MEFS")
     if current_z is not None:

@@ -132,11 +132,13 @@ def render(ctx: Ctx) -> None:
         # because it is what the original calculation used, but it is a tuning
         # constant with a result attached and it belongs on screen.
         _atw_win = st.number_input(
-            "At-the-well window, ± m", 0.5, 25.0, AT_WELL_WINDOW_M, 0.5,
+            "At-the-well window, ± m", 0.5, 25.0, step=0.5,
             key="w_atw_window",
             help="How close a trial's contact must be to the reservoir entry to count "
                  "as landing *on* the well. Widen it for more trials and a blurrier "
-                 "answer; narrow it until the count gets too small to mean anything.",
+                 "answer; narrow it until the count gets too small to mean anything. "
+                 "**It also sets the at-the-well curve on 3.5**, which used to keep the "
+                 "2 m default no matter what was typed here.",
         )
         _atw, _atw_n = at_the_well_volume(ts, entry, window_m=float(_atw_win))
         k = st.columns(4)
