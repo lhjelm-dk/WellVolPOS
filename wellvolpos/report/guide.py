@@ -282,11 +282,53 @@ still does, on every figure and in the exported artefacts.
     st.divider()
     st.markdown("### Two different minimum volumes")
     st.warning(
-        "**MCFS / MEFS** — minimum commercial (Rose) or economic (this app's sidebar) field "
-        "size. The same threshold under two names: the smallest discovery worth **developing**."
+        "**MCFS / MEFS** — minimum commercial (Rose) or economic (this app's input) field "
+        "size. As used here, the same threshold under two names: the smallest discovery "
+        "worth **developing**, and one input serves both."
         "\n\n**The assessment minimum** — a minimum column height below the apex. The smallest "
         "accumulation worth **carrying in the assessment at all**. A different quantity, and "
         "the one Lars's reference figure labels *Min. volume*."
+    )
+    st.markdown(
+        """
+**Where the two names do come apart.** Some houses separate them: *economic* is the volume
+at which the project breaks even, NPV = 0; *commercial* adds strategic, contractual and
+above-ground hurdles on top, so MCFS ≥ MEFS. This app carries **one** threshold and one
+line — if your house separates them, enter whichever you are testing against and the label
+follows it.
+        """
+    )
+
+    st.divider()
+    st.markdown("### Reading a volume against the line")
+    st.info(
+        "**A percentile does not have a probability of exceeding the threshold.** P90 is a "
+        "fixed volume: it clears MEFS or it does not, and that is 0 or 1 — so a column of "
+        "four probabilities against P90 / P50 / Pmean / P10 would be four restatements of "
+        "one fact."
+        "\n\n**The quantity that does have a probability is the concept**, and it already "
+        "has a name: `P(volume > MEFS)` is the *exceedance probability at MEFS* — which is "
+        "the percentile the line itself sits at. One number per volume concept."
+    )
+    st.markdown(
+        """
+So tab ④ gives both halves, and they are different kinds of reading:
+
+* the **ladder** — P90 / P50 / Pmean / P10 with a ✓ or ✗ against the line. This says
+  *between which percentiles* the threshold falls, which is what a reader scans for.
+  Pmean is marked as not a percentile; it sits between P50 and P10 because the
+  distribution is right-skewed.
+* **`P(> MEFS)`** — the exact chance, **conditional on that concept's own outcome**. The
+  attic's is conditional on a charged dry hole, the unproven volume's on the well leaving
+  the reservoir in hydrocarbons. They are not on one footing and must never be summed.
+
+The two agree by construction — if the P50 clears the line then the chance is at least a
+half — and a test asserts it, because a ladder that contradicts its own probability is
+invisible on screen.
+
+**On the well-associated volume, `P(> MEFS)` is exactly Rose's `Pmcfs(well)`**, so the
+ladder and the commercial-chance strip above it are the same arithmetic read two ways.
+        """
     )
     st.markdown(
         """

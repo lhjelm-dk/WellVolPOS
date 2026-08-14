@@ -1004,13 +1004,47 @@ def test_exceedance_marks_are_labelled_by_value_and_sit_on_the_curve(reduced, gr
     fig = I.pfig_a5_exceedance(reduced, groups, vc, mefs=14.0,
                                pos_prospect=POS, p_well=0.4576)
     marks = [t for t in fig.data if t.mode and "markers" in t.mode]
+    # The MEFS crossings are markers too, and they carry a *probability* rather than a
+    # volume -- so they are separated here rather than loosening the label check that
+    # is the point of this test.
+    crossings = [t for t in marks if "> MEFS" in (t.text[0] if t.text else "")]
+    stats = [t for t in marks if t not in crossings]
     # Four statistics on each of the prospect's two readings, since A5 is
     # prospect-only now.
-    assert len(marks) == 8
-    for t in marks:
+    assert len(stats) == 8
+    for t in stats:
         assert t.text is not None and t.text[0].strip().replace(",", "").replace(".", "").isdigit()
         # The label is the volume, and the statistic's name is in the hover.
         assert any(k in t.hovertemplate for k in ("P90", "P50", "P10", "Mean"))
+
+
+def test_the_mefs_crossing_is_marked_and_agrees_with_the_readout(reduced, groups, vc):
+    """The probability of exceeding MEFS, read off {a5} rather than only tabulated.
+
+    Lars, 2026-08-14. It is the same number ``core.mefs`` reports for the concept, so
+    the figure and tab ④'s ladder cannot disagree -- and the *conditional* crossing
+    must sit above the *unconditional* one, since risking scales the whole curve down.
+    """
+    import numpy as np
+
+    fig = I.pfig_a5_exceedance(reduced, groups, vc, mefs=14.0,
+                               pos_prospect=POS, p_well=0.4576)
+    crossings = [t for t in fig.data
+                 if t.mode and "markers" in t.mode and "> MEFS" in (t.text[0] if t.text else "")]
+    # One per reading: conditional and unconditional.
+    assert len(crossings) == 2, [t.name for t in crossings]
+    assert all(float(t.x[0]) == pytest.approx(14.0) for t in crossings)
+
+    heights = sorted(float(t.y[0]) for t in crossings)
+    assert heights[0] < heights[1], heights          # risked sits below conditional
+    # And the ratio is the chance the curve was risked by.
+    assert heights[0] / heights[1] == pytest.approx(POS, rel=0.02)
+
+    # The conditional height is P(prospect resource > MEFS | success), which is what
+    # the same trials give directly.
+    res = reduced.col("resource")
+    direct = float((res[res > 0] > 14.0).mean()) * 100.0
+    assert heights[1] == pytest.approx(direct, abs=0.5)
 
 
 def test_exceedance_marks_use_the_petroleum_orientation(reduced):

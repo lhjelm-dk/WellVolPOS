@@ -470,9 +470,14 @@ with _settings_slot.container():
         _default_mefs = float(np.round(
             np.mean(ts.col("resource")[ts.col("resource") > 0]) * 0.85))
         mefs = st.number_input(
-            "MEFS (MMboe)", min_value=0.0, value=_default_mefs, step=0.5, key="w_mefs",
-            help="Minimum economic field size — Rose's MCFS under another name. Drawn "
-                 "as a reference line and never applied to the distributions.")
+            "MEFS / MCFS (MMboe)", min_value=0.0, value=_default_mefs, step=0.5,
+            key="w_mefs",
+            help="Minimum economic field size, or Rose's minimum commercial field "
+                 "size — the same threshold under two names, so one input serves "
+                 "both. Where a house does separate them (economic at NPV = 0, "
+                 "commercial adding strategic and contractual hurdles, so MCFS >= "
+                 "MEFS), enter the one you are testing against. Drawn as a reference "
+                 "line and never applied to the distributions.")
         ref = st.radio(
             "Reference contour for the location factor",
             [ReferenceContour.CREST, ReferenceContour.P90_AREA],

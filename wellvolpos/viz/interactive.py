@@ -817,6 +817,29 @@ def pfig_a5_exceedance(
                 ),
             )
             _mark_exceedance(fig, values, role, dark, chance=chance_used, show_text=True)
+            # **Where the curve crosses MEFS, read off the figure** (Lars, 2026-08-14
+            # asked for the probability of exceeding the threshold). The line on its
+            # own says where the threshold is; this says what it costs, which is the
+            # question. It is the same number tab ④'s ladder reports -- both are
+            # P(volume > MEFS), one drawn and one tabulated.
+            if mefs is not None and v.size:
+                # `pct` descends with volume, so it is reversed for np.interp, which
+                # requires an increasing x. Outside the sampled range the answer is
+                # the end value, which is what interp already returns.
+                y_at = float(np.interp(float(mefs), v, pct))
+                fig.add_scatter(
+                    x=[float(mefs)], y=[y_at], mode="markers+text",
+                    marker=dict(symbol="x-thin", size=11,
+                                line=dict(color=colour(role, dark), width=2.5)),
+                    text=[f"  {y_at:.1f}% > MEFS"], textposition="middle right",
+                    textfont=dict(size=10, color=colour(role, dark)),
+                    name=f"{name} at MEFS" if reading == "conditional"
+                         else f"{name} at MEFS — risked",
+                    legendgroup=name, showlegend=False,
+                    hovertemplate=(f"{READING_LABELS[reading]}<br>"
+                                   f"{y_at:.1f}% chance of exceeding MEFS "
+                                   f"{float(mefs):.2f} MMboe<extra></extra>"),
+                )
     if mefs is not None:
         _vline(fig, mefs, p["muted"], "dot", "MEFS")
 
@@ -2573,8 +2596,9 @@ def pfig_b7_frontier(
     log = chance_scale == "log"
     fig.update_layout(
         title=("B7 · Chance against volume — the location trade-off "
-               f"({reference_label(vsweep.reference)}, "
-               f"exit = entry + {vsweep.z_gap:.0f} m)"),
+               f"({reference_label(vsweep.reference)})"
+               "<br><sub>bold = well associated mean · thin = its P90 / P50 / P10 · "
+               f"dashed = proven, at exit = entry + {vsweep.z_gap:.0f} m</sub>"),
         xaxis_title="Mean resource (MMboe)",
         yaxis_title=("P_well  (%, log scale 1–110 — equal steps are equal "
                      "*proportional* loss of chance)" if log else "P_well  (%)"),

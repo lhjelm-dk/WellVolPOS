@@ -552,6 +552,15 @@ def fig_a5_exceedance(
                     ls="-" if reading == "conditional" else "--",
                     label=label if reading == "conditional" else f"{label} — risked")
             _mark_exceedance_mpl(ax, values, role, dark, chance=chance_used, show_text=True)
+            # Where the curve crosses MEFS -- see the plotly twin. The threshold line
+            # says where the bar is; this says what clearing it costs.
+            if mefs is not None:
+                y_at = float(np.interp(float(mefs), v, pct))
+                ax.plot([float(mefs)], [y_at], marker="x", ms=7, mew=2.0,
+                        color=colour(role, dark), zorder=5)
+                ax.annotate(f"{y_at:.1f}% > MEFS", (float(mefs), y_at),
+                            textcoords="offset points", xytext=(6, 0), va="center",
+                            fontsize=7.5, color=colour(role, dark))
 
     if mefs is not None:
         ax.axvline(mefs, color=p["muted"], ls=":", lw=1.0)

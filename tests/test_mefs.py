@@ -1,0 +1,129 @@
+"""Every volume concept read against the MEFS / MCFS line.
+
+The point of the module under test is that a **percentile has no probability of
+exceeding a threshold** -- it clears the line or it does not. What has a probability is
+the concept, and that probability is the exceedance percentile the line sits at. These
+tests pin the two together, because a ladder that disagrees with its own probability is
+the one failure the module exists to prevent and it is invisible on screen.
+"""
+
+import numpy as np
+import pytest
+
+from wellvolpos.core import (
+    AreaDepth,
+    MEFS_RUNGS,
+    class_summary,
+    group_trials,
+    mefs_readout,
+    split_trials,
+)
+from wellvolpos.core.rose import commercial_chance
+
+from .conftest import ENTRY, EXIT
+
+
+@pytest.fixture(scope="module")
+def readout(reduced):
+    ad = AreaDepth.from_trials(reduced.col("contact"), reduced.col("area"))
+    g = group_trials(reduced, ENTRY, EXIT)
+    vc = split_trials(reduced, ad, g, ENTRY, EXIT)
+    return mefs_readout(vc, g, class_summary(vc, g), 14.0), g, vc
+
+
+def test_the_ladder_and_the_probability_cannot_contradict_each_other(readout):
+    """If the P50 clears the line, the chance of clearing it is at least a half.
+
+    The ladder and ``p_exceeds`` are computed from the same trials by two different
+    routes -- percentiles of the values against a mean of a boolean -- so agreement is
+    a real check rather than a restatement. A wrong conditioning mask on either side
+    breaks it, which is exactly how the comparison table came to disagree with tab ④
+    on 2026-08-14.
+    """
+    r, _, _ = readout
+    assert r.concepts, "no concepts read"
+    for c in r.concepts:
+        # A rung that clears the line is a volume at least this likely to be exceeded.
+        for rung, floor in (("p90", 0.90), ("p50", 0.50), ("p10", 0.10)):
+            if c.clears(rung):
+                assert c.p_exceeds >= floor - 1e-9, (
+                    f"{c.label}: {rung.upper()} clears MEFS but P(>MEFS) is "
+                    f"{c.p_exceeds:.3f}, below {floor}")
+            else:
+                assert c.p_exceeds <= floor + 1e-9, (
+                    f"{c.label}: {rung.upper()} does not clear MEFS but P(>MEFS) is "
+                    f"{c.p_exceeds:.3f}, above {floor}")
+
+
+def test_the_rungs_are_in_petroleum_order_and_the_mean_sits_inside_them(readout):
+    r, _, _ = readout
+    for c in r.concepts:
+        v = c.volumes
+        assert v["p90"] <= v["p50"] <= v["p10"] + 1e-9, (c.label, v)
+        assert v["p90"] <= v["mean"] <= v["p10"] + 1e-9, (c.label, v)
+
+
+def test_the_volumes_are_the_ones_already_on_screen(reduced):
+    """Passed in from ``class_summary``, never recomputed.
+
+    Recomputing them is how a table comes to disagree with the figure beside it, and
+    the difference would be in the *conditioning* rather than the arithmetic -- so it
+    would look like a rounding issue and be a population issue.
+    """
+    ad = AreaDepth.from_trials(reduced.col("contact"), reduced.col("area"))
+    g = group_trials(reduced, ENTRY, EXIT)
+    vc = split_trials(reduced, ad, g, ENTRY, EXIT)
+    cs = class_summary(vc, g)
+    r = mefs_readout(vc, g, cs, 14.0)
+    for c in r.concepts:
+        for rung in MEFS_RUNGS:
+            assert c.volumes[rung] == pytest.approx(cs[c.key][rung], abs=0, rel=0)
+
+
+def test_each_concept_carries_its_own_conditioning_population(readout):
+    """The four rows are not on one footing, and the counts prove it.
+
+    The attic lives in charged dry holes and the unproven volume in the trials where
+    the well left the reservoir in hydrocarbons -- different events, different
+    denominators. A reader who sums or ranks these without the condition is comparing
+    probabilities of different things.
+    """
+    r, g, _ = readout
+    counts = {c.key: c.n for c in r.concepts}
+    assert counts["discovery"] == int(np.asarray(g.discovery).sum())
+    assert counts["proven"] == int(np.asarray(g.discovery).sum())
+    assert counts["below_lkh"] == int(np.asarray(g.hc_to_exit).sum())
+    assert counts["attic_dry_hole"] == int(np.asarray(g.dry_with_attic).sum())
+    # And they really are different, so the distinction is not academic here.
+    assert len(set(counts.values())) > 1, counts
+
+
+def test_the_well_associated_reading_is_roses_pmcfs(reduced):
+    """``P(well associated > MEFS | discovery)`` is exactly Rose's ``Pmcfs(well)``.
+
+    Two modules compute it -- ``core.rose`` for the commercial chance and ``core.mefs``
+    for the readout -- and if they ever disagree, one of tab ④'s two new blocks is
+    quoting a number the other denies.
+    """
+    from wellvolpos.core import p_well as p_well_fn
+
+    ad = AreaDepth.from_trials(reduced.col("contact"), reduced.col("area"))
+    g = group_trials(reduced, ENTRY, EXIT)
+    vc = split_trials(reduced, ad, g, ENTRY, EXIT)
+    chance = p_well_fn(reduced, ENTRY, 0.7605)
+
+    r = mefs_readout(vc, g, class_summary(vc, g), 14.0)
+    cc = commercial_chance(reduced, g, vc.proven, chance.p_well, 14.0)
+
+    assert r.by_key("discovery").p_exceeds == pytest.approx(cc.p_mcfs_downdip, abs=1e-12)
+    assert r.by_key("proven").p_exceeds == pytest.approx(cc.p_mcfs_proven, abs=1e-12)
+    # And Pc is the product, not a third independent estimate.
+    assert cc.pc_well == pytest.approx(chance.p_well * cc.p_mcfs_downdip, abs=1e-12)
+
+
+def test_the_bracket_names_the_two_rungs_the_threshold_falls_between(readout):
+    r, _, _ = readout
+    assert "between P90 and P50" in r.by_key("discovery").bracket()
+    # The attic never clears 14 MMboe on this file, and the wording says so rather
+    # than naming a pair of rungs that do not bracket anything.
+    assert "below every rung" in r.by_key("attic_dry_hole").bracket()

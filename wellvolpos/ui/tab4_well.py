@@ -31,7 +31,8 @@ from ..viz import (
     pfig_c2_exceedance,
     pfig_map_view,
 )
-from ..core.rose import AT_WELL_WINDOW_M
+from ..core import MEFS_RUNGS, mefs_readout
+from ..core.rose import AT_WELL_WINDOW_M, commercial_chance
 from ..viz.theme import reference_label
 from .common import C2_HEIGHT, chart as _chart, split_caveat
 from .context import Ctx
@@ -91,6 +92,52 @@ def render(ctx: Ctx) -> None:
         "never multiplied into one for reporting: only the second moves when the well moves, "
         "so a poor chance table cannot be fixed by drilling deeper."
     )
+
+    # ------------------------------------------------------- the commercial chance
+    # **P_well and Pc are different questions and the app said only the first here**
+    # (Lars, 2026-08-14). P_well is the chance of *seeing hydrocarbons*; Pc is the
+    # chance of seeing enough of them to be worth developing. A well can be very
+    # likely to find something and unlikely to find a field.
+    #
+    # Rose gives Pc(well) as the number to carry into an EMV calculation. It is a
+    # *chance*, not an economic value, which is why it is in scope while economics is
+    # not. Drawn as the same left-to-right multiplication as the row above, because
+    # that is the form that stops the two factors being confused for each other.
+    if has_area:
+        # `ctx.vc` -- the split computed once in app.py and passed down. Re-splitting
+        # here would let this block and the volumes below disagree about one well.
+        _cc = commercial_chance(ts, groups, vc.proven, chance.p_well, mefs)
+        st.markdown("##### The chance this well finds a *commercial* accumulation")
+        cc_cols = st.columns(4)
+        cc_cols[0].metric("P well", f"{chance.p_well:.1%}",
+                          help="The chance of finding hydrocarbons at all — carried "
+                               "down from the row above.")
+        cc_cols[1].metric("× Pmcfs(well)", f"{_cc.p_mcfs_downdip:.1%}",
+                          help="Given a discovery, the chance the WELL-ASSOCIATED "
+                               "volume exceeds MEFS. Conditional on the discovery, so "
+                               "it is not a chance of anything on its own.")
+        cc_cols[2].metric("= Pc(well)", f"{_cc.pc_well:.1%}",
+                          help="Rose's commercial chance at this location: the "
+                               "unconditional chance of a commercial discovery. This "
+                               "is the number an EMV calculation takes.")
+        cc_cols[3].metric("MEFS / MCFS", f"{mefs:,.1f} MMboe",
+                          help="Minimum economic (this app) or commercial (Rose) "
+                               "field size — the same threshold under two names. Set "
+                               "in tab ①, drawn as a line, never applied to the "
+                               "distributions.")
+        st.caption(
+            f"`Pc(well) = P_well × Pmcfs(well)` — **{chance.p_well:.4f} × "
+            f"{_cc.p_mcfs_downdip:.4f} = {_cc.pc_well:.4f}**. Read the two apart: "
+            f"**P_well {chance.p_well:.1%}** is the chance of *seeing hydrocarbons*, "
+            f"**Pc {_cc.pc_well:.1%}** the chance of seeing a *developable* accumulation. "
+            f"A location can score well on the first and poorly on the second.\n\n"
+            f"**Rose conditions on the whole well-associated volume; "
+            f"{fig_ref('{b2}')} conditions on the proven split.** On the proven volume "
+            f"alone the conditional chance is {_cc.p_mcfs_proven:.1%}, which would give "
+            f"Pc = {chance.p_well * _cc.p_mcfs_proven:.1%}. Both are legitimate and they "
+            f"answer different questions — what the accumulation holds, against what "
+            f"this well would establish. Neither may be quoted as the other."
+        )
 
     if has_area:
         cs = class_summary(vc, groups)
@@ -153,6 +200,46 @@ def render(ctx: Ctx) -> None:
                 f"{fig_ref('{b2}')}'s regret curve answers."
             )
 
+        # --------------------------------------------------- every volume vs the line
+        # **A percentile has no probability of exceeding a threshold** (Lars asked for
+        # one, 2026-08-14). P90 is a fixed volume: it clears MEFS or it does not, and
+        # that is 0 or 1. What has a probability is the *concept*, and that probability
+        # is the exceedance percentile the line sits at -- one number, not four.
+        #
+        # So the table gives both halves of the reading: the ladder with a clears-or-not
+        # mark, which says between which percentiles the threshold falls and is what a
+        # reader scans for, and the exact chance beside it. core/mefs.py owns the
+        # arithmetic and asserts the two cannot contradict each other.
+        _mr = mefs_readout(vc, groups, cs, mefs)
+        st.markdown(f"##### Every volume against the MEFS / MCFS line, {mefs:,.1f} MMboe")
+        _rows = []
+        for _c in _mr.concepts:
+            _row = {"Volume": _c.label, "Conditional on": _c.condition}
+            for _r in MEFS_RUNGS:
+                _v = _c.volumes[_r]
+                _name = "Pmean" if _r == "mean" else _r.upper()
+                _row[_name] = f"{_v:,.2f} {'✓' if _c.clears(_r) else '✗'}"
+            _row["P(> MEFS)"] = f"{_c.p_exceeds:.1%}"
+            _row["Trials"] = f"{_c.n:,}"
+            _rows.append(_row)
+        st.dataframe(pd.DataFrame(_rows), hide_index=True, width="stretch")
+        _wa = _mr.by_key("discovery")
+        st.caption(
+            f"**✓ clears the line, ✗ does not.** The ticks bracket the answer and the "
+            f"last column is the answer: on the well-associated volume the threshold "
+            f"falls {_wa.bracket()}, and the chance of clearing it is "
+            f"**{_wa.p_exceeds:.1%}** — which is the same {mefs:,.1f} MMboe read as a "
+            f"percentile rather than as a volume.\n\n"
+            f"**Each row is conditional on a different event**, named in its own column, "
+            f"so the four probabilities are not comparable and must not be summed. "
+            f"*Pmean is not a percentile* — it sits between P50 and P10 because the "
+            f"distribution is right-skewed, not because it is a rung.\n\n"
+            f"**The line is never applied to the distributions.** Per Longley (2026) a "
+            f"volume cut-off raises the unrisked mean while lowering commercial chance, "
+            f"and the two do not cancel — so MEFS is read against, never used to filter."
+        )
+
+        st.divider()
         # ----------------------------------------------- the same closure, Rose's way
         # Added 2026-08-13. Their partition is at the *well*, ours at the *penetrated
         # interval*, and both are useful -- but mixing the vocabularies silently is how
