@@ -120,8 +120,8 @@ def test_a_chance_takes_the_colour_of_the_volume_it_belongs_to():
 def test_possible_is_no_longer_an_alias_for_prospect():
     """It was, which made aqua mean both "prospect totals" and "possible below
     exit" -- a collision carried over from the mock-ups."""
-    assert colour("possible") != colour("prospect")
-    assert colour("possible") != colour("proven")
+    assert colour("below_lkh") != colour("prospect")
+    assert colour("below_lkh") != colour("proven")
 
 
 def _simulate_cvd(hex_colour: str, matrix):

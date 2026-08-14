@@ -214,7 +214,7 @@ def test_the_split_still_runs_on_correlated_data(tmp_path):
     vc = split_trials(ts, ad, groups, 3450.0, 3500.0)
     disc = groups.discovery
     assert disc.sum() > 100
-    total = vc.proven[disc] + vc.possible[disc]
+    total = vc.proven[disc] + vc.below_lkh[disc]
     assert np.allclose(total, vc.discovery_total[disc], rtol=1e-9)
 
 

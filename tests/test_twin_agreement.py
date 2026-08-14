@@ -157,7 +157,7 @@ NAME_EXEMPT = {
     "A8": {"well entry", "sampled contacts"},
     "A9": {"prospect (n=7,605)"},
     # B0's bands are annotated in both, but only plotly names the traces.
-    "B0": {"attic if dry", "proven", "possible below exit"},
+    "B0": {"attic if dry", "proven", "unproven below lkh"},
     "B3": {"reduction"},
 }
 

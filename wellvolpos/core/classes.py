@@ -61,7 +61,7 @@ from .structure import AreaDepth
 @dataclass
 class VolumeClasses:
     proven: np.ndarray
-    possible: np.ndarray
+    below_lkh: np.ndarray
     attic: np.ndarray
     discovery_total: np.ndarray
     lkh: np.ndarray          # lowest known hydrocarbon, per trial (NaN if dry)
@@ -142,7 +142,7 @@ def split_trials(
     if frac is None:
         # Both areas come from the same fitted curve. Using the stored area for
         # the denominator instead would leave a residual-sized error, so a well
-        # that logs the contact would report a sliver of "possible" volume below
+        # that logs the contact would report a sliver of "below_lkh" volume below
         # a depth it demonstrably reached.
         a_lkh = np.where(disc, ad.area_at(np.where(disc, lkh, z_entry)), 0.0)
         a_contact = np.where(disc, ad.area_at(contact), 1.0)
@@ -186,8 +186,8 @@ def class_summary(vc: VolumeClasses, groups: Groups) -> dict[str, dict[str, floa
     # Selected on the volume being positive, which is exactly that event -- a trial
     # whose contact falls inside the penetrated interval has nothing below the exit.
     #
-    # ``possible_of_discovery`` spans every discovery trial, zeros included, and is the
-    # **additive** member: proven + possible_of_discovery = discovery, exactly. That is
+    # ``below_lkh_of_discovery`` spans every discovery trial, zeros included, and is the
+    # **additive** member: proven + below_lkh_of_discovery = discovery, exactly. That is
     # what makes the split a decomposition rather than a list, so it is kept -- but it
     # must not be reported under the *possible* label, because 41 % of its population
     # (81 % on the other demo prospect) contributes an exact zero and drags every
@@ -201,8 +201,8 @@ def class_summary(vc: VolumeClasses, groups: Groups) -> dict[str, dict[str, floa
         # interval to exactly zero, so the two masks disagreed on a handful of trials
         # and this stopped matching the sweep's own conditional mean. Use the engine's
         # mask rather than re-deriving the geology from the arithmetic.
-        "possible": stat(vc.possible, groups.hc_to_exit),
-        "possible_of_discovery": stat(vc.possible, groups.discovery),
+        "below_lkh": stat(vc.below_lkh, groups.hc_to_exit),
+        "below_lkh_of_discovery": stat(vc.below_lkh, groups.discovery),
         "attic_dry_hole": stat(vc.attic, groups.dry_with_attic),
     }
 

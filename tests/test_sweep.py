@@ -151,15 +151,15 @@ def test_volume_sweep_matches_direct_split_at_the_reference_point(reduced, area_
     assert vsweep.z[0] == pytest.approx(ENTRY)
     assert vsweep.z_exit[0] == pytest.approx(EXIT)
     assert vsweep.proven_mean[0] == pytest.approx(cs["proven"]["mean"], abs=1e-9)
-    # `possible_of_discovery`, not `possible`: the sweep's `possible_mean` is the
+    # `below_lkh_of_discovery`, not `possible`: the sweep's `below_lkh_mean` is the
     # **additive** member, over every discovery trial, and since 2026-08-14
-    # `class_summary["possible"]` is conditional on there being anything below the
+    # `class_summary["below_lkh"]` is conditional on there being anything below the
     # exit. Comparing the two would be comparing different populations.
-    assert vsweep.possible_mean[0] == pytest.approx(
-        cs["possible_of_discovery"]["mean"], abs=1e-9)
-    if vsweep.possible_mean_if_any is not None:
-        assert vsweep.possible_mean_if_any[0] == pytest.approx(
-            cs["possible"]["mean"], abs=1e-9)
+    assert vsweep.below_lkh_mean[0] == pytest.approx(
+        cs["below_lkh_of_discovery"]["mean"], abs=1e-9)
+    if vsweep.below_lkh_mean_if_any is not None:
+        assert vsweep.below_lkh_mean_if_any[0] == pytest.approx(
+            cs["below_lkh"]["mean"], abs=1e-9)
     assert vsweep.attic_mean[0] == pytest.approx(cs["attic_dry_hole"]["mean"], abs=1e-9)
 
     direct = p_well(reduced, ENTRY, POS)
@@ -517,10 +517,10 @@ def test_the_possible_and_proven_exceedance_curves_are_mirror_images(reduced, ar
     from wellvolpos.core.sweep import run_volume_sweep
 
     vs = run_volume_sweep(reduced, area_depth, POS, n=25, mefs=8.0, z_gap=50.0)
-    assert vs.p_possible_exceeds_mefs is not None
+    assert vs.p_below_lkh_exceeds_mefs is not None
 
-    ok = np.isfinite(vs.p_possible_exceeds_mefs) & np.isfinite(vs.p_proven_exceeds_mefs)
-    poss, prov = vs.p_possible_exceeds_mefs[ok], vs.p_proven_exceeds_mefs[ok]
+    ok = np.isfinite(vs.p_below_lkh_exceeds_mefs) & np.isfinite(vs.p_proven_exceeds_mefs)
+    poss, prov = vs.p_below_lkh_exceeds_mefs[ok], vs.p_proven_exceeds_mefs[ok]
     assert poss.size >= 5
 
     # Direction, over the whole supported span rather than step by step: a sampled
@@ -615,10 +615,10 @@ def test_uncertainty_reduction_is_unchanged_on_a_file_with_no_chance_failures(fu
 
 
 def test_the_possible_volume_decomposes_into_a_chance_and_a_size(reduced, area_depth):
-    """``possible_mean = p_well_exits_in_hc x possible_mean_if_any``, exactly.
+    """``below_lkh_mean = p_well_exits_in_hc x below_lkh_mean_if_any``, exactly.
 
     Lars, 2026-08-14: the possible-below-exit curve was not intuitively meaningful,
-    and the reason is arithmetic. ``possible_mean`` averages over **every** discovery
+    and the reason is arithmetic. ``below_lkh_mean`` averages over **every** discovery
     trial, and a discovery whose contact falls inside the penetrated interval leaves
     nothing below the exit and contributes exactly zero -- 81 % of the discovery group
     on this file at 3500-3550 m. So the curve reports the upside averaged over the
@@ -638,18 +638,18 @@ def test_the_possible_volume_decomposes_into_a_chance_and_a_size(reduced, area_d
     from wellvolpos.core import run_volume_sweep
 
     vs = run_volume_sweep(reduced, area_depth, 0.7605, n=25, z_gap=50.0, mefs=15.0)
-    assert vs.possible_mean_if_any is not None
+    assert vs.below_lkh_mean_if_any is not None
     assert vs.p_well_exits_in_hc is not None
 
-    ok = (np.isfinite(vs.possible_mean) & np.isfinite(vs.possible_mean_if_any)
+    ok = (np.isfinite(vs.below_lkh_mean) & np.isfinite(vs.below_lkh_mean_if_any)
           & np.isfinite(vs.p_well_exits_in_hc))
     assert ok.sum() > 5, "not enough supported steps to test the identity"
-    lhs = vs.possible_mean[ok]
-    rhs = vs.p_well_exits_in_hc[ok] * vs.possible_mean_if_any[ok]
+    lhs = vs.below_lkh_mean[ok]
+    rhs = vs.p_well_exits_in_hc[ok] * vs.below_lkh_mean_if_any[ok]
     assert np.allclose(lhs, rhs, rtol=0, atol=1e-9), float(np.nanmax(np.abs(lhs - rhs)))
 
     # And the conditional reading is the larger one wherever the chance is below 1 --
     # which is the whole reason it is worth drawing separately.
     partial = ok & (vs.p_well_exits_in_hc < 0.99)
     assert partial.any()
-    assert np.all(vs.possible_mean_if_any[partial] > vs.possible_mean[partial])
+    assert np.all(vs.below_lkh_mean_if_any[partial] > vs.below_lkh_mean[partial])

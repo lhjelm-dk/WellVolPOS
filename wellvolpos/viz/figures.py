@@ -380,7 +380,7 @@ def fig_a2_outcome_tree(sweep: Sweep, *, current_z: float | None = None, dark: b
     ax.fill_betweenx(sweep.z, 0, cum0, color=p["muted"], label="Chance failure")
     ax.fill_betweenx(sweep.z, cum0, cum1, color=colour("attic", dark), label="Dry, with attic")
     ax.fill_betweenx(sweep.z, cum1, cum2, color=colour("tested", dark), label="Discovery, contact seen")
-    ax.fill_betweenx(sweep.z, cum2, cum3, color=colour("possible", dark), label="Discovery, HC to exit")
+    ax.fill_betweenx(sweep.z, cum2, cum3, color=colour("below_lkh", dark), label="Discovery, HC to exit")
 
     if current_z is not None and sweep.z.min() <= current_z <= sweep.z.max():
         ax.axhline(current_z, color=p["text"], ls="--", lw=1.0)
@@ -664,7 +664,7 @@ def fig_b0_section(
 
     band(ad.shallowest, z_entry, "attic", "attic if dry")
     band(z_entry, z_exit, "proven", "proven")
-    band(z_exit, ad.deepest, "possible", "possible\nbelow exit")
+    band(z_exit, ad.deepest, "below_lkh", "unproven\nbelow LKH")
 
     ax.plot(halfwidth, z, color=p["text_secondary"], lw=1.0)
     ax.plot(-halfwidth, z, color=p["text_secondary"], lw=1.0)
@@ -749,19 +749,19 @@ def fig_b13_below_exit(
     """
     fig, ax = new_figure(figsize=(6, 5), dark=dark)
     p = palette(dark)
-    col = colour("possible", dark)
+    col = colour("below_lkh", dark)
 
-    if vsweep.possible_mean_if_any is None:
-        ax.text(0.5, 0.5, "No below-exit volume on this sweep", ha="center",
+    if vsweep.below_lkh_mean_if_any is None:
+        ax.text(0.5, 0.5, "No unproven volume below LKH on this sweep", ha="center",
                 va="center", transform=ax.transAxes, fontsize=9, color=p["text"])
         fig.tight_layout()
         return fig, ax
 
-    ax.plot(thin(vsweep.possible_mean_if_any, vsweep.n_discovery, min_support),
+    ax.plot(thin(vsweep.below_lkh_mean_if_any, vsweep.n_discovery, min_support),
             vsweep.z, color=col, lw=2.0, label="Mean | HC seen to the exit")
-    for tag, arr in (("P90", vsweep.possible_p90_if_any),
-                     ("P50", vsweep.possible_p50_if_any),
-                     ("P10", vsweep.possible_p10_if_any)):
+    for tag, arr in (("P90", vsweep.below_lkh_p90_if_any),
+                     ("P50", vsweep.below_lkh_p50_if_any),
+                     ("P10", vsweep.below_lkh_p10_if_any)):
         if arr is not None:
             ax.plot(thin(arr, vsweep.n_discovery, min_support), vsweep.z, color=col,
                     lw=0.8, ls=":", label=f"{tag} | HC seen to the exit")
@@ -771,9 +771,9 @@ def fig_b13_below_exit(
         ax.axhline(current_z, color=p["well"], lw=1.0, ls="--")
 
     ax.set_xlim(left=0)
-    ax.set_xlabel("Volume below the exit (MMboe)")
+    ax.set_xlabel("Unproven volume below LKH (MMboe)")
     depth_axis(ax, zlim=zlim or (float(vsweep.z.min()), float(vsweep.z.max())))
-    ax.set_title("B13 · Volume below the reservoir exit — conditional on HC to the exit")
+    ax.set_title("B13 · Unproven below LKH — conditional on HC to the exit")
     ax.grid(True, lw=0.6, alpha=0.7)
     ax.legend(loc="lower right", fontsize=7)
     fig.tight_layout()
@@ -818,10 +818,10 @@ def fig_b2_chance_vs_regret(
     # The mirror image of the proven curve: deepening the well moves volume from
     # possible into proven. See the plotly twin for why the geometric reading
     # (p_well_exits_in_hc) is deliberately not drawn beside these.
-    if vsweep.p_possible_exceeds_mefs is not None:
-        p_possible = thin(vsweep.p_possible_exceeds_mefs, vsweep.n_discovery, min_support)
-        ax.plot(p_possible * 100.0, vsweep.z, color=colour("possible", dark), lw=1.8,
-                label="P(possible below exit > MEFS | discovery)")
+    if vsweep.p_below_lkh_exceeds_mefs is not None:
+        p_possible = thin(vsweep.p_below_lkh_exceeds_mefs, vsweep.n_discovery, min_support)
+        ax.plot(p_possible * 100.0, vsweep.z, color=colour("below_lkh", dark), lw=1.8,
+                label="P(unproven below LKH > MEFS | discovery)")
 
     # Labelled for exactly what it is. It is tempting to call this "where
     # chance stops outweighing regret", and wrong: P_well is unconditional
@@ -1662,7 +1662,7 @@ def fig_map_view(
     a_proven = max(np.pi * (r_exit ** 2 - r_entry ** 2), 0.0)
     a_possible = max(np.pi * (r_base ** 2 - r_exit ** 2), 0.0)
     for r_out, r_in, role, label in (
-        (r_base, r_exit, "possible", f"Possible — below exit ({a_possible:.2f} km²)"),
+        (r_base, r_exit, "below_lkh", f"Unproven below LKH ({a_possible:.2f} km²)"),
         (r_exit, r_entry, "tested", f"Potentially proven — entry to exit ({a_proven:.2f} km²)"),
         (r_entry, 0.0, "attic", f"Potential attic — up-dip of entry ({a_attic:.2f} km²)"),
     ):
@@ -1768,7 +1768,7 @@ def _reservoir_section_mpl(ax, ad, ts, *, z_entry, z_exit, dark, area_scale="are
         for lo, hi, role, label in () if not show_classes else (
             (-np.inf, z_entry, "up_dip", "up-dip"),
             (z_entry, z_exit, "tested", "tested"),
-            (z_exit, np.inf, "possible", "possible"),
+            (z_exit, np.inf, "below_lkh", "unproven below LKH"),
         ):
             upper = np.clip(top, lo, hi)
             lower = np.clip(base, lo, hi)

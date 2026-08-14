@@ -195,8 +195,8 @@ def render(ctx: Ctx) -> None:
                 f"the interval the well actually penetrates, because a well proves what it "
                 f"drills through. So his updip ({_rp.updip_mean:.2f}) is our proven "
                 f"({cs['proven']['mean']:.2f}) *minus* the entry-to-exit slice, and his "
-                f"downdip ({_rp.downdip_mean:.2f}) is our possible-below-exit "
-                f"({cs['possible_of_discovery']['mean']:.2f}) *plus* that same slice — "
+                f"downdip ({_rp.downdip_mean:.2f}) is our unproven-below-LKH volume "
+                f"({cs['below_lkh_of_discovery']['mean']:.2f}) *plus* that same slice — "
                 f"{cs['proven']['mean'] - _rp.updip_mean:.2f} MMboe here. Both partitions sum "
                 f"to the well-associated volume; neither is the well-associated volume."
             )
@@ -278,12 +278,14 @@ def render(ctx: Ctx) -> None:
              "The part of that accumulation between the reservoir **entry** and the well's lowest "
              "known hydrocarbon, which is the shallower of the contact and the reservoir **exit**. "
              "What a discovery would have *proven*. The headline KPI."),
-            ("Possible — below the reservoir exit",
-             "The rest of the well-associated volume: what lies **below the depth at which the "
-             "well left the reservoir**. The well was still in hydrocarbons when it exited, so it "
-             "never established how far down they go. Well associated, but **not proven** — that "
-             "distinction is the whole reason this class exists instead of being folded into the "
-             "discovery case."),
+            ("Unproven below LKH",
+             "What lies **below LKH** — the well's lowest known hydrocarbon, which is the "
+             "shallower of the contact and the reservoir exit. The well was still in "
+             "hydrocarbons when it left the reservoir, so its **presence is confirmed and only "
+             "its extent is not**. That is why it is *unproven* rather than *possible*: "
+             "\"possible\" is a PRMS reserves class meaning low confidence of recovery, and "
+             "this volume is the opposite — certain to exist, unknown in size. Defined in "
+             "tab ⑥."),
             ("Up-dip / attic volume",
              "The accumulation in the trials where hydrocarbons are present but sit **entirely "
              "above** the well: the well is dry, the prospect is not. This is what a dry hole "
@@ -319,8 +321,8 @@ def render(ctx: Ctx) -> None:
             # than the discovery group's, and its percentiles are percentiles of the
             # thing it is named after rather than of a population 41 % of which
             # contributes a zero.
-            ("Possible — below the reservoir exit",
-             vc.possible[groups.hc_to_exit],
+            ("Unproven below LKH",
+             vc.below_lkh[groups.hc_to_exit],
              chance.p_well * _p_below_exit),
             ("Up-dip / attic volume", vc.attic[groups.dry_with_attic], p_updip),
         ]

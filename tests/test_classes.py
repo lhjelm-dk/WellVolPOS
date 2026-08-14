@@ -26,7 +26,7 @@ def test_the_two_possible_readings_are_different_and_both_are_kept(reduced, area
                                                                   groups):
     """One is additive, the other is the size of the upside. Neither replaces the other.
 
-    ``possible_of_discovery`` spans every discovery trial, zeros included, and is the
+    ``below_lkh_of_discovery`` spans every discovery trial, zeros included, and is the
     member that makes the split a *decomposition*: proven + it = discovery, exactly.
     ``possible`` is conditional on there being anything below the exit at all, which is
     the event the class is named after -- and on this file 81 % of the discovery group
@@ -38,21 +38,21 @@ def test_the_two_possible_readings_are_different_and_both_are_kept(reduced, area
 
     # The additive one, and the identity that has to survive *any* apportionment: the
     # rule decides where the boundary falls, never how much there is in total.
-    assert s["possible_of_discovery"]["mean"] == pytest.approx(0.48, abs=0.02)
+    assert s["below_lkh_of_discovery"]["mean"] == pytest.approx(0.48, abs=0.02)
     assert s["discovery"]["mean"] == pytest.approx(
-        s["proven"]["mean"] + s["possible_of_discovery"]["mean"], abs=1e-9
+        s["proven"]["mean"] + s["below_lkh_of_discovery"]["mean"], abs=1e-9
     )
 
     # The conditional one: a smaller population, a larger volume, and no zeros in it.
-    assert s["possible"]["mean"] == pytest.approx(2.53, abs=0.02)
-    assert s["possible"]["n"] < s["possible_of_discovery"]["n"]
-    assert s["possible"]["mean"] > s["possible_of_discovery"]["mean"] * 4
-    assert s["possible"]["p50"] > 0.0, "a conditional percentile must not be a zero"
-    assert s["possible_of_discovery"]["p50"] == pytest.approx(0.0)
+    assert s["below_lkh"]["mean"] == pytest.approx(2.53, abs=0.02)
+    assert s["below_lkh"]["n"] < s["below_lkh_of_discovery"]["n"]
+    assert s["below_lkh"]["mean"] > s["below_lkh_of_discovery"]["mean"] * 4
+    assert s["below_lkh"]["p50"] > 0.0, "a conditional percentile must not be a zero"
+    assert s["below_lkh_of_discovery"]["p50"] == pytest.approx(0.0)
 
     # And it must NOT be the additive one, which is the mistake being guarded against.
     assert s["discovery"]["mean"] != pytest.approx(
-        s["proven"]["mean"] + s["possible"]["mean"], abs=0.01
+        s["proven"]["mean"] + s["below_lkh"]["mean"], abs=0.01
     )
 
 
@@ -80,21 +80,21 @@ def test_the_wedge_moves_volume_up_dip_against_the_old_area_rule(
 
     assert wedge.apportionment == "wedge" and area.apportionment == "area"
     assert wedge.proven[d].mean() > area.proven[d].mean()
-    assert wedge.possible[d].mean() < area.possible[d].mean()
+    assert wedge.below_lkh[d].mean() < area.below_lkh[d].mean()
     # ...and never the other way round on any single trial
     assert np.all(wedge.proven[d] >= area.proven[d] - 1e-9)
 
     # The total is untouched: an apportionment moves the boundary, it does not
     # create or destroy resource.
-    assert np.allclose(wedge.proven[d] + wedge.possible[d],
-                       area.proven[d] + area.possible[d])
+    assert np.allclose(wedge.proven[d] + wedge.below_lkh[d],
+                       area.proven[d] + area.below_lkh[d])
 
     # Trials whose contact is *above* the exit have no possible volume under
     # either rule -- the well logged the contact, so nothing is left untested.
     seen = d & (np.asarray(reduced.col("contact"), dtype=float) <= EXIT)
     assert seen.any()
-    assert np.allclose(wedge.possible[seen], 0.0)
-    assert np.allclose(area.possible[seen], 0.0)
+    assert np.allclose(wedge.below_lkh[seen], 0.0)
+    assert np.allclose(area.below_lkh[seen], 0.0)
 
 
 def test_an_unknown_apportionment_is_refused(reduced, area_depth, groups):
@@ -113,20 +113,20 @@ def test_attic_conditioned_on_charge(reduced, area_depth, groups):
 def test_split_conserves_resource(reduced, area_depth, groups):
     vc = split_trials(reduced, area_depth, groups, ENTRY, EXIT)
     res = reduced.col("resource")
-    recomposed = vc.proven + vc.possible + vc.attic
+    recomposed = vc.proven + vc.below_lkh + vc.attic
     assert np.allclose(recomposed[groups.success], res[groups.success], atol=1e-9)
 
 
 def test_nothing_is_proven_in_a_dry_hole(reduced, area_depth, groups):
     vc = split_trials(reduced, area_depth, groups, ENTRY, EXIT)
     assert np.all(vc.proven[~groups.discovery] == 0.0)
-    assert np.all(vc.possible[~groups.discovery] == 0.0)
+    assert np.all(vc.below_lkh[~groups.discovery] == 0.0)
 
 
 def test_contact_seen_means_nothing_left_below(reduced, area_depth, groups):
     """If the well logs the contact, the accumulation is fully determined."""
     vc = split_trials(reduced, area_depth, groups, ENTRY, EXIT)
-    assert np.allclose(vc.possible[groups.contact_seen], 0.0, atol=1e-9)
+    assert np.allclose(vc.below_lkh[groups.contact_seen], 0.0, atol=1e-9)
 
 
 def test_deeper_exit_proves_more(reduced, area_depth):

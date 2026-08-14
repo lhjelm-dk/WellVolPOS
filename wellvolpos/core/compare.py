@@ -69,7 +69,7 @@ class WellComparison:
     #: Conditional on a dry hole that is nonetheless charged.
     attic: dict[str, float] = field(default_factory=dict)
     #: Conditional on a discovery: what sits below the reservoir exit, untested.
-    possible: dict[str, float] = field(default_factory=dict)
+    below_lkh: dict[str, float] = field(default_factory=dict)
 
     n_discovery: int = 0
 
@@ -129,7 +129,7 @@ def compare_wells(
             disc = np.asarray(groups.discovery, dtype=bool)
             dry = np.asarray(groups.dry_with_attic, dtype=bool)
             proven = _stats(vc.proven[disc])
-            possible = _stats(vc.possible[disc])
+            possible = _stats(vc.below_lkh[disc])
             well_assoc = _stats(vc.discovery_total[disc])
             attic = _stats(vc.attic[dry])
         else:
@@ -144,7 +144,7 @@ def compare_wells(
             pos_prospect=float(chance.pos_prospect),
             r_location=float(chance.r_location),
             p_well=float(chance.p_well),
-            proven=proven, well_associated=well_assoc, attic=attic, possible=possible,
+            proven=proven, well_associated=well_assoc, attic=attic, below_lkh=possible,
             n_discovery=n_disc,
         ))
     return tuple(out)
@@ -173,7 +173,7 @@ def volume_table(rows: Sequence[WellComparison], concept: str = "proven") -> lis
     read as a percentile.
     """
     label = {"proven": "Proven", "well_associated": "Well associated",
-             "attic": "Attic (dry & charged)", "possible": "Possible below exit"}[concept]
+             "attic": "Attic (dry & charged)", "below_lkh": "Unproven below LKH"}[concept]
     out = []
     for r in rows:
         s = getattr(r, concept)

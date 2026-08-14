@@ -280,7 +280,7 @@ def _reservoir_band(fig, ad, ts, *, z_entry, z_exit, dark, transform, labels=Tru
     base = top + stats["p50"]
     for lo, hi, role, label in ((-np.inf, z_entry, "up_dip", "up-dip"),
                                 (z_entry, z_exit, "tested", "tested"),
-                                (z_exit, np.inf, "possible", "possible")):
+                                (z_exit, np.inf, "below_lkh", "unproven below LKH")):
         upper, lower = np.clip(top, lo, hi), np.clip(base, lo, hi)
         m = lower > upper + 1e-9
         if m.sum() < 2:
@@ -526,9 +526,9 @@ def pfig_map_view(
         f"potentially proven<br>{a_proven:.3f} km² between {z_entry:.0f} m and {exit_label}",
     )
     annulus(
-        r_exit, r_base, "possible",
-        f"Possible — below exit ({a_possible:.2f} km²)",
-        f"possible below exit<br>{a_possible:.3f} km² below {exit_label}",
+        r_exit, r_base, "below_lkh",
+        f"Unproven below LKH ({a_possible:.2f} km²)",
+        f"unproven below LKH<br>{a_possible:.3f} km² below {exit_label}",
     )
 
     ang = np.deg2rad(well_azimuth_deg)
@@ -598,7 +598,7 @@ def pfig_a2_outcome_tree(
         (np.zeros_like(z), cum0, "Chance failure", "muted"),
         (cum0, cum1, "Dry, with attic", "attic"),
         (cum1, cum2, "Discovery, contact seen", "tested"),
-        (cum2, cum3, "Discovery, HC to exit", "possible"),
+        (cum2, cum3, "Discovery, HC to exit", "below_lkh"),
     ]
     fig = go.Figure()
     for lower, upper, name, role in bands:
@@ -1107,7 +1107,7 @@ def pfig_b0_section(
 
     band(ad.shallowest, z_entry, "attic", "attic if dry")
     band(z_entry, z_exit, "proven", "proven")
-    band(z_exit, ad.deepest, "possible", "possible below exit")
+    band(z_exit, ad.deepest, "below_lkh", "unproven below LKH")
 
     for sign in (1, -1):
         fig.add_scatter(x=sign * halfwidth, y=z, mode="lines",
@@ -1230,7 +1230,7 @@ def pfig_b13_below_exit(
     same footing as proven's or the attic's, and sharing one legend invited exactly
     that comparison.
 
-    Everything here is conditional on that event -- ``possible_mean_if_any`` and its
+    Everything here is conditional on that event -- ``below_lkh_mean_if_any`` and its
     ladder -- because the alternative, averaging over every discovery, puts an exact
     zero in for every trial whose contact falls *inside* the penetrated interval. Those
     zeros are 81 % of the discovery group on prospect A, and they dragged the reported
@@ -1242,26 +1242,26 @@ def pfig_b13_below_exit(
     """
     p = palette(dark)
     fig = go.Figure()
-    col = colour("possible", dark)
+    col = colour("below_lkh", dark)
     counts = vsweep.n_discovery
 
-    if vsweep.possible_mean_if_any is None:
+    if vsweep.below_lkh_mean_if_any is None:
         fig.add_annotation(x=0.5, y=0.5, xref="paper", yref="paper", showarrow=False,
-                           text="No below-exit volume on this sweep",
+                           text="No unproven volume below LKH on this sweep",
                            font=dict(size=13, color=p["text"]))
         apply_plotly(fig, dark, height)
         return fig
 
     fig.add_scatter(
-        x=thin(vsweep.possible_mean_if_any, counts, min_support), y=vsweep.z,
+        x=thin(vsweep.below_lkh_mean_if_any, counts, min_support), y=vsweep.z,
         mode="lines", name="Mean | HC seen to the exit",
         line=dict(color=col, width=3),
         hovertemplate=("mean %{x:.2f} MMboe below the exit at " + DEPTH_HOVER
                        + "<extra></extra>"),
     )
-    for tag, arr in (("P90", vsweep.possible_p90_if_any),
-                     ("P50", vsweep.possible_p50_if_any),
-                     ("P10", vsweep.possible_p10_if_any)):
+    for tag, arr in (("P90", vsweep.below_lkh_p90_if_any),
+                     ("P50", vsweep.below_lkh_p50_if_any),
+                     ("P10", vsweep.below_lkh_p10_if_any)):
         if arr is None:
             continue
         fig.add_scatter(
@@ -1277,11 +1277,11 @@ def pfig_b13_below_exit(
         _hline(fig, current_z, p["well"], "dash", "this well")
 
     fig.update_layout(
-        title=("B13 · Volume below the reservoir exit "
+        title=("B13 · Unproven below LKH — the volume under the well "
                f"(exit = entry + {vsweep.z_gap:.0f} m)"
                "<br><sub>conditional on the well leaving the reservoir in "
                "hydrocarbons · bold = mean · dotted = P90 / P50 / P10</sub>"),
-        xaxis_title="Volume below the exit (MMboe)",
+        xaxis_title="Unproven volume below LKH (MMboe)",
     )
     fig.update_xaxes(rangemode="tozero")
     apply_plotly(fig, dark, height)
@@ -1340,10 +1340,10 @@ def pfig_b2_chance_vs_regret(
     # It falls as the well goes deeper, because a deeper exit leaves less below it --
     # which is the mirror image of the proven curve rising, and the pair is the
     # clearest statement on this figure of what deepening the well actually buys.
-    if vsweep.p_possible_exceeds_mefs is not None:
+    if vsweep.p_below_lkh_exceeds_mefs is not None:
         series.append((
-            thin(vsweep.p_possible_exceeds_mefs, vsweep.n_discovery, min_support),
-            "P(possible below exit > MEFS | discovery)", "possible", 2.5,
+            thin(vsweep.p_below_lkh_exceeds_mefs, vsweep.n_discovery, min_support),
+            "P(unproven below LKH > MEFS | discovery)", "below_lkh", 2.5,
         ))
     for values, name, role, width in series:
         fig.add_scatter(
@@ -2237,7 +2237,7 @@ def _reservoir_section(fig, ad, ts, *, z_entry, z_exit, dark, area_scale="area",
         for lo, hi, role, label in (
             (-np.inf, z_entry, "up_dip", "up-dip"),
             (z_entry, z_exit, "tested", "tested"),
-            (z_exit, np.inf, "possible", "possible"),
+            (z_exit, np.inf, "below_lkh", "unproven below LKH"),
         ):
             upper = np.clip(top, lo, hi)
             lower = np.clip(base, lo, hi)
@@ -2957,8 +2957,9 @@ CONCEPT_KEY = (
      "what a dry hole leaves behind — Rose's “Updip”"),
     ("tested", "Resource tested by the well",
      "between reservoir entry and exit — what a discovery proves"),
-    ("possible", "Possible, below the exit",
-     "well associated but never tested"),
+    ("below_lkh", "Unproven below LKH",
+     "under the well's lowest known hydrocarbon — its presence is confirmed, "
+     "its extent is not"),
     ("well_associated", "Well associated volume",
      "the accumulation given a discovery — Rose's “Downdip”. What a well proposal uses"),
     ("prospect", "Prospect resource potential",

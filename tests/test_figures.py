@@ -171,7 +171,7 @@ def test_a2_depth_axis_and_outcome_colours(sweep):
     # untested remainder. Under the volume-concept palette those are `tested` and
     # `possible` -- not `discovery`, which is the whole well-associated case.
     assert bands["Discovery, contact seen"] == pytest.approx(_rgb(colour("tested")))
-    assert bands["Discovery, HC to exit"] == pytest.approx(_rgb(colour("possible")))
+    assert bands["Discovery, HC to exit"] == pytest.approx(_rgb(colour("below_lkh")))
 
 
 # ------------------------------------------------------------------- A6
@@ -218,7 +218,7 @@ def test_b0_depth_axis_well_marker_and_bands_sit_where_they_belong(area_depth):
     assert lines["Well"].get_color() == colour("well")
 
     expected = {"attic": _rgb(colour("attic")), "proven": _rgb(colour("proven")),
-                "possible": _rgb(colour("possible"))}
+                "below_lkh": _rgb(colour("below_lkh"))}
     seen = {}
     for coll in ax.collections:
         zs = np.concatenate([pth.vertices[:, 1] for pth in coll.get_paths()])
@@ -228,7 +228,7 @@ def test_b0_depth_axis_well_marker_and_bands_sit_where_they_belong(area_depth):
         elif zs.min() >= ENTRY - 1e-6 and zs.max() <= EXIT + 1e-6:
             seen["proven"] = rgb
         elif zs.min() >= EXIT - 1e-6:
-            seen["possible"] = rgb
+            seen["below_lkh"] = rgb
     assert seen == pytest.approx(expected)
 
 
@@ -238,7 +238,7 @@ def test_b0_names_every_band_in_the_figure(area_depth):
     said = " ".join(t.get_text().lower() for t in ax.texts)
     assert "attic" in said
     assert "proven" in said
-    assert "possible" in said
+    assert "unproven" in said and "lkh" in said
 
 
 def test_b0_x_axis_claims_no_unit_for_the_sqrt_area_proxy(area_depth):
@@ -266,7 +266,7 @@ def test_b1_depth_axis_and_class_colours(volume_sweep):
     fig2, ax2 = figures.fig_b13_below_exit(volume_sweep, current_z=ENTRY)
     assert is_depth_axis_correct(ax2)
     l2 = {line.get_label(): line for line in ax2.get_lines()}
-    assert l2["Mean | HC seen to the exit"].get_color() == colour("possible")
+    assert l2["Mean | HC seen to the exit"].get_color() == colour("below_lkh")
 
 
 # ------------------------------------------------------------------- B2
@@ -714,7 +714,8 @@ def test_the_map_twin_names_the_three_areas_the_well_divides_the_closure_into(ar
     apex = area_depth.apex_estimate()
     fig, ax = figures.fig_map_view(area_depth, apex=apex, z_entry=ENTRY, z_exit=EXIT)
     labels = " ".join(t.get_text() for t in ax.get_legend().get_texts())
-    assert "attic" in labels and "proven" in labels and "Possible" in labels
+    assert "attic" in labels and "proven" in labels
+    assert "Unproven below LKH" in labels
 
 
 def test_the_map_twin_honours_the_contour_interval(area_depth):

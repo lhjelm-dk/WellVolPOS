@@ -288,7 +288,7 @@ class VolumeSweep:
     z_gap: float
     p_well: np.ndarray
     proven_mean: np.ndarray
-    possible_mean: np.ndarray
+    below_lkh_mean: np.ndarray
     attic_mean: np.ndarray
     mefs: float | None
     p_proven_exceeds_mefs: np.ndarray | None
@@ -331,7 +331,7 @@ class VolumeSweep:
     #: probability could be shown against depth. It can, and the two readings answer
     #: different questions:
     #:
-    #: * ``p_possible_exceeds_mefs`` is the **material** one: given a discovery, the
+    #: * ``p_below_lkh_exceeds_mefs`` is the **material** one: given a discovery, the
     #:   chance the untested volume below the exit is on its own worth a threshold
     #:   field. It sits on B2 beside proven and attic, on the same conditioning and
     #:   the same threshold, so the three are comparable.
@@ -343,12 +343,12 @@ class VolumeSweep:
     #:
     #: Both are conditional on a discovery, like the proven curve, so none of them
     #: may be read against ``p_well`` as if on one scale.
-    p_possible_exceeds_mefs: np.ndarray | None = None
+    p_below_lkh_exceeds_mefs: np.ndarray | None = None
     p_well_exits_in_hc: np.ndarray | None = None
     #: The **size of the upside when there is one**: mean possible volume over only the
     #: discovery trials whose contact is deeper than the exit (Lars, 2026-08-14).
     #:
-    #: ``possible_mean`` above is the mean over *every* discovery trial, and a
+    #: ``below_lkh_mean`` above is the mean over *every* discovery trial, and a
     #: discovery whose contact falls inside the penetrated interval contributes exactly
     #: zero -- the well saw the whole accumulation. Those zeros are 81 % of the
     #: discovery group on prospect A, so the unconditional mean reads as "the upside is
@@ -356,21 +356,21 @@ class VolumeSweep:
     #:
     #: The two are related exactly, and it is the same shape as ``P_well = POS x r``:
     #:
-    #:     possible_mean = p_well_exits_in_hc x possible_mean_if_any
+    #:     below_lkh_mean = p_well_exits_in_hc x below_lkh_mean_if_any
     #:
     #: Both are kept because each is wrong alone. The unconditional one is *additive*
     #: -- proven + possible = well associated -- which is what makes the volume classes
     #: a decomposition. The conditional one is the prize, and quoting it without
     #: ``p_well_exits_in_hc`` overstates that prize the way quoting a success-case
     #: volume without POS does.
-    possible_mean_if_any: np.ndarray | None = None
+    below_lkh_mean_if_any: np.ndarray | None = None
     #: P90 / P50 / P10 of that same conditional distribution -- the spread of the
     #: upside, not just its mean (Lars, 2026-08-14). Conditioned on the well leaving
     #: the reservoir in hydrocarbons, like the mean above, because a percentile of a
     #: population 41 % of which is an exact zero is not a percentile of anything.
-    possible_p90_if_any: np.ndarray | None = None
-    possible_p50_if_any: np.ndarray | None = None
-    possible_p10_if_any: np.ndarray | None = None
+    below_lkh_p90_if_any: np.ndarray | None = None
+    below_lkh_p50_if_any: np.ndarray | None = None
+    below_lkh_p10_if_any: np.ndarray | None = None
     #: The same ladder for the **attic** (over the dry-but-charged trials) and for the
     #: **at-the-well** volume (over the trials whose contact lands within the window).
     #: Added 2026-08-14 so that every volume on 3.5 carries its spread rather than only
@@ -433,8 +433,8 @@ def run_volume_sweep(
 
     pw = np.empty(z.size)
     proven_mean = np.full(z.size, np.nan)
-    possible_mean = np.full(z.size, np.nan)
-    possible_if_any = np.full(z.size, np.nan)
+    below_lkh_mean = np.full(z.size, np.nan)
+    below_lkh_if_any = np.full(z.size, np.nan)
     poss_p90 = np.full(z.size, np.nan)
     att_p90 = np.full(z.size, np.nan)
     att_p50 = np.full(z.size, np.nan)
@@ -455,7 +455,7 @@ def run_volume_sweep(
     n_dry = np.zeros(z.size, dtype=int)
     p_proven_ex = np.full(z.size, np.nan) if mefs is not None else None
     p_attic_ex = np.full(z.size, np.nan) if mefs is not None else None
-    p_possible_ex = np.full(z.size, np.nan) if mefs is not None else None
+    p_below_lkh_ex = np.full(z.size, np.nan) if mefs is not None else None
     p_exits_hc = np.full(z.size, np.nan)
     at_well = np.full(z.size, np.nan)
     at_well_n = np.zeros(z.size, dtype=int)
@@ -507,20 +507,20 @@ def run_volume_sweep(
             proven = vc.proven[groups_i.discovery]
             associated = vc.discovery_total[groups_i.discovery]
             proven_mean[i] = float(proven.mean())
-            _poss = vc.possible[groups_i.discovery]
-            possible_mean[i] = float(_poss.mean())
+            _poss = vc.below_lkh[groups_i.discovery]
+            below_lkh_mean[i] = float(_poss.mean())
             # **Conditioned on the same event the chance counts**: the well leaving
             # the reservoir still in hydrocarbons, `contact > z_exit`. Selecting on
             # `possible > 0` instead looked equivalent and was not -- the wedge
             # integral rounds a hair-thin interval to exactly zero, so the two masks
             # disagreed on a handful of trials and the identity
-            # `possible_mean = p_well_exits_in_hc x this` came out 1e-2 off instead of
+            # `below_lkh_mean = p_well_exits_in_hc x this` came out 1e-2 off instead of
             # exact. An identity that is nearly true is the kind that gets quoted as
             # true, so the masks are now one mask.
             _exits = contact[groups_i.discovery] > zx
             if _exits.any():
                 _pv = _poss[_exits]
-                possible_if_any[i] = float(_pv.mean())
+                below_lkh_if_any[i] = float(_pv.mean())
                 # Petroleum orientation, one call so the three cannot drift: P90 is
                 # the low case and therefore the 10th percentile of the values.
                 poss_p90[i], poss_p50[i], poss_p10[i] = (
@@ -537,7 +537,7 @@ def run_volume_sweep(
             )
             if mefs is not None:
                 p_proven_ex[i] = float((proven > mefs).mean())
-                p_possible_ex[i] = float((vc.possible[groups_i.discovery] > mefs).mean())
+                p_below_lkh_ex[i] = float((vc.below_lkh[groups_i.discovery] > mefs).mean())
                 p_disc_ex[i] = float((associated > mefs).mean())
             if n_boot > 0:
                 boot_lo[i], boot_hi[i] = bootstrap_mean_ci(
@@ -553,13 +553,13 @@ def run_volume_sweep(
 
     return VolumeSweep(
         z=z, z_exit=z_exit, z_gap=float(z_gap), p_well=pw,
-        proven_mean=proven_mean, possible_mean=possible_mean, attic_mean=attic_mean,
+        proven_mean=proven_mean, below_lkh_mean=below_lkh_mean, attic_mean=attic_mean,
         discovery_mean=discovery_mean,
         mefs=mefs, p_proven_exceeds_mefs=p_proven_ex, p_attic_exceeds_mefs=p_attic_ex,
-        p_possible_exceeds_mefs=p_possible_ex, p_well_exits_in_hc=p_exits_hc,
-        possible_mean_if_any=possible_if_any,
-        possible_p90_if_any=poss_p90, possible_p50_if_any=poss_p50,
-        possible_p10_if_any=poss_p10,
+        p_below_lkh_exceeds_mefs=p_below_lkh_ex, p_well_exits_in_hc=p_exits_hc,
+        below_lkh_mean_if_any=below_lkh_if_any,
+        below_lkh_p90_if_any=poss_p90, below_lkh_p50_if_any=poss_p50,
+        below_lkh_p10_if_any=poss_p10,
         attic_p90=att_p90, attic_p50=att_p50, attic_p10=att_p10,
         at_well_p90=atw_p90, at_well_p50=atw_p50, at_well_p10=atw_p10,
         at_well_mean=at_well, at_well_n=at_well_n, at_well_window=float(at_well_window),

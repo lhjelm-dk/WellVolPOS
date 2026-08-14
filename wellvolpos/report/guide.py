@@ -231,6 +231,55 @@ base is `top + T` with no dip correction.
 
     # --------------------------------------------------------- the thresholds
     st.divider()
+    st.divider()
+    st.markdown("### “Unproven below LKH” — and why not “possible”")
+    st.markdown(
+        """
+**LKH** is the **lowest known hydrocarbon**: the deepest point at which a well has
+actually seen them. In this tool it is computed per trial as the shallower of the
+hydrocarbon–water contact and the reservoir **exit** — so if the contact is inside the
+penetrated interval the well reached it and LKH *is* the contact, and if the well left
+the reservoir still in hydrocarbons then LKH is the exit and the accumulation carries
+on below.
+
+**Unproven below LKH** is that continuation: the part of the well-associated volume
+that lies under the deepest point the well confirmed. It exists only in the second
+case, which is why it is reported *conditional on the well leaving the reservoir in
+hydrocarbons* — averaging it over every discovery mixes in the cases that have none,
+and those contribute an exact zero.
+        """
+    )
+    st.info(
+        "**Its presence is confirmed; only its extent is not.** If the well is in "
+        "hydrocarbons at the exit, there *is* more below — Milkov (2021) puts it as a "
+        "successful downdip well *“confirming the presence of a large petroleum "
+        "accumulation extending”* further. What nobody knows is how far down it goes, "
+        "because the well never reached the contact."
+    )
+    st.markdown(
+        """
+**Why the name changed** (2026-08-14). It used to be called *“possible — below the
+reservoir exit”*, and **“possible” is wrong in a specific and damaging way**: it is a
+PRMS reserves class (Proved / Probable / **Possible**, 1P / 2P / 3P) meaning *low
+confidence of commercial recovery* — the far tail. This volume is the opposite kind of
+thing. A reserves-literate reader imports precisely the wrong expectation.
+
+The alternatives were weighed against this project's own reference literature:
+
+| candidate | verdict |
+|---|---|
+| **Unproven below LKH** | **Chosen.** *Unproven* says which kind of uncertainty it is; *LKH* is the standard term and names the exact boundary. Singh et al. (2017) use *Lowest Known Gas* in the identical sense — a well that encountered LKG with the structure *“assumed to be filled to the spill point”*. |
+| *Untested below exit* | **Taken.** Milkov (2021) uses *“untested”* for the volume left **updip** of a dry hole — our attic. Reusing it a metre away would collide. |
+| *Downdip volume* | **Taken, differently.** Schneider & Cook partition at the *well*; ours partitions at the *penetrated interval*. See the comparison on tab ④. |
+| *Un-bottomed volume* | Real usage — a well that does not reach the contact has not *bottomed* the reservoir — but less widely recognised. |
+
+The internal name changed with the label, so nothing in the code still says
+*possible*. The **colour is unchanged**: the tan that has always meant this volume
+still does, on every figure and in the exported artefacts.
+        """
+    )
+
+    st.divider()
     st.markdown("### Two different minimum volumes")
     st.warning(
         "**MCFS / MEFS** — minimum commercial (Rose) or economic (this app's sidebar) field "

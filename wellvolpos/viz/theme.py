@@ -70,7 +70,7 @@ LIGHT = {
     "minimum": "#e04b2f",          # red          -- a threshold volume
     "well_associated": "#b3a02f",  # olive        -- the discovery case
     "up_dip": "#4cb8e0",           # light blue   -- attic / up-dip / regret
-    "possible": "#cf9a4e",         # tan          -- well associated, not tested
+    "below_lkh": "#cf9a4e",         # tan          -- well associated, not tested
     "well": "#7a4bb8",             # violet       -- the well itself
 }
 
@@ -85,7 +85,7 @@ DARK = {
     "minimum": "#e8593f",
     "well_associated": "#d6c04a",
     "up_dip": "#86dbf5",
-    "possible": "#e0ad63",
+    "below_lkh": "#e0ad63",
     "well": "#b184e6",
 }
 
@@ -97,13 +97,13 @@ DARK = {
 # annotation, never a colour read off a legend.
 CO_OCCURRING = {
     "A1 area-depth": ("prospect", "muted"),
-    "A2 outcome tree": ("muted", "up_dip", "tested", "possible"),
+    "A2 outcome tree": ("muted", "up_dip", "tested", "below_lkh"),
     "A3 chance decomposition": ("well_associated", "muted"),
     "A4 resource vs depth": ("prospect", "muted", "minimum"),
     "A5 exceedance": ("prospect", "well_associated", "tested", "up_dip", "minimum"),
     "A6 overlap": ("tested", "up_dip", "minimum"),
-    "B0 section": ("up_dip", "tested", "possible"),
-    "B1 volume split": ("tested", "possible", "up_dip", "muted"),
+    "B0 section": ("up_dip", "tested", "below_lkh"),
+    "B1 volume split": ("tested", "below_lkh", "up_dip", "muted"),
     "B2 chance vs regret": ("well_associated", "tested", "up_dip", "muted"),
     "B4 waterfall": ("well_associated", "muted"),
     "B12 bands": ("prospect", "tested", "minimum"),
@@ -129,7 +129,7 @@ ROLES = {
     "p_well": "well_associated",
     "proven": "tested",
     "tested": "tested",
-    "possible": "possible",
+    "below_lkh": "below_lkh",
     "attic": "up_dip",
     "up_dip": "up_dip",
     "regret": "up_dip",

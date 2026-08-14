@@ -368,7 +368,7 @@ def _location_sweep_tab(ctx: Ctx):
     # group fails down-dip, the dry-with-attic group up-dip where almost nothing
     # is dry. Reporting only the first left the missing top of B1's orange curve
     # unexplained.
-    # The two possible-below-exit readings, in the app's own live numbers. Lars asked
+    # The two unproven-below-LKH readings, in the app's own live numbers. Lars asked
     # what the curve meant and the honest answer is that one curve could not say it:
     # the unconditional mean is diluted by the discoveries that leave nothing below
     # the exit, and the conditional one is the prize without the chance of getting it.
@@ -377,12 +377,12 @@ def _location_sweep_tab(ctx: Ctx):
     _i_here = int(_np.argmin(_np.abs(_np.asarray(vsweep.z, dtype=float) - float(entry))))
     _p_any = (float(vsweep.p_well_exits_in_hc[_i_here])
               if vsweep.p_well_exits_in_hc is not None else float("nan"))
-    _m_all = float(vsweep.possible_mean[_i_here])
-    _m_any = (float(vsweep.possible_mean_if_any[_i_here])
-              if vsweep.possible_mean_if_any is not None else float("nan"))
+    _m_all = float(vsweep.below_lkh_mean[_i_here])
+    _m_any = (float(vsweep.below_lkh_mean_if_any[_i_here])
+              if vsweep.below_lkh_mean_if_any is not None else float("nan"))
     if _np.isfinite(_p_any) and _np.isfinite(_m_any):
         st.info(
-            f"**The two possible-below-exit curves, at Well {selected_well}.** *If* the well "
+            f"**The two unproven-below-LKH curves, at Well {selected_well}.** *If* the well "
             f"leaves the reservoir still in hydrocarbons, the untested volume below the exit "
             f"averages **{_m_any:,.2f} MMboe** — that is the dotted curve, and it is the "
             f"additional potential you are asking about. The chance of that happening at all "
@@ -512,7 +512,7 @@ def _location_sweep_tab(ctx: Ctx):
             },
         )
 
-        _concepts = ["proven", "well_associated", "possible", "attic"] if has_area \
+        _concepts = ["proven", "well_associated", "below_lkh", "attic"] if has_area \
             else ["well_associated", "attic"]
         _vol = [r for c in _concepts for r in volume_table(_rows, c)]
         st.markdown("**Volumes, MMboe — success case, conditional on the outcome each "

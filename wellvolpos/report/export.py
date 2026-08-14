@@ -198,7 +198,7 @@ def tables(b: Bundle) -> dict[str, pd.DataFrame]:
         cs = class_summary(b.vc, b.groups)
         kpi += [
             ("Proven mean", cs["proven"]["mean"], "MMboe — the headline KPI (decision 1)"),
-            ("Possible mean (below exit)", cs["possible"]["mean"], "MMboe, not proven"),
+            ("Unproven below LKH, mean", cs["below_lkh"]["mean"], "MMboe, not proven"),
         ]
     kpi.append(
         ("Expected volume at the well", expected_volume(gs["discovery"]["mean"], b.chance.p_well),
@@ -284,7 +284,7 @@ def tables(b: Bundle) -> dict[str, pd.DataFrame]:
             "proven_mean": v.proven_mean,
             "proven_mean_lo": v.proven_mean_lo,
             "proven_mean_hi": v.proven_mean_hi,
-            "possible_mean": v.possible_mean,
+            "below_lkh_mean": v.below_lkh_mean,
             "attic_mean": v.attic_mean,
             "p_proven_exceeds_mefs": v.p_proven_exceeds_mefs,
             "p_attic_exceeds_mefs": v.p_attic_exceeds_mefs,

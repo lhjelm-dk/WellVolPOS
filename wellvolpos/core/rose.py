@@ -226,7 +226,7 @@ def rose_partition(
 
     Implemented by running this app's own per-trial split with **exit = entry**, which
     is exactly what their partition is: with no penetrated interval, "proven" collapses
-    to crest-to-well and "possible" becomes well-to-contact. So the two vocabularies
+    to crest-to-well and "below_lkh" becomes well-to-contact. So the two vocabularies
     share one piece of arithmetic and cannot drift apart -- the wedge apportionment,
     the thickness inversion and the apex are all the same ones the rest of the app
     uses.
@@ -240,7 +240,7 @@ def rose_partition(
     disc = np.asarray(groups.discovery, dtype=bool)
     return RosePartition(
         updip=np.asarray(vc.proven, dtype=float)[disc],
-        downdip=np.asarray(vc.possible, dtype=float)[disc],
+        downdip=np.asarray(vc.below_lkh, dtype=float)[disc],
         n_discovery=int(disc.sum()),
         z_entry=float(z_entry),
     )

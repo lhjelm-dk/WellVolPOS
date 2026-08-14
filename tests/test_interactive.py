@@ -275,7 +275,7 @@ def test_b13_draws_the_below_exit_volume_conditionally_with_its_own_ladder(vswee
         assert any(n.startswith(tag) for n in names), tag
     # Every series says what it is conditional on, in its own name.
     assert all("HC seen to the exit" in n for n in names), names
-    assert _line_colour(fig, next(n for n in names if n.startswith("Mean")))         == colour("possible")
+    assert _line_colour(fig, next(n for n in names if n.startswith("Mean")))         == colour("below_lkh")
 
 
 def test_b2_names_its_conditioning_and_keeps_the_regret_colour(vsweep):
@@ -296,7 +296,7 @@ def test_a2_bands_use_the_outcome_colours_and_reach_100_percent(sweep):
     fills = {t.name: t.fillcolor for t in fig.data if t.fillcolor}
     for name, role in (("Dry, with attic", "attic"),
                        ("Discovery, contact seen", "tested"),
-                       ("Discovery, HC to exit", "possible"),
+                       ("Discovery, HC to exit", "below_lkh"),
                        ("Chance failure", "muted")):
         assert fills[name] == rgba(role, 0.55), name
         assert "rgba" in fills[name] and "0.55" in fills[name]
@@ -546,14 +546,14 @@ def test_map_view_contour_interval_is_honoured(area_depth):
 
 def test_map_view_shades_the_three_areas_the_well_divides_the_closure_into(area_depth):
     """Potential attic up-dip of entry, potentially proven between entry and exit,
-    possible below exit -- the same split B0 draws in section, so the two figures
+    unproven below LKH -- the same split B0 draws in section, so the two figures
     colour-key identically."""
     apex = area_depth.apex_estimate()
     fig = I.pfig_map_view(area_depth, apex=apex, z_entry=ENTRY, z_exit=EXIT)
     named = {t.name: t for t in fig.data if t.name}
     attic = next(t for n, t in named.items() if n.startswith("Potential attic"))
     proven = next(t for n, t in named.items() if n.startswith("Potentially proven"))
-    possible = next(t for n, t in named.items() if n.startswith("Possible"))
+    possible = next(t for n, t in named.items() if n.startswith("Unproven below LKH"))
     assert attic.line.color == colour("attic")
     assert attic.fill == "toself"
     for band in (proven, possible):
@@ -769,7 +769,7 @@ def test_concepts_uses_one_colour_per_concept_across_both_panels(concepts):
         assert cond.line.dash == "solid" and uncond.line.dash == "dash"
     # The section's bands carry the same roles, as translucent fills -- in C1 now.
     fills = [t.fillcolor for t in c1.data if t.fillcolor]
-    for role in ("up_dip", "tested", "possible"):
+    for role in ("up_dip", "tested", "below_lkh"):
         assert any(rgba_of(role) in (f or "") for f in fills), role
 
 
