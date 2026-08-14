@@ -34,8 +34,6 @@ from .figures import (
     fig_b12_banded_percentiles,
 )
 from .interactive import (
-    add_well_markers,
-    add_well_points,
     AREA_SCALES,
     pfig_a1_area_depth,
     pfig_a2_outcome_tree,
@@ -81,8 +79,6 @@ from .theme import (
 )
 
 __all__ = [
-    "add_well_markers",
-    "add_well_points",
     "apply", "palette", "colour", "depth_axis",
     "apply_plotly", "depth_axis_plotly", "PANEL_HEIGHT", "level_row", "row_zlim", "AREA_SCALES",
     # matplotlib / export

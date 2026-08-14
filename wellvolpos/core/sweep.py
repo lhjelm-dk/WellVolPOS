@@ -376,6 +376,14 @@ class VolumeSweep:
     #: Added 2026-08-14 so that every volume on 3.5 carries its spread rather than only
     #: proven -- a bold mean with no percentiles beside it invites being read as the
     #: answer, and on a skewed distribution the mean is not even the middle.
+    #: The **well-associated** ladder -- the whole accumulation given a discovery,
+    #: crest to contact. Added 2026-08-14 at Lars's request so 3.8's frontier can be
+    #: read as a range rather than a single mean line: a frontier drawn only through
+    #: means says what an average discovery buys and nothing about whether a poor one
+    #: still clears the bar, which is the question a location argument turns on.
+    discovery_p90: np.ndarray | None = None
+    discovery_p50: np.ndarray | None = None
+    discovery_p10: np.ndarray | None = None
     attic_p90: np.ndarray | None = None
     attic_p50: np.ndarray | None = None
     attic_p10: np.ndarray | None = None
@@ -436,6 +444,9 @@ def run_volume_sweep(
     below_lkh_mean = np.full(z.size, np.nan)
     below_lkh_if_any = np.full(z.size, np.nan)
     poss_p90 = np.full(z.size, np.nan)
+    dis_p90 = np.full(z.size, np.nan)
+    dis_p50 = np.full(z.size, np.nan)
+    dis_p10 = np.full(z.size, np.nan)
     att_p90 = np.full(z.size, np.nan)
     att_p50 = np.full(z.size, np.nan)
     att_p10 = np.full(z.size, np.nan)
@@ -527,6 +538,12 @@ def run_volume_sweep(
                     float(v) for v in np.percentile(_pv, [10.0, 50.0, 90.0])
                 )
             discovery_mean[i] = float(associated.mean())
+            # One call, petroleum orientation: P90 is the low case and therefore the
+            # 10th percentile of the values. Same population as `discovery_mean`, so
+            # the mean cannot end up outside its own ladder.
+            dis_p90[i], dis_p50[i], dis_p10[i] = (
+                float(v) for v in np.percentile(associated, [10.0, 50.0, 90.0])
+            )
             # Petroleum orientation: P90 is the low case, so it is the 10th
             # percentile of the values.
             # One call, five outputs, petroleum orientation throughout: P99 is the
@@ -560,6 +577,7 @@ def run_volume_sweep(
         below_lkh_mean_if_any=below_lkh_if_any,
         below_lkh_p90_if_any=poss_p90, below_lkh_p50_if_any=poss_p50,
         below_lkh_p10_if_any=poss_p10,
+        discovery_p90=dis_p90, discovery_p50=dis_p50, discovery_p10=dis_p10,
         attic_p90=att_p90, attic_p50=att_p50, attic_p10=att_p10,
         at_well_p90=atw_p90, at_well_p50=atw_p50, at_well_p10=atw_p10,
         at_well_mean=at_well, at_well_n=at_well_n, at_well_window=float(at_well_window),

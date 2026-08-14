@@ -48,42 +48,22 @@ def render(ctx: Ctx) -> None:
     elements, play_elements, play_chance = ctx.elements, ctx.play_elements, ctx.play_chance
     qc, gap = ctx.qc, ctx.gap
     source, overrides = ctx.source, ctx.overrides
-    wells, selected_well = ctx.wells, ctx.selected_well
 
     def _split_caveat() -> None:
         split_caveat(ctx)
 
-    # --------------------------------------------------------- which well is this?
-    # Exactly one candidate is carried onto this tab. It answers "what do I get at
-    # the depth I chose", which is a question about one well -- letting four through
-    # would turn every figure here into a comparison and lose what the tab is for.
-    # The comparison itself is the table below.
-    st.subheader("The selected well")
-    _sel_l, _sel_r = st.columns([1, 2])
-    with _sel_l:
-        if len(wells) > 1:
-            st.selectbox(
-                "Well carried onto this tab", [w.label for w in wells],
-                key="w_selected_well",
-                format_func=lambda k: f"Well {k}",
-                help="Candidates are defined and compared on tab ③. **Everything on "
-                     "this tab is about this one well** — no other candidate appears "
-                     "here, by design.",
-            )
-        else:
-            st.metric("Well", f"Well {selected_well}")
-    with _sel_r:
-        st.metric(f"Well {selected_well} — reservoir entry to exit",
-                  f"{entry:,.0f} – {exit_:,.0f} m TVDSS",
-                  help=f"{exit_ - entry:,.0f} m of reservoir penetrated.")
+    # ------------------------------------------------------------ the well
+    st.subheader("The well")
+    st.metric("Reservoir entry to exit", f"{entry:,.0f} – {exit_:,.0f} m TVDSS",
+              help=f"{exit_ - entry:,.0f} m of reservoir penetrated.")
     st.caption(
-        "**This tab is one well.** Tab ③ is the bench — define candidates, sweep them, "
-        "compare them; this is the write-up of the one you chose. Every number, table "
-        f"and figure below is Well {selected_well}'s."
+        "**Tab ③ is where the depth is chosen** — it sweeps every entry depth and "
+        "shows what each one buys. This tab is the write-up at the depth you settled "
+        "on; the sliders are on tab ①."
     )
 
     st.divider()
-    st.subheader(f"At Well {selected_well} — {entry:,.0f}–{exit_:,.0f} m")
+    st.subheader(f"At {entry:,.0f}–{exit_:,.0f} m")
     _split_caveat()
 
     # --------------------------------------------------------------- the chance

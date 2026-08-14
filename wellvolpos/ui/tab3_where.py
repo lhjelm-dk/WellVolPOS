@@ -22,10 +22,6 @@ import streamlit as st
 
 from ..core import (
     thickness_from_pay,
-    chance_table,
-    compare_wells,
-    risked_table,
-    volume_table,
     BAND_MODES,
     BAND_MODE_LABELS,
     DEFAULT_N_BANDS,
@@ -39,8 +35,6 @@ from ..core import (
     volume_target_curve,
 )
 from ..viz import (
-    add_well_markers,
-    add_well_points,
     PROBABILITY_SCALES,
     VOLUME_SCALES,
     TALL_PANEL_HEIGHT,
@@ -61,13 +55,12 @@ from ..viz import (
 )
 from .common import chart as _chart, split_caveat
 from .context import Ctx
-from .wells import well_editor
 from .numbering import ref as fig_ref
 from .loading import volume_sweep as _volume_sweep
 
 
 @st.fragment
-def _inverse_section(vsweep, ts, mefs, wells=(), selected_well=None, others=()):
+def _inverse_section(vsweep, ts, mefs):
     """B6, in its own fragment.
 
     The volume-to-prove slider must not re-run either sweep: at n=60 with a
@@ -132,9 +125,8 @@ def _inverse_section(vsweep, ts, mefs, wells=(), selected_well=None, others=()):
     # A quarter taller (Lars, 2026-08-12): the leader lines, the bootstrap band and a
     # five-deep contact family all share one pair of axes, and at row height they
     # crowd each other.
-    _f_b6 = pfig_b6_inverse(vsweep, target=target, ts=ts, mefs=mefs, others=others,
+    _f_b6 = pfig_b6_inverse(vsweep, target=target, ts=ts, mefs=mefs,
                             statistic=stat, height=TALL_PANEL_HEIGHT)
-    add_well_markers(_f_b6, wells, selected=selected_well)
     _chart(_f_b6, key="b6")
     # The worked sentence first, in the app's live numbers, because "how do I read
     # this" is the question B6 kept failing to answer (Lars, 2026-08-11).
@@ -190,44 +182,9 @@ def _location_sweep_tab(ctx: Ctx):
     ref, pos = ctx.ref, ctx.pos
     pos_trials, gap = ctx.pos_trials, ctx.gap
     source, overrides = ctx.source, ctx.overrides
-    wells, selected_well = ctx.wells, ctx.selected_well
 
     def _split_caveat() -> None:
         split_caveat(ctx)
-
-    # The well geometry lives here now, not in the sidebar (Lars, 2026-08-13): this
-    # tab is where locations are compared, and a location decision compares two or
-    # three of them rather than nudging one. The widgets own the keys; app.py reads
-    # them at the top of the script, before any tab renders.
-    st.subheader("Well options")
-    st.caption(
-        "**Well A is the default and always exists.** Add B, C and D to put candidate "
-        "locations side by side: they appear as labelled rules on every swept figure "
-        "below, and as rows in the comparison at the foot of this tab. Exactly one is "
-        "carried onto tab ④, which is the write-up of a single well; choose it there."
-        "\n\n"
-        "**A rule is not always enough.** The *exit* moves exactly two quantities — "
-        "**proven** and the **unproven volume below LKH** — so a candidate with its "
-        "own entry-to-exit spacing has its own curve for those, drawn dashed and "
-        "named for it. Everything else here (P_well and r, the attic, the volume at "
-        "the well) depends on the **entry alone**, so one curve serves every "
-        "candidate and its rule is the whole story. Candidates that share a spacing "
-        "share a curve and are named together on it."
-        "\n\n"
-        "The verdict under each pair of sliders checks the entry-to-exit spacing "
-        "against the **reservoir thickness recovered from the trials**. A vertical "
-        "well sees exactly that thickness, so a wider spacing is a commitment to a "
-        "**deviated** well tracking down-dip inside the layer — legitimate, and the "
-        "volumes are computed as though you had drilled one."
-    )
-    _th = thickness_from_pay(ts, ad).thickness if has_area else None
-    well_editor(wells, float(ts.col("contact").min()),
-                float(ts.col("contact").max()), thickness=_th)
-    if len(wells) > 1:
-        st.caption(
-            "**" + " · ".join(w.describe() for w in wells) + "** — "
-            f"Well **{selected_well}** is the one tab ④ is currently about."
-        )
 
     st.divider()
     st.subheader("Location sweep")
@@ -269,13 +226,6 @@ def _location_sweep_tab(ctx: Ctx):
     # argument about which population they are over, and a third of the width was not
     # enough for either. It is drawn full width directly under the row instead, which
     # is also where the reader meets it after 3.2.
-    # Every candidate as a labelled rule, on every figure whose y-axis is a depth.
-    # Applied here rather than threaded through fourteen figure signatures and their
-    # twins; 3.8 and 3.12 are skipped for the same reason they are exempt from the
-    # depth rule, neither having depth on an axis.
-    for _f in (f_a2, f_a3, f_b3, f_b11):
-        add_well_markers(_f, wells, selected=selected_well)
-
     level_row(f_a2, f_a3)
     c1, c2 = st.columns(2)
     with c1:
@@ -368,41 +318,12 @@ def _location_sweep_tab(ctx: Ctx):
     # remain are what this row was for: what the well proves, and what it risks.
     # **One per line** (Lars, 2026-08-14). Three depth panels in a row left each of
     # them a third of the width, and all three carry percentile families now.
-    # **A sweep per distinct entry-to-exit spacing.** Proven and the unproven volume
-    # below LKH are the only two quantities the *exit* moves (core/dependence.py), so
-    # every figure drawing one of them needs a curve per candidate spacing and the
-    # rest need exactly one curve for all of them.
-    #
-    # Candidates that share a spacing share a curve and are **named together** on it,
-    # because two identical lines are not two pieces of information -- but a candidate
-    # is never silently absent, which is what the earlier dedup did to every well that
-    # happened to match the selected one (Lars, 2026-08-14: *"why don't I see optional
-    # wells in eg plot 3.7"*). The sweep is cached, so this costs one run per distinct
-    # gap rather than one per well.
-    _by_gap: dict[float, list[str]] = {}
-    for _w in wells:
-        _g = round(_w.exit - _w.entry, 3)
-        if _g > 0:
-            _by_gap.setdefault(_g, []).append(_w.label)
-    _sel_gap = round(gap, 3)
-    _others = []
-    for _g, _labels in sorted(_by_gap.items()):
-        if _g == _sel_gap:
-            continue                       # the figure's own bold series is this one
-        _name = ("Wells " if len(_labels) > 1 else "Well ") + ", ".join(_labels)
-        _others.append((f"{_name} ({_g:.0f} m)", _volume_sweep(
-            source.name, source.data, tuple(sorted(overrides.items())),
-            pos, _g, mefs, ref.value, ctx.at_well_window)))
-    _shared = _by_gap.get(_sel_gap, [])
-
-    f_b2 = pfig_b2_chance_vs_regret(vsweep, current_z=entry, others=_others,
-                                    zlim=zrow_sweep, height=TALL_PANEL_HEIGHT)
-    f_b1 = pfig_b1_volume_split(vsweep, current_z=entry, others=_others,
-                                zlim=zrow_sweep, height=TALL_PANEL_HEIGHT)
-    f_b13 = pfig_b13_below_exit(vsweep, current_z=entry, others=_others,
-                                zlim=zrow_sweep, height=TALL_PANEL_HEIGHT)
-    for _f in (f_b1, f_b2, f_b13):
-        add_well_markers(_f, wells, selected=selected_well)
+    f_b2 = pfig_b2_chance_vs_regret(vsweep, current_z=entry, zlim=zrow_sweep,
+                                    height=TALL_PANEL_HEIGHT)
+    f_b1 = pfig_b1_volume_split(vsweep, current_z=entry, zlim=zrow_sweep,
+                                height=TALL_PANEL_HEIGHT)
+    f_b13 = pfig_b13_below_exit(vsweep, current_z=entry, zlim=zrow_sweep,
+                                height=TALL_PANEL_HEIGHT)
     _chart(f_b1, key="b1")
     sup_disc = describe_support(vsweep.n_discovery, vsweep.z, name="discovery")
     sup_dry = describe_support(vsweep.n_dry, vsweep.z, name="dry-with-attic")
@@ -459,7 +380,7 @@ def _location_sweep_tab(ctx: Ctx):
               if vsweep.below_lkh_mean_if_any is not None else float("nan"))
     if _np.isfinite(_p_any) and _np.isfinite(_m_any):
         st.info(
-            f"**The two unproven-below-LKH curves, at Well {selected_well}.** *If* the well "
+            f"**The two unproven-below-LKH curves.** *If* the well "
             f"leaves the reservoir still in hydrocarbons, the untested volume below the exit "
             f"averages **{_m_any:,.2f} MMboe** — that is the dotted curve, and it is the "
             f"additional potential you are asking about. The chance of that happening at all "
@@ -515,23 +436,17 @@ def _location_sweep_tab(ctx: Ctx):
                   "compresses the whole trade into the bottom centimetre."),
         )
         # 3.8's axes are volume and chance, so a candidate is a **point** on the
-        # frontier rather than a rule -- see viz.add_well_points.
-        _f_b7 = pfig_b7_frontier(vsweep, current_z=entry, others=_others,
-                                 chance_scale=b7_scale)
-        add_well_points(_f_b7, vsweep, wells, selected=selected_well)
+        _f_b7 = pfig_b7_frontier(vsweep, current_z=entry, chance_scale=b7_scale)
         _chart(_f_b7, key="b7")
     # 3.9 is full width (Lars, 2026-08-14). It carries three curves and a starred
     # interior maximum, and half a row was not enough to see where that peak sits.
     _f_b8 = pfig_b8_commercial_chance(vsweep, current_z=entry, zlim=zrow_sweep,
                                       height=TALL_PANEL_HEIGHT)
-    add_well_markers(_f_b8, wells, selected=selected_well)
     _chart(_f_b8, key="b8")
     # A quarter taller (Lars, 2026-08-14): two starred peaks and a grey percentile
     # family share one pair of axes, and at row height the peaks are hard to place.
-    _f_b9 = pfig_b9_chance_weighted(vsweep, current_z=entry, others=_others,
-                                    zlim=zrow_sweep,
+    _f_b9 = pfig_b9_chance_weighted(vsweep, current_z=entry, zlim=zrow_sweep,
                                     height=TALL_PANEL_HEIGHT)
-    add_well_markers(_f_b9, wells, selected=selected_well)
     _chart(_f_b9, key="b9")
     st.caption(
         f"**{fig_ref('{b9}')} — the targeting tool.** `P_well × mean volume`, swept: a falling curve times a "
@@ -559,72 +474,7 @@ def _location_sweep_tab(ctx: Ctx):
         "being the number Rose says to carry into an EMV."
     )
 
-    # ------------------------------------------------------------ the comparison
-    # Moved to tab 3 on 2026-08-14: that tab is the bench -- define candidates,
-    # sweep them, compare them -- and this one is the write-up of the chosen well.
-    if len(wells) > 1:
-        st.divider()
-        st.subheader("Compare the candidates")
-        _rows = compare_wells(
-            ts, ad if has_area else None,
-            [(w.label, w.entry, w.exit) for w in wells],
-            # `pos` here, not `chance.pos_prospect`: this tab unpacks the POS
-            # directly and has no `chance` object. Same number, different name.
-            pos_prospect=pos, reference=ref,
-        )
-
-        st.markdown("**Chance** — what each location does to the odds")
-        st.dataframe(
-            pd.DataFrame(chance_table(_rows)), hide_index=True, width="stretch",
-            column_config={
-                "Entry (m)": st.column_config.NumberColumn(format="%.0f"),
-                "Exit (m)": st.column_config.NumberColumn(format="%.0f"),
-                "POS prospect": st.column_config.NumberColumn(format="percent"),
-                "r location": st.column_config.NumberColumn(format="percent"),
-                "P well": st.column_config.NumberColumn(format="percent"),
-                "Discovery trials": st.column_config.NumberColumn(format="%d"),
-            },
-        )
-
-        _concepts = ["proven", "well_associated", "below_lkh", "attic"] if has_area \
-            else ["well_associated", "attic"]
-        _vol = [r for c in _concepts for r in volume_table(_rows, c)]
-        st.markdown("**Volumes, MMboe — success case, conditional on the outcome each "
-                    "concept belongs to**")
-        st.dataframe(
-            pd.DataFrame(_vol), hide_index=True, width="stretch",
-            column_config={c: st.column_config.NumberColumn(format="%.2f")
-                           for c in ("P90", "P50", "Mean", "P10")},
-        )
-
-        st.markdown("**Risked volumes, MMboe** — mean × chance")
-        st.dataframe(
-            pd.DataFrame(risked_table(_rows)), hide_index=True, width="stretch",
-            column_config={
-                "P well": st.column_config.NumberColumn(format="percent"),
-                "Expected proven": st.column_config.NumberColumn(format="%.2f"),
-                "Expected well associated": st.column_config.NumberColumn(format="%.2f"),
-            },
-        )
-        _best_p = max(_rows, key=lambda r: r.p_well)
-        _best_v = max(_rows, key=lambda r: r.proven.get("mean", float("-inf"))
-                      if r.proven else float("-inf"))
-        _best_e = max(_rows, key=lambda r: r.expected_proven)
-        st.caption(
-            f"**Three different winners is the normal outcome, and the point.** Well "
-            f"**{_best_p.label}** has the best chance ({_best_p.p_well:.1%}), well "
-            f"**{_best_v.label}** the largest proven volume if it works, and well "
-            f"**{_best_e.label}** the largest chance-weighted volume. The last is the "
-            f"one a portfolio adds up; none of them is an economic answer, because "
-            f"none of them knows what a well costs.\n\n"
-            f"**Percentiles are conditional and risked figures are kept apart.** A "
-            f"risked *percentile* is not reported at all: risking scales the "
-            f"probability attached to a volume, never the volume, so the P50 volume "
-            f"does not change — its exceedance probability does."
-        )
-
-
-    _inverse_section(vsweep, ts, mefs, wells, selected_well, _others)
+    _inverse_section(vsweep, ts, mefs)
 
 
 
@@ -640,7 +490,6 @@ def _band_section(ctx: Ctx):
     st.subheader("Resource by contact-depth band")
     ts, groups, vc = ctx.ts, ctx.groups, ctx.vc
     entry, exit_, mefs = ctx.entry, ctx.exit_, ctx.mefs
-    selected_well = ctx.selected_well
     split_caveat(ctx)
 
     cb1, cb2, cb3 = st.columns([1.4, 1, 1])
@@ -717,7 +566,7 @@ def _band_section(ctx: Ctx):
     _chart(pfig_b12_banded_percentiles(
         bp, mefs=mefs, show_proven=show_proven, show_mean=show_mean,
         probability_scale=prob_scale, volume_scale=vol_scale,
-        well_label=selected_well), key="b12")
+        well_label=None), key="b12")
 
     dropped = ""
     if bp.n_bands_dropped:

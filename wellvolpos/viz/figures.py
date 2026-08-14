@@ -1351,6 +1351,17 @@ def fig_b7_frontier(
     assoc = (thin(vsweep.discovery_mean, n_disc, min_support)
              if vsweep.discovery_mean is not None else None)
 
+    # The ladder, thin and dotted in the same hue -- see the plotly twin for why a
+    # mean-only frontier understates what the argument needs.
+    for stat, name, ls in (("discovery_p90", "P90", ":"),
+                           ("discovery_p50", "P50", "--"),
+                           ("discovery_p10", "P10", ":")):
+        values = getattr(vsweep, stat, None)
+        if values is None:
+            continue
+        ax.plot(thin(values, n_disc, min_support), pw,
+                color=colour("well_associated", dark), lw=0.9, ls=ls,
+                label=f"Well associated {name}")
     if assoc is not None:
         ax.plot(assoc, pw, color=colour("well_associated", dark), lw=2.4,
                 label="Well associated mean")

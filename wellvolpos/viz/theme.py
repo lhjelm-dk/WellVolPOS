@@ -555,29 +555,6 @@ def reference_label(reference) -> str:
     return REFERENCE_SHORT.get(str(value), str(value))
 
 
-def spacing_label(z_gap: float, others=()) -> str:
-    """How a swept figure should describe the entry-to-exit spacing it was run at.
-
-    Every figure that draws an **exit-dependent** quantity -- proven, and the unproven
-    volume below LKH; see :mod:`wellvolpos.core.dependence` -- is swept at one spacing,
-    and its title used to state that spacing as a flat fact: *"exit = entry + 50 m"*.
-
-    With candidate wells on the same axes that is a false claim (Lars, 2026-08-14).
-    Each candidate carries its own entry and exit, so each has its own spacing and its
-    own curve; a title naming one of them tells the reader the other curves are
-    something they are not. When the candidates differ, this says so and gives the
-    range instead.
-
-    The selected well's spacing is always the first element, because it is the one the
-    figure's own bold series was swept at.
-    """
-    gaps = [float(z_gap)] + [float(g) for g in others]
-    lo, hi = min(gaps), max(gaps)
-    if hi - lo < 0.5:
-        return f"exit = entry + {lo:.0f} m"
-    return f"per candidate spacing, {lo:.0f}\u2013{hi:.0f} m"
-
-
 # --------------------------------------------------------- log-probit axes
 #: The exceedance percentiles the probit grid is ruled at. Fixed, and deliberately
 #: *not* the ladder a given figure ends up drawing (see

@@ -67,6 +67,7 @@ from wellvolpos.core import (
     group_trials,
     p_well,
     split_trials,
+    thickness_from_pay,
 )
 from wellvolpos.io.adapters import (
     CANONICAL_FIELDS,
@@ -87,7 +88,7 @@ from wellvolpos.ui.common import badge as _badge
 from wellvolpos.ui.conventions import CHANCE_DEFAULTS, PLAY_DEFAULTS
 from wellvolpos.ui.loading import load as _load
 from wellvolpos.core.rose import AT_WELL_WINDOW_M
-from wellvolpos.ui.wells import read_selected, read_wells
+from wellvolpos.ui.well import deviation_caption, read_well, well_editor
 from wellvolpos.ui.tabstyle import inject as _inject_tab_style
 from wellvolpos.viz import (
     AREA_SCALES,
@@ -312,12 +313,8 @@ with tabs[0]:
                 st.error(str(e))
             else:
                 st.session_state.update({
-                    # A case carries one well, so it restores Well A and leaves any
-                    # other candidates alone -- they are an investigation, not a
-                    # setting the case was saved with.
-                    "w_well_A_entry": float(np.clip(loaded.entry, zmin, zmax)),
-                    "w_well_A_exit": float(np.clip(loaded.exit, zmin, zmax)),
-                    "w_selected_well": "A",
+                    "w_entry": float(np.clip(loaded.entry, zmin, zmax)),
+                    "w_exit": float(np.clip(loaded.exit, zmin, zmax)),
                     "w_mefs": loaded.mefs,
                     "w_ref": ReferenceContour(loaded.reference),
                     "w_scheme": loaded.scheme,
@@ -338,19 +335,16 @@ with tabs[0]:
                 st.warning(w)
     _case_save_slot = cc2
 
-# **The well geometry is no longer in the sidebar** (Lars, 2026-08-13). The app now
-# holds up to four candidate locations rather than one, which is what a location
-# decision actually compares, and four pairs of sliders do not belong in a sidebar
-# beside four global conventions. They are created in tab (3), where the comparison
-# is, and read here -- the same arrangement the chance table uses, and it works for
-# the same reason: `entry` and `exit_` are needed before any tab renders, a widget
-# owns its key, and the next rerun sees the change with no second copy of the state.
+# **The well geometry sits in tab (1) with the other settings**, and is read here.
+# The same arrangement the chance table uses, and it works for the same reason:
+# `entry` and `exit_` are needed before any tab renders, a widget owns its key, and
+# the next rerun sees the change with no second copy of the state.
 #
-# `entry`/`exit_` are the **selected** well's, so everything downstream is untouched
-# by the others existing.
-wells = read_wells(ts, zmin, zmax)
-_selected = read_selected(wells)
-entry, exit_ = _selected.entry, _selected.exit
+# It was four candidate locations on tab (3) for one day (2026-08-13/14) and Lars
+# removed it -- see CLAUDE.md. With one well the sliders are a *setting*, so they
+# belong beside MEFS and the conventions rather than on the tab that sweeps depth.
+well = read_well(ts, zmin, zmax)
+entry, exit_ = well.entry, well.exit
 # The at-the-well window, read here for the same reason the chance table is: it feeds
 # a *swept curve* on tab ③ as well as the metric on tab ④, and the sweep runs before
 # either tab renders. Seeded with setdefault so the widget on tab ④ still owns the key.
@@ -449,6 +443,20 @@ with tabs[0]:
 # same device the case-save button already uses, and it is what lets a control live
 # on a tab while its value is available to the whole page.
 with _settings_slot.container():
+    st.divider()
+    # **The well geometry is a setting.** It was in the sidebar until 2026-08-13,
+    # then on tab (3) for a day as four candidate locations, and is here now that
+    # there is one well again: tab (3) sweeps *every* entry depth and argues about
+    # which to pick, so the pair of numbers you settle on belongs with the other
+    # conventions rather than on the tab whose whole subject is not having settled.
+    st.subheader("The well")
+    st.caption(
+        "Where the well enters and leaves the reservoir. Tab ③ sweeps every entry "
+        "depth and shows what each one buys; tab ④ is the write-up at the pair set "
+        "here."
+    )
+    _deviation_slot = well_editor(well, zmin, zmax)
+
     st.divider()
     st.subheader("Threshold and conventions")
     st.caption(
@@ -562,6 +570,10 @@ has_area = ts.has("area")
 if has_area:
     ad = AreaDepth.from_trials(ts.col("contact"), ts.col("area"))
     vc = split_trials(ts, ad, groups, entry, exit_)
+# Filled here, drawn under the sliders in tab (1): the verdict needs A(z), which is
+# only fitted at this point in the script.
+deviation_caption(_deviation_slot, well,
+                  thickness_from_pay(ts, ad).thickness if has_area else None)
 
 
 # The correlation check warns rather than fails (decided 2026-08-10), because the
@@ -600,7 +612,6 @@ ctx = Ctx(
     ts=ts, dataset=choice, source=source, overrides=overrides, qc=qc,
     ad=ad if has_area else None, has_area=has_area,
     entry=entry, exit_=exit_,
-    wells=wells, selected_well=_selected.label,
     at_well_window=at_well_window,
     mefs=mefs, ref=ref, scheme=scheme, area_scale=area_scale,
     elements=elements, play_elements=play_elements, play_chance=play_chance,

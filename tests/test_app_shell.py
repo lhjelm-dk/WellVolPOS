@@ -87,22 +87,21 @@ def test_nothing_lives_in_a_sidebar(fresh):
             + sb.radio.len + sb.checkbox.len) == 0
 
 
-def test_the_well_geometry_lives_in_a_tab_and_defaults_to_one_candidate(fresh):
-    """Well A always exists, so no tab downstream can find itself without a well.
+def test_the_well_geometry_lives_in_a_tab_and_not_in_a_sidebar(fresh):
+    """One well, its two sliders in tab ①, read at the top of ``app.py``.
 
-    The sliders are created in tab ③ and read at the top of ``app.py`` -- the same
-    arrangement the chance table uses, and for the same reason: the selected well's
-    depths are needed before any tab renders.
+    The same arrangement the chance table uses, and for the same reason: the entry
+    and exit are needed before any tab renders, so a widget owns the key and the read
+    happens at the top of the script.
     """
-    from wellvolpos.ui.wells import MAX_WELLS, WELL_LABELS
-
     assert not fresh.exception
     labels = [s.label for s in fresh.slider]
-    assert any("Reservoir entry" in l and l.endswith("A") for l in labels), labels
-    assert any("Reservoir exit" in l and l.endswith("A") for l in labels), labels
-    # One candidate by default, so B/C/D are opt-in rather than clutter.
-    assert not any(l.endswith("B") for l in labels), labels
-    assert len(WELL_LABELS) == MAX_WELLS
+    assert any(l.startswith("Reservoir entry") for l in labels), labels
+    assert any(l.startswith("Reservoir exit") for l in labels), labels
+    # Exactly one of each -- the four-candidate model was removed on 2026-08-14 and a
+    # second pair of these sliders means it has come back by accident.
+    assert sum(l.startswith("Reservoir entry") for l in labels) == 1, labels
+    assert sum(l.startswith("Reservoir exit") for l in labels) == 1, labels
 
 
 def test_case_load_and_save_sit_together_in_tab_one_not_the_sidebar(fresh):
@@ -213,20 +212,3 @@ def test_the_risk_elements_are_named_closure_not_trap(fresh):
     assert not stray, f"'trap' still shown to the reader: {sorted(set(stray))}"
 
 
-def test_the_comparison_renders_with_more_than_one_candidate():
-    """Renders tab ③ with two wells, which is the only state the comparison exists in.
-
-    It was moved from tab ④ to tab ③ on 2026-08-14 and arrived referring to a
-    ``chance`` object that tab ③ does not unpack -- a NameError that every existing
-    test missed, because they all run with the default single well and the comparison
-    is inside ``if len(wells) > 1``. A feature that only exists in a state no test
-    enters is a feature with no tests.
-    """
-    at = AppTest.from_file(APP, default_timeout=TIMEOUT)
-    at.session_state["w_n_wells"] = 2
-    at.run()
-    assert not at.exception, [e.value for e in at.exception]
-    body = _all_text(at)
-    assert "Compare the candidates" in body
-    # And tab ④ must NOT carry it: that tab is the write-up of one well.
-    assert body.count("Compare the candidates") == 1
