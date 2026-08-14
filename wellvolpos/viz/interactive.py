@@ -1155,7 +1155,19 @@ def pfig_b1_volume_split(
          "Possible below exit | any discovery", "possible", "dash", 2),
         (thin(vsweep.possible_mean_if_any, vsweep.n_discovery, min_support)
          if vsweep.possible_mean_if_any is not None else None,
-         "Possible below exit | HC seen to the exit", "possible", "dot", 2),
+         "Possible below exit | HC seen to the exit", "possible", "dot", 2.4),
+        # The spread of that upside, not just its mean (Lars, 2026-08-14). Thin and in
+        # the same tan, like the proven family around the proven mean: same concept,
+        # same colour, weight carrying which is the quoted number.
+        (thin(vsweep.possible_p90_if_any, vsweep.n_discovery, min_support)
+         if vsweep.possible_p90_if_any is not None else None,
+         "Possible P90 | HC seen to the exit", "possible", "dot", 1),
+        (thin(vsweep.possible_p50_if_any, vsweep.n_discovery, min_support)
+         if vsweep.possible_p50_if_any is not None else None,
+         "Possible P50 | HC seen to the exit", "possible", "dot", 1),
+        (thin(vsweep.possible_p10_if_any, vsweep.n_discovery, min_support)
+         if vsweep.possible_p10_if_any is not None else None,
+         "Possible P10 | HC seen to the exit", "possible", "dot", 1),
         (thin(vsweep.attic_mean, vsweep.n_dry, min_support),
          "Attic | dry hole", "attic", "solid", 3),
     ) + (

@@ -211,3 +211,22 @@ def test_the_risk_elements_are_named_closure_not_trap(fresh):
     # "trapezoid" is an integration rule and stays; the geological sense must be gone.
     stray = re.findall(r"\btrap(?!ezoid)\w*", text, re.I)
     assert not stray, f"'trap' still shown to the reader: {sorted(set(stray))}"
+
+
+def test_the_comparison_renders_with_more_than_one_candidate():
+    """Renders tab ③ with two wells, which is the only state the comparison exists in.
+
+    It was moved from tab ④ to tab ③ on 2026-08-14 and arrived referring to a
+    ``chance`` object that tab ③ does not unpack -- a NameError that every existing
+    test missed, because they all run with the default single well and the comparison
+    is inside ``if len(wells) > 1``. A feature that only exists in a state no test
+    enters is a feature with no tests.
+    """
+    at = AppTest.from_file(APP, default_timeout=TIMEOUT)
+    at.session_state["w_n_wells"] = 2
+    at.run()
+    assert not at.exception, [e.value for e in at.exception]
+    body = _all_text(at)
+    assert "Compare the candidates" in body
+    # And tab ④ must NOT carry it: that tab is the write-up of one well.
+    assert body.count("Compare the candidates") == 1

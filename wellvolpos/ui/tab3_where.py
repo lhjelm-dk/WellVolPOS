@@ -17,9 +17,14 @@ so this tab informs rather than decides.
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 import streamlit as st
 
 from ..core import (
+    chance_table,
+    compare_wells,
+    risked_table,
+    volume_table,
     BAND_MODES,
     BAND_MODE_LABELS,
     DEFAULT_N_BANDS,
@@ -441,7 +446,10 @@ def _location_sweep_tab(ctx: Ctx):
                                       height=TALL_PANEL_HEIGHT)
     add_well_markers(_f_b8, wells, selected=selected_well)
     _chart(_f_b8, key="b8")
-    _f_b9 = pfig_b9_chance_weighted(vsweep, current_z=entry, zlim=zrow_sweep)
+    # A quarter taller (Lars, 2026-08-14): two starred peaks and a grey percentile
+    # family share one pair of axes, and at row height the peaks are hard to place.
+    _f_b9 = pfig_b9_chance_weighted(vsweep, current_z=entry, zlim=zrow_sweep,
+                                    height=TALL_PANEL_HEIGHT)
     add_well_markers(_f_b9, wells, selected=selected_well)
     _chart(_f_b9, key="b9")
     st.caption(
@@ -469,6 +477,71 @@ def _location_sweep_tab(ctx: Ctx):
         "between, and that starred peak is where the well goes on commercial grounds — `Pc(well)` "
         "being the number Rose says to carry into an EMV."
     )
+
+    # ------------------------------------------------------------ the comparison
+    # Moved to tab 3 on 2026-08-14: that tab is the bench -- define candidates,
+    # sweep them, compare them -- and this one is the write-up of the chosen well.
+    if len(wells) > 1:
+        st.divider()
+        st.subheader("Compare the candidates")
+        _rows = compare_wells(
+            ts, ad if has_area else None,
+            [(w.label, w.entry, w.exit) for w in wells],
+            # `pos` here, not `chance.pos_prospect`: this tab unpacks the POS
+            # directly and has no `chance` object. Same number, different name.
+            pos_prospect=pos, reference=ref,
+        )
+
+        st.markdown("**Chance** — what each location does to the odds")
+        st.dataframe(
+            pd.DataFrame(chance_table(_rows)), hide_index=True, width="stretch",
+            column_config={
+                "Entry (m)": st.column_config.NumberColumn(format="%.0f"),
+                "Exit (m)": st.column_config.NumberColumn(format="%.0f"),
+                "POS prospect": st.column_config.NumberColumn(format="percent"),
+                "r location": st.column_config.NumberColumn(format="percent"),
+                "P well": st.column_config.NumberColumn(format="percent"),
+                "Discovery trials": st.column_config.NumberColumn(format="%d"),
+            },
+        )
+
+        _concepts = ["proven", "well_associated", "possible", "attic"] if has_area \
+            else ["well_associated", "attic"]
+        _vol = [r for c in _concepts for r in volume_table(_rows, c)]
+        st.markdown("**Volumes, MMboe — success case, conditional on the outcome each "
+                    "concept belongs to**")
+        st.dataframe(
+            pd.DataFrame(_vol), hide_index=True, width="stretch",
+            column_config={c: st.column_config.NumberColumn(format="%.2f")
+                           for c in ("P90", "P50", "Mean", "P10")},
+        )
+
+        st.markdown("**Risked volumes, MMboe** — mean × chance")
+        st.dataframe(
+            pd.DataFrame(risked_table(_rows)), hide_index=True, width="stretch",
+            column_config={
+                "P well": st.column_config.NumberColumn(format="percent"),
+                "Expected proven": st.column_config.NumberColumn(format="%.2f"),
+                "Expected well associated": st.column_config.NumberColumn(format="%.2f"),
+            },
+        )
+        _best_p = max(_rows, key=lambda r: r.p_well)
+        _best_v = max(_rows, key=lambda r: r.proven.get("mean", float("-inf"))
+                      if r.proven else float("-inf"))
+        _best_e = max(_rows, key=lambda r: r.expected_proven)
+        st.caption(
+            f"**Three different winners is the normal outcome, and the point.** Well "
+            f"**{_best_p.label}** has the best chance ({_best_p.p_well:.1%}), well "
+            f"**{_best_v.label}** the largest proven volume if it works, and well "
+            f"**{_best_e.label}** the largest chance-weighted volume. The last is the "
+            f"one a portfolio adds up; none of them is an economic answer, because "
+            f"none of them knows what a well costs.\n\n"
+            f"**Percentiles are conditional and risked figures are kept apart.** A "
+            f"risked *percentile* is not reported at all: risking scales the "
+            f"probability attached to a volume, never the volume, so the P50 volume "
+            f"does not change — its exceedance probability does."
+        )
+
 
     _inverse_section(vsweep, ts, mefs, wells, selected_well)
 

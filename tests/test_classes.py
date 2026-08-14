@@ -22,15 +22,37 @@ def test_headline_kpi_is_proven_mean(reduced, area_depth, groups):
     assert s["proven"]["n"] == 4576
 
 
-def test_possible_below_exit_is_separate_and_small_here(reduced, area_depth, groups):
+def test_the_two_possible_readings_are_different_and_both_are_kept(reduced, area_depth,
+                                                                  groups):
+    """One is additive, the other is the size of the upside. Neither replaces the other.
+
+    ``possible_of_discovery`` spans every discovery trial, zeros included, and is the
+    member that makes the split a *decomposition*: proven + it = discovery, exactly.
+    ``possible`` is conditional on there being anything below the exit at all, which is
+    the event the class is named after -- and on this file 81 % of the discovery group
+    contributes an exact zero, which is what dragged the reported P50 to 0.00 and the
+    mean to a fifth of the real upside (Lars, 2026-08-14).
+    """
     vc = split_trials(reduced, area_depth, groups, ENTRY, EXIT)
     s = class_summary(vc, groups)
-    assert s["possible"]["mean"] == pytest.approx(0.48, abs=0.02)
-    # proven + possible must reconstruct the discovery-case total exactly.
-    # This is the identity that has to survive *any* apportionment: the rule
-    # decides where the boundary falls, never how much there is in total.
+
+    # The additive one, and the identity that has to survive *any* apportionment: the
+    # rule decides where the boundary falls, never how much there is in total.
+    assert s["possible_of_discovery"]["mean"] == pytest.approx(0.48, abs=0.02)
     assert s["discovery"]["mean"] == pytest.approx(
-        s["proven"]["mean"] + s["possible"]["mean"], abs=1e-9
+        s["proven"]["mean"] + s["possible_of_discovery"]["mean"], abs=1e-9
+    )
+
+    # The conditional one: a smaller population, a larger volume, and no zeros in it.
+    assert s["possible"]["mean"] == pytest.approx(2.53, abs=0.02)
+    assert s["possible"]["n"] < s["possible_of_discovery"]["n"]
+    assert s["possible"]["mean"] > s["possible_of_discovery"]["mean"] * 4
+    assert s["possible"]["p50"] > 0.0, "a conditional percentile must not be a zero"
+    assert s["possible_of_discovery"]["p50"] == pytest.approx(0.0)
+
+    # And it must NOT be the additive one, which is the mistake being guarded against.
+    assert s["discovery"]["mean"] != pytest.approx(
+        s["proven"]["mean"] + s["possible"]["mean"], abs=0.01
     )
 
 

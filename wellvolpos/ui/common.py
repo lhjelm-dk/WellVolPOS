@@ -21,7 +21,9 @@ from .numbering import renumber_title
 #: C2 is a *stacked composite*, not a panel in a row. At the shared panel height
 #: both of its halves were squashed to the point where the braces collided with
 #: the axis, so it gets its own.
-C2_HEIGHT = 620
+# A quarter taller again on 2026-08-14: eight curves, their value labels and the
+# nesting braces below the zero line, all on one pair of axes.
+C2_HEIGHT = 775
 
 __all__ = ["C2_HEIGHT", "badge", "chart", "element_chip", "split_caveat"]
 

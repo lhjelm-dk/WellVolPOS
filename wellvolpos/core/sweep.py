@@ -364,6 +364,13 @@ class VolumeSweep:
     #: ``p_well_exits_in_hc`` overstates that prize the way quoting a success-case
     #: volume without POS does.
     possible_mean_if_any: np.ndarray | None = None
+    #: P90 / P50 / P10 of that same conditional distribution -- the spread of the
+    #: upside, not just its mean (Lars, 2026-08-14). Conditioned on the well leaving
+    #: the reservoir in hydrocarbons, like the mean above, because a percentile of a
+    #: population 41 % of which is an exact zero is not a percentile of anything.
+    possible_p90_if_any: np.ndarray | None = None
+    possible_p50_if_any: np.ndarray | None = None
+    possible_p10_if_any: np.ndarray | None = None
     #: Mean resource of the trials whose contact sits **at** the entry, within
     #: ``at_well_window`` metres -- the workbook's ``Results!G8`` swept over depth,
     #: which is what its charts 5 and 16 plot and what Rose's Figures 7 and 19 show as
@@ -417,6 +424,9 @@ def run_volume_sweep(
     proven_mean = np.full(z.size, np.nan)
     possible_mean = np.full(z.size, np.nan)
     possible_if_any = np.full(z.size, np.nan)
+    poss_p90 = np.full(z.size, np.nan)
+    poss_p50 = np.full(z.size, np.nan)
+    poss_p10 = np.full(z.size, np.nan)
     attic_mean = np.full(z.size, np.nan)
     discovery_mean = np.full(z.size, np.nan)
     p99 = np.full(z.size, np.nan)
@@ -487,7 +497,13 @@ def run_volume_sweep(
             # true, so the masks are now one mask.
             _exits = contact[groups_i.discovery] > zx
             if _exits.any():
-                possible_if_any[i] = float(_poss[_exits].mean())
+                _pv = _poss[_exits]
+                possible_if_any[i] = float(_pv.mean())
+                # Petroleum orientation, one call so the three cannot drift: P90 is
+                # the low case and therefore the 10th percentile of the values.
+                poss_p90[i], poss_p50[i], poss_p10[i] = (
+                    float(v) for v in np.percentile(_pv, [10.0, 50.0, 90.0])
+                )
             discovery_mean[i] = float(associated.mean())
             # Petroleum orientation: P90 is the low case, so it is the 10th
             # percentile of the values.
@@ -517,6 +533,8 @@ def run_volume_sweep(
         mefs=mefs, p_proven_exceeds_mefs=p_proven_ex, p_attic_exceeds_mefs=p_attic_ex,
         p_possible_exceeds_mefs=p_possible_ex, p_well_exits_in_hc=p_exits_hc,
         possible_mean_if_any=possible_if_any,
+        possible_p90_if_any=poss_p90, possible_p50_if_any=poss_p50,
+        possible_p10_if_any=poss_p10,
         at_well_mean=at_well, at_well_n=at_well_n, at_well_window=float(at_well_window),
         p_discovery_exceeds_mefs=p_disc_ex,
         proven_p99=p99, proven_p90=p90, proven_p50=p50, proven_p10=p10,

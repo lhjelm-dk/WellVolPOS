@@ -7,14 +7,11 @@ three areas a *well* divides the closure into."""
 
 from __future__ import annotations
 
+import numpy as np
 import pandas as pd
 import streamlit as st
 
 from ..core import (
-    chance_table,
-    compare_wells,
-    risked_table,
-    volume_table,
     thickness_from_pay,
     rose_partition,
     boundary_ties,
@@ -61,15 +58,31 @@ def render(ctx: Ctx) -> None:
     # the depth I chose", which is a question about one well -- letting four through
     # would turn every figure here into a comparison and lose what the tab is for.
     # The comparison itself is the table below.
-    if len(wells) > 1:
-        st.radio(
-            "Which well option is this tab about?", [w.label for w in wells],
-            horizontal=True, key="w_selected_well",
-            format_func=lambda k: next(w.describe() for w in wells if w.label == k),
-            help="Defined on tab ③. Every figure and metric below is about this one; "
-                 "the others appear only in the comparison table.",
-        )
+    st.subheader("The selected well")
+    _sel_l, _sel_r = st.columns([1, 2])
+    with _sel_l:
+        if len(wells) > 1:
+            st.selectbox(
+                "Well carried onto this tab", [w.label for w in wells],
+                key="w_selected_well",
+                format_func=lambda k: f"Well {k}",
+                help="Candidates are defined and compared on tab ③. **Everything on "
+                     "this tab is about this one well** — no other candidate appears "
+                     "here, by design.",
+            )
+        else:
+            st.metric("Well", f"Well {selected_well}")
+    with _sel_r:
+        st.metric(f"Well {selected_well} — reservoir entry to exit",
+                  f"{entry:,.0f} – {exit_:,.0f} m TVDSS",
+                  help=f"{exit_ - entry:,.0f} m of reservoir penetrated.")
+    st.caption(
+        "**This tab is one well.** Tab ③ is the bench — define candidates, sweep them, "
+        "compare them; this is the write-up of the one you chose. Every number, table "
+        f"and figure below is Well {selected_well}'s."
+    )
 
+    st.divider()
     st.subheader(f"At Well {selected_well} — {entry:,.0f}–{exit_:,.0f} m")
     _split_caveat()
 
@@ -183,7 +196,7 @@ def render(ctx: Ctx) -> None:
                 f"drills through. So his updip ({_rp.updip_mean:.2f}) is our proven "
                 f"({cs['proven']['mean']:.2f}) *minus* the entry-to-exit slice, and his "
                 f"downdip ({_rp.downdip_mean:.2f}) is our possible-below-exit "
-                f"({cs['possible']['mean']:.2f}) *plus* that same slice — "
+                f"({cs['possible_of_discovery']['mean']:.2f}) *plus* that same slice — "
                 f"{cs['proven']['mean'] - _rp.updip_mean:.2f} MMboe here. Both partitions sum "
                 f"to the well-associated volume; neither is the well-associated volume."
             )
@@ -216,70 +229,7 @@ def render(ctx: Ctx) -> None:
             "instead of them."
         )
 
-    # ------------------------------------------------------------ the comparison
-    # The gap the review named: an assessor does not ask "what does a well at 2205 m
-    # give me", they ask "A, B or C". Every candidate goes through exactly the
-    # functions this one did -- same thickness, same apex, same reference contour --
-    # so the columns are comparable by construction rather than by intention.
-    if len(wells) > 1:
-        st.divider()
-        st.subheader("Compare the candidates")
-        _rows = compare_wells(
-            ts, ad if has_area else None,
-            [(w.label, w.entry, w.exit) for w in wells],
-            pos_prospect=chance.pos_prospect, reference=ref,
-        )
-
-        st.markdown("**Chance** — what each location does to the odds")
-        st.dataframe(
-            pd.DataFrame(chance_table(_rows)), hide_index=True, width="stretch",
-            column_config={
-                "Entry (m)": st.column_config.NumberColumn(format="%.0f"),
-                "Exit (m)": st.column_config.NumberColumn(format="%.0f"),
-                "POS prospect": st.column_config.NumberColumn(format="percent"),
-                "r location": st.column_config.NumberColumn(format="percent"),
-                "P well": st.column_config.NumberColumn(format="percent"),
-                "Discovery trials": st.column_config.NumberColumn(format="%d"),
-            },
-        )
-
-        _concepts = ["proven", "well_associated", "possible", "attic"] if has_area \
-            else ["well_associated", "attic"]
-        _vol = [r for c in _concepts for r in volume_table(_rows, c)]
-        st.markdown("**Volumes, MMboe — success case, conditional on the outcome each "
-                    "concept belongs to**")
-        st.dataframe(
-            pd.DataFrame(_vol), hide_index=True, width="stretch",
-            column_config={c: st.column_config.NumberColumn(format="%.2f")
-                           for c in ("P90", "P50", "Mean", "P10")},
-        )
-
-        st.markdown("**Risked volumes, MMboe** — mean × chance")
-        st.dataframe(
-            pd.DataFrame(risked_table(_rows)), hide_index=True, width="stretch",
-            column_config={
-                "P well": st.column_config.NumberColumn(format="percent"),
-                "Expected proven": st.column_config.NumberColumn(format="%.2f"),
-                "Expected well associated": st.column_config.NumberColumn(format="%.2f"),
-            },
-        )
-        _best_p = max(_rows, key=lambda r: r.p_well)
-        _best_v = max(_rows, key=lambda r: r.proven.get("mean", float("-inf"))
-                      if r.proven else float("-inf"))
-        _best_e = max(_rows, key=lambda r: r.expected_proven)
-        st.caption(
-            f"**Three different winners is the normal outcome, and the point.** Well "
-            f"**{_best_p.label}** has the best chance ({_best_p.p_well:.1%}), well "
-            f"**{_best_v.label}** the largest proven volume if it works, and well "
-            f"**{_best_e.label}** the largest chance-weighted volume. The last is the "
-            f"one a portfolio adds up; none of them is an economic answer, because "
-            f"none of them knows what a well costs.\n\n"
-            f"**Percentiles are conditional and risked figures are kept apart.** A "
-            f"risked *percentile* is not reported at all: risking scales the "
-            f"probability attached to a volume, never the volume, so the P50 volume "
-            f"does not change — its exceedance probability does."
-        )
-
+    st.divider()
     st.divider()
     sh = groups.risked_shares(chance.pos_prospect, chance.p_well)
     # The knife edge, stated (Lars, 2026-08-12). A discovery is `contact > z_entry`
@@ -353,11 +303,25 @@ def render(ctx: Ctx) -> None:
         # core.classes.risked_exceedance for the three times that went wrong.
         res_all = ts.col("resource")
         p_updip = max(chance.pos_prospect - chance.p_well, 0.0)
+        # The chance the well leaves the reservoir *in* hydrocarbons, given a
+        # discovery. P_well times this is the chance of the possible class occurring
+        # at all, and it is necessarily below P_well -- which is what Lars predicted
+        # and what the old row denied by reusing P_well unchanged.
+        _n_disc = int(np.asarray(groups.discovery).sum())
+        _n_below = int(np.asarray(groups.hc_to_exit).sum())
+        _p_below_exit = (_n_below / _n_disc) if _n_disc else 0.0
         rows = [
             ("Prospect resource potential", res_all[res_all > 0], chance.pos_prospect),
             ("Well associated volume", vc.discovery_total[groups.discovery], chance.p_well),
             ("Resource tested by the well", vc.proven[groups.discovery], chance.p_well),
-            ("Possible — below the reservoir exit", vc.possible[groups.discovery], chance.p_well),
+            # **Conditional on there being anything below the exit**, which is the
+            # event this row's name describes -- so its n and its chance are smaller
+            # than the discovery group's, and its percentiles are percentiles of the
+            # thing it is named after rather than of a population 41 % of which
+            # contributes a zero.
+            ("Possible — below the reservoir exit",
+             vc.possible[groups.hc_to_exit],
+             chance.p_well * _p_below_exit),
             ("Up-dip / attic volume", vc.attic[groups.dry_with_attic], p_updip),
         ]
         stats = [(name, class_percentiles(values, ch)) for name, values, ch in rows]

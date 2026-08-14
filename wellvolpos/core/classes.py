@@ -159,7 +159,13 @@ def split_trials(
 
 
 def class_summary(vc: VolumeClasses, groups: Groups) -> dict[str, dict[str, float]]:
-    """Percentiles and mean for each class, over the trials where it is defined."""
+    """Percentiles and mean for each class, over the trials where it is defined.
+
+    "Where it is defined" is the operative phrase and it differs per class: the attic
+    exists only in the dry-but-charged trials, and the possible volume exists only
+    where the well left the reservoir still in hydrocarbons. Conditioning each class on
+    its own event is what lets its percentiles be read as percentiles.
+    """
     def stat(v: np.ndarray, mask: np.ndarray) -> dict[str, float]:
         x = v[mask]
         if x.size == 0:
@@ -172,10 +178,31 @@ def class_summary(vc: VolumeClasses, groups: Groups) -> dict[str, dict[str, floa
             "p10": float(np.percentile(x, 90)),
         }
 
+    # **Two possible entries, and the difference is which event they are conditional
+    # on** (Lars, 2026-08-14).
+    #
+    # ``possible`` is conditional on there *being* something below the exit, which is
+    # the event its name describes: the well left the reservoir still in hydrocarbons.
+    # Selected on the volume being positive, which is exactly that event -- a trial
+    # whose contact falls inside the penetrated interval has nothing below the exit.
+    #
+    # ``possible_of_discovery`` spans every discovery trial, zeros included, and is the
+    # **additive** member: proven + possible_of_discovery = discovery, exactly. That is
+    # what makes the split a decomposition rather than a list, so it is kept -- but it
+    # must not be reported under the *possible* label, because 41 % of its population
+    # (81 % on the other demo prospect) contributes an exact zero and drags every
+    # percentile with it. On prospect B the P50 is 1.68 against 20.16.
     return {
         "discovery": stat(vc.discovery_total, groups.discovery),
         "proven": stat(vc.proven, groups.discovery),
-        "possible": stat(vc.possible, groups.discovery),
+        # ``groups.hc_to_exit`` *is* this event -- ``discovery & contact > z_exit``,
+        # computed by ``group_trials`` itself. Selecting on ``possible > 0`` instead
+        # looked equivalent and was not: the wedge integral rounds a hair-thin
+        # interval to exactly zero, so the two masks disagreed on a handful of trials
+        # and this stopped matching the sweep's own conditional mean. Use the engine's
+        # mask rather than re-deriving the geology from the arithmetic.
+        "possible": stat(vc.possible, groups.hc_to_exit),
+        "possible_of_discovery": stat(vc.possible, groups.discovery),
         "attic_dry_hole": stat(vc.attic, groups.dry_with_attic),
     }
 

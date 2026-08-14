@@ -151,7 +151,15 @@ def test_volume_sweep_matches_direct_split_at_the_reference_point(reduced, area_
     assert vsweep.z[0] == pytest.approx(ENTRY)
     assert vsweep.z_exit[0] == pytest.approx(EXIT)
     assert vsweep.proven_mean[0] == pytest.approx(cs["proven"]["mean"], abs=1e-9)
-    assert vsweep.possible_mean[0] == pytest.approx(cs["possible"]["mean"], abs=1e-9)
+    # `possible_of_discovery`, not `possible`: the sweep's `possible_mean` is the
+    # **additive** member, over every discovery trial, and since 2026-08-14
+    # `class_summary["possible"]` is conditional on there being anything below the
+    # exit. Comparing the two would be comparing different populations.
+    assert vsweep.possible_mean[0] == pytest.approx(
+        cs["possible_of_discovery"]["mean"], abs=1e-9)
+    if vsweep.possible_mean_if_any is not None:
+        assert vsweep.possible_mean_if_any[0] == pytest.approx(
+            cs["possible"]["mean"], abs=1e-9)
     assert vsweep.attic_mean[0] == pytest.approx(cs["attic_dry_hole"]["mean"], abs=1e-9)
 
     direct = p_well(reduced, ENTRY, POS)
