@@ -123,3 +123,36 @@ def test_the_at_the_well_window_reaches_the_swept_curve(reduced, area_depth):
 
 
 # ------------------------------------------------- what the exit actually moves
+
+
+def test_the_frontier_carries_the_well_associated_range_not_only_its_mean(full):
+    """3.8 draws P90 / P50 / P10 beside the mean (Lars, 2026-08-14).
+
+    A frontier drawn only through means says what an *average* discovery buys and
+    nothing about whether a poor one still clears the bar -- which is the question a
+    location argument turns on. P90 is the low case, so its frontier lies to the left
+    of the mean's: the same chance, for less volume.
+    """
+    import wellvolpos.viz.figures as F
+    import wellvolpos.viz.interactive as I
+
+    ad = AreaDepth.from_trials(full.col("contact"), full.col("area"))
+    sw = run_volume_sweep(full, ad, 0.43, n=25, z_gap=50.0, mefs=14.0)
+
+    ok = np.isfinite(sw.discovery_p90) & np.isfinite(sw.discovery_p10)
+    assert ok.sum() > 5
+    # Petroleum orientation, and the mean inside its own ladder -- both are how a
+    # percentile family comes to contradict the line it is drawn around.
+    assert np.all(sw.discovery_p90[ok] <= sw.discovery_p50[ok] + 1e-9)
+    assert np.all(sw.discovery_p50[ok] <= sw.discovery_p10[ok] + 1e-9)
+    assert np.all(sw.discovery_p90[ok] <= sw.discovery_mean[ok] + 1e-9)
+    assert np.all(sw.discovery_mean[ok] <= sw.discovery_p10[ok] + 1e-9)
+
+    names = [t.name for t in I.pfig_b7_frontier(sw, current_z=3500.0).data if t.name]
+    for stat in ("P90", "P50", "P10", "mean"):
+        assert f"Well associated {stat}" in names, names
+    # The export twin must not disagree with what the app shows.
+    _fig, _ax = F.fig_b7_frontier(sw, current_z=3500.0)
+    labels = [t.get_label() for t in _ax.lines]
+    for stat in ("P90", "P50", "P10", "mean"):
+        assert f"Well associated {stat}" in labels, labels
