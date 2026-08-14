@@ -44,12 +44,13 @@ FIGURE_NUMBERS = {
     # copies of one figure on two tabs is one more place for them to disagree.
     # The figure function survives -- 4.3 *is* it -- and keeps its export key.
     "b1": "3.5",
-    "b2": "3.6",
-    "b7": "3.7",
-    "b8": "3.8",
-    "b9": "3.9",
-    "b6": "3.10",
-    "b12": "3.11",
+    "b13": "3.6",
+    "b2": "3.7",
+    "b7": "3.8",
+    "b8": "3.9",
+    "b9": "3.10",
+    "b6": "3.11",
+    "b12": "3.12",
     # ④ At this well
     "c1": "4.1",
     "c2": "4.2",
@@ -67,7 +68,7 @@ LEGACY_CODE = {
     "a1": "A1", "a2": "A2", "a3": "A3", "a4": "A4", "a5": "A5", "a6": "A6",
     "a8": "A8", "a9": "A9", "b0": "B0", "b1": "B1", "b2": "B2", "b3": "B3",
     "b4": "B4", "b5": "B5", "b6": "B6", "b7": "B7", "b8": "B8", "b9": "B9",
-    "b11": "B11", "b12": "B12",
+    "b11": "B11", "b12": "B12", "b13": "B13",
     "c1": "C1", "c2": "C2",
 }
 
@@ -147,6 +148,11 @@ FIGURE_GUIDE = {
             "curve is P_well against depth for a different POS_prospect. They are all the "
             "same shape scaled vertically, because only r_location moves with depth -- so "
             "revising the chance table and moving the well are independent levers."),
+    "b13": ("volume below the reservoir exit",
+            "What is left under the well, in the cases where the well left the reservoir "
+            "still in hydrocarbons — bold mean, dotted P90/P50/P10. Its own figure because "
+            "it is conditional on a *different* event from the three on {b1}, so its curves "
+            "were never on the same footing as theirs."),
     "b1": ("volume split vs location",
            "Proven, possible and attic against location, with the proven P90/P50/P10 family "
            "around the mean."),

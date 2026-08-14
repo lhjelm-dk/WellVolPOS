@@ -104,6 +104,7 @@ __all__ = [
     "pfig_a6_overlap",
     "pfig_b0_section",
     "pfig_b1_volume_split",
+    "pfig_b13_below_exit",
     "pfig_b2_chance_vs_regret",
     "pfig_b3_uncertainty_reduction",
     "pfig_b4_chance_waterfall",
@@ -1129,94 +1130,158 @@ def pfig_b0_section(
 
 # ------------------------------------------------------------------- B1
 def pfig_b1_volume_split(
-    vsweep: VolumeSweep, *, current_z: float | None = None, zlim: tuple[float, float] | None = None,
-    show_depth_labels: bool = True, min_support: int = MIN_SUPPORT,
-    dark: bool = False, height: int | None = PANEL_HEIGHT,
+    vsweep: VolumeSweep, *, current_z: float | None = None,
+    min_support: int = MIN_SUPPORT, zlim: tuple[float, float] | None = None,
+    show_depth_labels: bool = True, dark: bool = False,
+    height: int | None = PANEL_HEIGHT,
 ):
-    """B1 -- mean proven / possible / attic volume vs entry depth.
+    """B1 -- what the well proves, what it leaves up-dip, and the boundary between.
 
-    Steps resting on fewer than ``min_support`` trials are left undrawn: the
-    discovery group collapses down-dip (8 of 10 000 trials at 3677 m on the
-    reference data) and drawing a mean of eight as boldly as a mean of four
-    thousand invites the wrong conclusion.
+    Three volumes against entry depth, each with a **bold mean and a thin dotted
+    P90 / P50 / P10 ladder in its own colour** (Lars, 2026-08-14). Proven had the
+    ladder and the other two did not, which made the mean look like the answer where
+    it was alone -- and on a skewed distribution a mean is not even the middle.
+
+    ==================  ====================================================
+    Proven              what a discovery at this depth would establish
+    Attic               what a dry hole would leave up-dip, given the
+                        prospect is charged
+    At the well         the boundary case: the contact landing *on* the well,
+                        which is Rose's "No Regrets" volume in probabilistic
+                        form and sits much closer to the attic than to the
+                        discovery mean
+    ==================  ====================================================
+
+    **The volume below the reservoir exit moved to its own figure**, because at four
+    volumes and four ladders this one was unreadable -- and because that volume is
+    conditional on a *different* event from these three (the well leaving the
+    reservoir still in hydrocarbons), so its curves were never on the same footing as
+    these anyway. See :func:`pfig_b13_below_exit`.
     """
     p = palette(dark)
     fig = go.Figure()
-    for values, name, role, dash, width in (
-        (thin(vsweep.proven_mean, vsweep.n_discovery, min_support),
-         "Proven | discovery", "proven", "solid", 3),
-    # **The same volume, conditioned on there being any** (Lars, 2026-08-14). A
-    # discovery whose contact falls inside the penetrated interval leaves nothing
-    # below the exit and contributes a zero -- 81 % of the discovery group on
-    # prospect A -- so the curve above reads as "the upside is tiny" when what it
-    # reports is the upside averaged over the cases that have none. Dotted rather
-    # than dashed: both are conditional, and dashed already means *risked*.
-        (thin(vsweep.possible_mean, vsweep.n_discovery, min_support),
-         "Possible below exit | any discovery", "possible", "dash", 2),
-        (thin(vsweep.possible_mean_if_any, vsweep.n_discovery, min_support)
-         if vsweep.possible_mean_if_any is not None else None,
-         "Possible below exit | HC seen to the exit", "possible", "dot", 2.4),
-        # The spread of that upside, not just its mean (Lars, 2026-08-14). Thin and in
-        # the same tan, like the proven family around the proven mean: same concept,
-        # same colour, weight carrying which is the quoted number.
-        (thin(vsweep.possible_p90_if_any, vsweep.n_discovery, min_support)
-         if vsweep.possible_p90_if_any is not None else None,
-         "Possible P90 | HC seen to the exit", "possible", "dot", 1),
-        (thin(vsweep.possible_p50_if_any, vsweep.n_discovery, min_support)
-         if vsweep.possible_p50_if_any is not None else None,
-         "Possible P50 | HC seen to the exit", "possible", "dot", 1),
-        (thin(vsweep.possible_p10_if_any, vsweep.n_discovery, min_support)
-         if vsweep.possible_p10_if_any is not None else None,
-         "Possible P10 | HC seen to the exit", "possible", "dot", 1),
-        (thin(vsweep.attic_mean, vsweep.n_dry, min_support),
-         "Attic | dry hole", "attic", "solid", 3),
-    ) + (
-        # **The volume when the contact lands ON the well** (Lars, 2026-08-12), which
-        # is the workbook's Results!G8 swept -- its charts 5 and 16 -- and Rose's
-        # "No Regrets" curve in his Figures 7 and 19. It is the boundary between the
-        # two outcomes either side of it, so it runs between the attic and the
-        # discovery case at every supported depth, and seeing it there is the point:
-        # it is what you get if the well is exactly right, and it is much closer to
-        # the attic than to the discovery mean.
-        #
-        # Neutral grey, not a class colour: it is not one of the volume classes, it is
-        # the seam between two of them.
-        ((thin(vsweep.at_well_mean, vsweep.at_well_n, min_support),
-          f"At the well (contact within ±{vsweep.at_well_window:.0f} m)", "muted",
-          "dashdot", 2),)
-        if vsweep.at_well_mean is not None else ()
-    ):
-        fig.add_scatter(
-            x=values, y=vsweep.z, mode="lines", name=name,
-            line=dict(color=colour(role, dark), width=width, dash=dash),
-            hovertemplate=name + "<br>%{x:.2f} MMboe at " + DEPTH_HOVER + "<extra></extra>",
-        )
-    # The **spread** around the proven mean, from the workbook's own "Proven 90 /
-    # P50 / P10" curves (Lars, 2026-08-11). Thin and in the proven colour, so the
-    # mean stays the read and the band is context: a mean without its range is the
-    # number people quote and then argue about.
-    #
-    # Conditional percentiles -- the success case, given a discovery -- which is
-    # where percentiles are defined. B9 is where they get weighted by chance.
-    for values, name, dash in (
-        (vsweep.proven_p90, "Proven P90 | discovery", "dot"),
-        (vsweep.proven_p50, "Proven P50 | discovery", "dash"),
-        (vsweep.proven_p10, "Proven P10 | discovery", "dot"),
-    ):
-        if values is None:
-            continue
-        fig.add_scatter(
-            x=thin(values, vsweep.n_discovery, min_support), y=vsweep.z, mode="lines",
-            name=name, line=dict(color=colour("proven", dark), width=1.0, dash=dash),
-            hovertemplate=name + "<br>%{x:.2f} MMboe at " + DEPTH_HOVER + "<extra></extra>",
-        )
 
+    families = [
+        (vsweep.proven_mean, vsweep.proven_p90, vsweep.proven_p50, vsweep.proven_p10,
+         vsweep.n_discovery, "Proven", "| discovery", "proven"),
+        (vsweep.attic_mean, vsweep.attic_p90, vsweep.attic_p50, vsweep.attic_p10,
+         vsweep.n_dry, "Attic", "| dry hole", "attic"),
+    ]
+    if vsweep.at_well_mean is not None:
+        # Neutral grey: it is the *seam* between two classes rather than a class, so it
+        # takes no concept colour. See the "No Regrets" note in core.rose.
+        families.append(
+            (vsweep.at_well_mean, vsweep.at_well_p90, vsweep.at_well_p50,
+             vsweep.at_well_p10, vsweep.at_well_n,
+             f"At the well (contact within ±{vsweep.at_well_window:g} m)", "", None))
+
+    for mean, p90, p50, p10, counts, label, cond, role in families:
+        col = colour(role, dark) if role else p["muted"]
+        fig.add_scatter(
+            x=thin(mean, counts, min_support), y=vsweep.z, mode="lines",
+            name=f"{label} {cond}".strip(),
+            line=dict(color=col, width=3 if role else 2,
+                      dash="solid" if role else "dashdot"),
+            hovertemplate=(f"{label}<br>%{{x:.2f}} MMboe at " + DEPTH_HOVER
+                           + "<extra></extra>"),
+        )
+        for tag, arr in (("P90", p90), ("P50", p50), ("P10", p10)):
+            if arr is None:
+                continue
+            fig.add_scatter(
+                x=thin(arr, counts, min_support), y=vsweep.z, mode="lines",
+                name=f"{label} {tag} {cond}".strip(),
+                line=dict(color=col, width=1, dash="dot"),
+                hovertemplate=(f"{label} {tag}<br>%{{x:.2f}} MMboe at " + DEPTH_HOVER
+                               + "<extra></extra>"),
+            )
+
+    if vsweep.mefs is not None:
+        _vline(fig, vsweep.mefs, colour("minimum", dark), "dot", "MEFS")
     if current_z is not None:
-        _hline(fig, current_z, p["text_secondary"], "dash")
+        _hline(fig, current_z, p["well"], "dash", "this well")
 
     fig.update_layout(
-        title=f"B1 · Volume split vs location (exit = entry + {vsweep.z_gap:.0f} m)",
-        xaxis_title="Resource (MMboe) — thick lines are means, thin are proven P90/P50/P10",
+        title=("B1 · Volume split vs location "
+               f"(exit = entry + {vsweep.z_gap:.0f} m, "
+               f"{reference_label(vsweep.reference)})"
+               "<br><sub>bold = mean · dotted = P90 / P50 / P10 · "
+               "each volume conditional on its own outcome</sub>"),
+        xaxis_title="Mean volume (MMboe)",
+    )
+    fig.update_xaxes(rangemode="tozero")
+    apply_plotly(fig, dark, height)
+    depth_axis_plotly(fig, zlim or (float(vsweep.z.min()), float(vsweep.z.max())),
+                      show_ticklabels=show_depth_labels)
+    return fig
+
+
+def pfig_b13_below_exit(
+    vsweep: VolumeSweep, *, current_z: float | None = None,
+    min_support: int = MIN_SUPPORT, zlim: tuple[float, float] | None = None,
+    show_depth_labels: bool = True, dark: bool = False,
+    height: int | None = PANEL_HEIGHT,
+):
+    """B13 -- the volume below the reservoir exit, on its own axes.
+
+    Split out of B1 on 2026-08-14, and the reason is more than crowding. This volume
+    is conditional on a **different event** from the other three: the well leaving the
+    reservoir still in hydrocarbons. So its mean and its percentiles were never on the
+    same footing as proven's or the attic's, and sharing one legend invited exactly
+    that comparison.
+
+    Everything here is conditional on that event -- ``possible_mean_if_any`` and its
+    ladder -- because the alternative, averaging over every discovery, puts an exact
+    zero in for every trial whose contact falls *inside* the penetrated interval. Those
+    zeros are 81 % of the discovery group on prospect A, and they dragged the reported
+    P50 to 0.00.
+
+    The chance of the event is drawn beside the volumes as a second series on its own
+    percentage scale? **No** -- that would be a dual axis, which this project forbids.
+    It is stated in the caption instead, and 3.7 draws it against depth.
+    """
+    p = palette(dark)
+    fig = go.Figure()
+    col = colour("possible", dark)
+    counts = vsweep.n_discovery
+
+    if vsweep.possible_mean_if_any is None:
+        fig.add_annotation(x=0.5, y=0.5, xref="paper", yref="paper", showarrow=False,
+                           text="No below-exit volume on this sweep",
+                           font=dict(size=13, color=p["text"]))
+        apply_plotly(fig, dark, height)
+        return fig
+
+    fig.add_scatter(
+        x=thin(vsweep.possible_mean_if_any, counts, min_support), y=vsweep.z,
+        mode="lines", name="Mean | HC seen to the exit",
+        line=dict(color=col, width=3),
+        hovertemplate=("mean %{x:.2f} MMboe below the exit at " + DEPTH_HOVER
+                       + "<extra></extra>"),
+    )
+    for tag, arr in (("P90", vsweep.possible_p90_if_any),
+                     ("P50", vsweep.possible_p50_if_any),
+                     ("P10", vsweep.possible_p10_if_any)):
+        if arr is None:
+            continue
+        fig.add_scatter(
+            x=thin(arr, counts, min_support), y=vsweep.z, mode="lines",
+            name=f"{tag} | HC seen to the exit",
+            line=dict(color=col, width=1, dash="dot"),
+            hovertemplate=(f"{tag} %{{x:.2f}} MMboe below the exit at " + DEPTH_HOVER
+                           + "<extra></extra>"),
+        )
+    if vsweep.mefs is not None:
+        _vline(fig, vsweep.mefs, colour("minimum", dark), "dot", "MEFS")
+    if current_z is not None:
+        _hline(fig, current_z, p["well"], "dash", "this well")
+
+    fig.update_layout(
+        title=("B13 · Volume below the reservoir exit "
+               f"(exit = entry + {vsweep.z_gap:.0f} m)"
+               "<br><sub>conditional on the well leaving the reservoir in "
+               "hydrocarbons · bold = mean · dotted = P90 / P50 / P10</sub>"),
+        xaxis_title="Volume below the exit (MMboe)",
     )
     fig.update_xaxes(rangemode="tozero")
     apply_plotly(fig, dark, height)

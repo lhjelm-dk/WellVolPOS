@@ -25,7 +25,7 @@ TAB3 = Path(__file__).resolve().parents[1] / "wellvolpos" / "ui" / "tab3_where.p
 
 #: Figures on tab ③ that take **rules**, because their y-axis is a depth.
 # b0 left the tab on 2026-08-14 -- 4.3 draws the same section at the chosen well.
-RULE_FIGURES = {"a2", "a3", "b3", "b11", "b1", "b2", "b8", "b9", "b6"}
+RULE_FIGURES = {"a2", "a3", "b3", "b11", "b1", "b13", "b2", "b8", "b9", "b6"}
 
 #: And the two that cannot, with the reason. 3.8's axes are volume and chance, so a
 #: well is a *point* on the frontier; 3.12 is re-banded by whichever well is selected,

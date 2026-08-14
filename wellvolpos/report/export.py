@@ -407,6 +407,10 @@ def _draw_export_figures(b: Bundle, *, dark: bool = False) -> dict[str, object]:
     if b.vsweep is not None:
         figs["B1_volume_split"] = F.fig_b1_volume_split(
             b.vsweep, current_z=c.entry, dark=dark)[0]
+        # Its own figure since 2026-08-14: conditional on the well leaving the
+        # reservoir in hydrocarbons, so not on the same footing as B1's three.
+        figs["B13_below_exit"] = F.fig_b13_below_exit(
+            b.vsweep, current_z=c.entry, dark=dark)[0]
         figs["B2_chance_vs_regret"] = F.fig_b2_chance_vs_regret(
             b.vsweep, current_z=c.entry, dark=dark)[0]
         figs["B6_inverse"] = F.fig_b6_inverse(

@@ -371,6 +371,17 @@ class VolumeSweep:
     possible_p90_if_any: np.ndarray | None = None
     possible_p50_if_any: np.ndarray | None = None
     possible_p10_if_any: np.ndarray | None = None
+    #: The same ladder for the **attic** (over the dry-but-charged trials) and for the
+    #: **at-the-well** volume (over the trials whose contact lands within the window).
+    #: Added 2026-08-14 so that every volume on 3.5 carries its spread rather than only
+    #: proven -- a bold mean with no percentiles beside it invites being read as the
+    #: answer, and on a skewed distribution the mean is not even the middle.
+    attic_p90: np.ndarray | None = None
+    attic_p50: np.ndarray | None = None
+    attic_p10: np.ndarray | None = None
+    at_well_p90: np.ndarray | None = None
+    at_well_p50: np.ndarray | None = None
+    at_well_p10: np.ndarray | None = None
     #: Mean resource of the trials whose contact sits **at** the entry, within
     #: ``at_well_window`` metres -- the workbook's ``Results!G8`` swept over depth,
     #: which is what its charts 5 and 16 plot and what Rose's Figures 7 and 19 show as
@@ -425,6 +436,12 @@ def run_volume_sweep(
     possible_mean = np.full(z.size, np.nan)
     possible_if_any = np.full(z.size, np.nan)
     poss_p90 = np.full(z.size, np.nan)
+    att_p90 = np.full(z.size, np.nan)
+    att_p50 = np.full(z.size, np.nan)
+    att_p10 = np.full(z.size, np.nan)
+    atw_p90 = np.full(z.size, np.nan)
+    atw_p50 = np.full(z.size, np.nan)
+    atw_p10 = np.full(z.size, np.nan)
     poss_p50 = np.full(z.size, np.nan)
     poss_p10 = np.full(z.size, np.nan)
     attic_mean = np.full(z.size, np.nan)
@@ -469,7 +486,12 @@ def run_volume_sweep(
             np.abs(contact - float(zi)) <= float(at_well_window))
         at_well_n[i] = int(m_at.sum())
         if at_well_n[i]:
-            at_well[i] = float(np.asarray(ts.col("resource"), dtype=float)[m_at].mean())
+            _atw = np.asarray(ts.col("resource"), dtype=float)[m_at]
+            at_well[i] = float(_atw.mean())
+            # Petroleum orientation, one call so the three cannot drift: P90 is the
+            # low case and therefore the 10th percentile of the values.
+            atw_p90[i], atw_p50[i], atw_p10[i] = (
+                float(v) for v in np.percentile(_atw, [10.0, 50.0, 90.0]))
 
         groups_i = group_trials(ts, float(zi), zx)
         vc = split_trials(ts, ad, groups_i, float(zi), zx,
@@ -522,7 +544,10 @@ def run_volume_sweep(
                     proven, n_boot=n_boot, alpha=alpha, seed=seed
                 )
         if n_dry[i]:
-            attic_mean[i] = float(vc.attic[groups_i.dry_with_attic].mean())
+            _att = vc.attic[groups_i.dry_with_attic]
+            attic_mean[i] = float(_att.mean())
+            att_p90[i], att_p50[i], att_p10[i] = (
+                float(v) for v in np.percentile(_att, [10.0, 50.0, 90.0]))
             if mefs is not None:
                 p_attic_ex[i] = float((vc.attic[groups_i.dry_with_attic] > mefs).mean())
 
@@ -535,6 +560,8 @@ def run_volume_sweep(
         possible_mean_if_any=possible_if_any,
         possible_p90_if_any=poss_p90, possible_p50_if_any=poss_p50,
         possible_p10_if_any=poss_p10,
+        attic_p90=att_p90, attic_p50=att_p50, attic_p10=att_p10,
+        at_well_p90=atw_p90, at_well_p50=atw_p50, at_well_p10=atw_p10,
         at_well_mean=at_well, at_well_n=at_well_n, at_well_window=float(at_well_window),
         p_discovery_exceeds_mefs=p_disc_ex,
         proven_p99=p99, proven_p90=p90, proven_p50=p50, proven_p10=p10,

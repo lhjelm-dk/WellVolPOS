@@ -261,8 +261,12 @@ def test_b1_depth_axis_and_class_colours(volume_sweep):
     assert is_depth_axis_correct(ax)
     lines = {line.get_label(): line for line in ax.get_lines()}
     assert lines["Proven | discovery"].get_color() == colour("proven")
-    assert lines["Possible below exit | any discovery"].get_color() == colour("possible")
     assert lines["Attic | dry hole"].get_color() == colour("attic")
+    # The below-exit volume has its own figure since 2026-08-14.
+    fig2, ax2 = figures.fig_b13_below_exit(volume_sweep, current_z=ENTRY)
+    assert is_depth_axis_correct(ax2)
+    l2 = {line.get_label(): line for line in ax2.get_lines()}
+    assert l2["Mean | HC seen to the exit"].get_color() == colour("possible")
 
 
 # ------------------------------------------------------------------- B2

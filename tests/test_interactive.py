@@ -246,11 +246,36 @@ def test_a5_draws_the_prospect_only_in_both_readings(reduced, groups, vc):
     tops = sorted(float(np.nanmax(np.asarray(t.y, dtype=float))) for t in curves)
     assert tops == pytest.approx([POS * 100.0, 100.0], abs=0.5)
 
-def test_b1_uses_the_class_colours(vsweep):
+def test_b1_uses_the_class_colours_and_gives_each_volume_a_ladder(vsweep):
+    """Bold mean, dotted P90/P50/P10, one colour per concept (Lars, 2026-08-14).
+
+    The ladder used to be proven's alone, which made a bare bold mean look like the
+    answer wherever it stood by itself -- and on a skewed distribution a mean is not
+    even the middle.
+    """
     fig = I.pfig_b1_volume_split(vsweep)
     assert _line_colour(fig, "Proven | discovery") == colour("proven")
-    assert _line_colour(fig, "Possible below exit | any discovery") == colour("possible")
     assert _line_colour(fig, "Attic | dry hole") == colour("attic")
+    names = [t.name for t in fig.data if t.name]
+    for base in ("Proven", "Attic", "At the well"):
+        for tag in ("P90", "P50", "P10"):
+            assert any(n.startswith(base) and f" {tag}" in n for n in names), (base, tag)
+    # The below-exit volume is NOT here: it is conditional on a different event and
+    # has its own figure.
+    assert not any("below exit" in n.lower() for n in names), names
+
+
+def test_b13_draws_the_below_exit_volume_conditionally_with_its_own_ladder(vsweep):
+    """Split out of B1 because it is conditional on the well leaving the reservoir in
+    hydrocarbons -- so its curves were never on the same footing as proven's."""
+    fig = I.pfig_b13_below_exit(vsweep)
+    names = [t.name for t in fig.data if t.name]
+    assert any(n.startswith("Mean") for n in names), names
+    for tag in ("P90", "P50", "P10"):
+        assert any(n.startswith(tag) for n in names), tag
+    # Every series says what it is conditional on, in its own name.
+    assert all("HC seen to the exit" in n for n in names), names
+    assert _line_colour(fig, next(n for n in names if n.startswith("Mean")))         == colour("possible")
 
 
 def test_b2_names_its_conditioning_and_keeps_the_regret_colour(vsweep):

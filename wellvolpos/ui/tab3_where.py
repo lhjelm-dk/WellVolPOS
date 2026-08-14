@@ -47,6 +47,7 @@ from ..viz import (
     pfig_a2_outcome_tree,
     pfig_a3_chance_decomposition,
     pfig_b1_volume_split,
+    pfig_b13_below_exit,
     pfig_b2_chance_vs_regret,
     pfig_b3_uncertainty_reduction,
     pfig_b6_inverse,
@@ -348,14 +349,20 @@ def _location_sweep_tab(ctx: Ctx):
     # figure on two tabs is one more place for them to disagree. The two curves that
     # remain are what this row was for: what the well proves, and what it risks.
     f_b1 = pfig_b1_volume_split(vsweep, current_z=entry, zlim=zrow_sweep)
+    # The below-exit volume on its own axes (Lars, 2026-08-14): four volumes and four
+    # percentile ladders on one figure was unreadable, and this one is conditional on a
+    # different event from the other three anyway.
+    f_b13 = pfig_b13_below_exit(vsweep, current_z=entry, zlim=zrow_sweep)
     f_b2 = pfig_b2_chance_vs_regret(vsweep, current_z=entry, zlim=zrow_sweep)
-    for _f in (f_b1, f_b2):
+    for _f in (f_b1, f_b13, f_b2):
         add_well_markers(_f, wells, selected=selected_well)
-    level_row(f_b1, f_b2)
-    d1, d2 = st.columns(2)
+    level_row(f_b1, f_b13, f_b2)
+    d1, d2, d3 = st.columns(3)
     with d1:
         _chart(f_b1, key="b1", height=int(f_b1.layout.height))
     with d2:
+        _chart(f_b13, key="b13", height=int(f_b13.layout.height))
+    with d3:
         _chart(f_b2, key="b2", height=int(f_b2.layout.height))
     # Both conditional groups, because they thin at opposite ends: the discovery
     # group fails down-dip, the dry-with-attic group up-dip where almost nothing

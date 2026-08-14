@@ -683,72 +683,99 @@ def fig_b0_section(
 
 
 def fig_b1_volume_split(
-    vsweep: VolumeSweep, *, current_z: float | None = None, min_support: int = MIN_SUPPORT,
+    vsweep: VolumeSweep, *, current_z: float | None = None,
+    min_support: int = MIN_SUPPORT, zlim: tuple[float, float] | None = None,
     dark: bool = False,
 ):
-    """Mean proven / possible / attic volume vs entry depth.
+    """B1 for the export path. Twin of ``pfig_b1_volume_split``.
 
-    The Schneider Fig. 7/11/12 equivalent: as the well moves down-dip, mean
-    proven volume grows and mean attic shrinks, with possible-below-exit as
-    the band the well leaves untested at any given location.
-
-    Steps resting on fewer than ``min_support`` trials are left undrawn. At the
-    deep end the discovery group collapses -- 8 of 10 000 trials at 3677 m on
-    the reference data -- and a mean of eight numbers drawn at the same width as
-    a mean of four thousand invites exactly the wrong conclusion.
+    Proven, attic and the at-the-well volume, each with a bold mean and a thin dotted
+    P90 / P50 / P10 ladder. The volume below the reservoir exit is
+    :func:`fig_b13_below_exit`, because it is conditional on a different event.
     """
     fig, ax = new_figure(figsize=(6, 5), dark=dark)
     p = palette(dark)
 
-    proven = thin(vsweep.proven_mean, vsweep.n_discovery, min_support)
-    possible = thin(vsweep.possible_mean, vsweep.n_discovery, min_support)
-    attic = thin(vsweep.attic_mean, vsweep.n_dry, min_support)
-
-    ax.plot(proven, vsweep.z, color=colour("proven", dark), lw=2.0, label="Proven | discovery")
-    ax.plot(possible, vsweep.z, color=colour("possible", dark), lw=1.6, ls="--",
-            label="Possible below exit | any discovery")
-    # The same volume conditioned on there being any -- see the plotly twin. Dotted,
-    # because both are conditional and dashed already means risked.
-    if vsweep.possible_mean_if_any is not None:
-        ax.plot(thin(vsweep.possible_mean_if_any, vsweep.n_discovery, min_support),
-                vsweep.z, color=colour("possible", dark), lw=1.8, ls=":",
-                label="Possible below exit | HC seen to the exit")
-        # The spread of that upside -- see the plotly twin.
-        for _lbl, _arr in (("P90", vsweep.possible_p90_if_any),
-                           ("P50", vsweep.possible_p50_if_any),
-                           ("P10", vsweep.possible_p10_if_any)):
-            if _arr is not None:
-                ax.plot(thin(_arr, vsweep.n_discovery, min_support), vsweep.z,
-                        color=colour("possible", dark), lw=0.8, ls=":",
-                        label=f"Possible {_lbl} | HC seen to the exit")
-    ax.plot(attic, vsweep.z, color=colour("attic", dark), lw=2.0, label="Attic | dry hole")
-    # The volume when the contact lands on the well -- Results!G8 swept, Rose's
-    # "No Regrets" curve. Neutral grey: it is the seam between two classes, not a
-    # class. See the plotly twin.
+    families = [
+        (vsweep.proven_mean, vsweep.proven_p90, vsweep.proven_p50, vsweep.proven_p10,
+         vsweep.n_discovery, "Proven | discovery", "proven", "-"),
+        (vsweep.attic_mean, vsweep.attic_p90, vsweep.attic_p50, vsweep.attic_p10,
+         vsweep.n_dry, "Attic | dry hole", "attic", "-"),
+    ]
     if vsweep.at_well_mean is not None:
-        at_well = thin(vsweep.at_well_mean, vsweep.at_well_n, min_support)
-        ax.plot(at_well, vsweep.z, color=p["muted"], lw=1.6, ls="-.",
-                label=f"At the well (contact within ±{vsweep.at_well_window:.0f} m)")
+        families.append(
+            (vsweep.at_well_mean, vsweep.at_well_p90, vsweep.at_well_p50,
+             vsweep.at_well_p10, vsweep.at_well_n,
+             f"At the well (contact within ±{vsweep.at_well_window:g} m)", None, "-."))
 
-    # The spread around the proven mean; see the plotly twin.
-    for values, label, ls in (
-        (vsweep.proven_p90, "Proven P90", ":"),
-        (vsweep.proven_p50, "Proven P50", "--"),
-        (vsweep.proven_p10, "Proven P10", ":"),
-    ):
-        if values is not None:
-            ax.plot(thin(values, vsweep.n_discovery, min_support), vsweep.z,
-                    color=colour("proven", dark), lw=0.9, ls=ls,
-                    label=f"{label} | discovery")
+    for mean, p90, p50, p10, counts, label, role, style in families:
+        col = colour(role, dark) if role else p["muted"]
+        ax.plot(thin(mean, counts, min_support), vsweep.z, color=col,
+                lw=2.0 if role else 1.6, ls=style, label=label)
+        for tag, arr in (("P90", p90), ("P50", p50), ("P10", p10)):
+            if arr is None:
+                continue
+            # The full label, conditioning suffix included, so the twin-agreement
+            # guard can compare series names between the backends.
+            _base, _, _cond = label.partition(" |")
+            ax.plot(thin(arr, counts, min_support), vsweep.z, color=col, lw=0.8,
+                    ls=":",
+                    label=(f"{_base} {tag} |{_cond}" if _cond else f"{_base} {tag}"))
 
-    if current_z is not None and vsweep.z.min() <= current_z <= vsweep.z.max():
-        ax.axhline(current_z, color=p["text_secondary"], ls="--", lw=1.0)
+    if vsweep.mefs is not None:
+        ax.axvline(vsweep.mefs, color=colour("minimum", dark), lw=1.0, ls=":")
+    if current_z is not None:
+        ax.axhline(current_z, color=p["well"], lw=1.0, ls="--")
 
-    depth_axis(ax, zlim=(float(vsweep.z.min()), float(vsweep.z.max())))
     ax.set_xlim(left=0)
-    ax.set_xlabel("Resource (MMboe) — thick lines are means, thin are proven P90/P50/P10")
-    ax.set_title(f"B1 · Volume split vs location (exit = entry + {vsweep.z_gap:.0f} m)")
-    ax.legend(loc="upper right", fontsize=7.5)
+    ax.set_xlabel("Mean volume (MMboe)")
+    depth_axis(ax, zlim=zlim or (float(vsweep.z.min()), float(vsweep.z.max())))
+    ax.set_title("B1 · Volume split vs location — bold mean, dotted P90/P50/P10")
+    ax.grid(True, lw=0.6, alpha=0.7)
+    ax.legend(loc="lower right", fontsize=6)
+    fig.tight_layout()
+    return fig, ax
+
+
+def fig_b13_below_exit(
+    vsweep: VolumeSweep, *, current_z: float | None = None,
+    min_support: int = MIN_SUPPORT, zlim: tuple[float, float] | None = None,
+    dark: bool = False,
+):
+    """B13 for the export path. Twin of ``pfig_b13_below_exit``.
+
+    Conditional on the well leaving the reservoir still in hydrocarbons, which is why
+    it is not on B1: its curves are not on the same footing as proven's or the attic's.
+    """
+    fig, ax = new_figure(figsize=(6, 5), dark=dark)
+    p = palette(dark)
+    col = colour("possible", dark)
+
+    if vsweep.possible_mean_if_any is None:
+        ax.text(0.5, 0.5, "No below-exit volume on this sweep", ha="center",
+                va="center", transform=ax.transAxes, fontsize=9, color=p["text"])
+        fig.tight_layout()
+        return fig, ax
+
+    ax.plot(thin(vsweep.possible_mean_if_any, vsweep.n_discovery, min_support),
+            vsweep.z, color=col, lw=2.0, label="Mean | HC seen to the exit")
+    for tag, arr in (("P90", vsweep.possible_p90_if_any),
+                     ("P50", vsweep.possible_p50_if_any),
+                     ("P10", vsweep.possible_p10_if_any)):
+        if arr is not None:
+            ax.plot(thin(arr, vsweep.n_discovery, min_support), vsweep.z, color=col,
+                    lw=0.8, ls=":", label=f"{tag} | HC seen to the exit")
+    if vsweep.mefs is not None:
+        ax.axvline(vsweep.mefs, color=colour("minimum", dark), lw=1.0, ls=":")
+    if current_z is not None:
+        ax.axhline(current_z, color=p["well"], lw=1.0, ls="--")
+
+    ax.set_xlim(left=0)
+    ax.set_xlabel("Volume below the exit (MMboe)")
+    depth_axis(ax, zlim=zlim or (float(vsweep.z.min()), float(vsweep.z.max())))
+    ax.set_title("B13 · Volume below the reservoir exit — conditional on HC to the exit")
+    ax.grid(True, lw=0.6, alpha=0.7)
+    ax.legend(loc="lower right", fontsize=7)
     fig.tight_layout()
     return fig, ax
 
