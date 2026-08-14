@@ -1145,8 +1145,17 @@ def pfig_b1_volume_split(
     for values, name, role, dash, width in (
         (thin(vsweep.proven_mean, vsweep.n_discovery, min_support),
          "Proven | discovery", "proven", "solid", 3),
+    # **The same volume, conditioned on there being any** (Lars, 2026-08-14). A
+    # discovery whose contact falls inside the penetrated interval leaves nothing
+    # below the exit and contributes a zero -- 81 % of the discovery group on
+    # prospect A -- so the curve above reads as "the upside is tiny" when what it
+    # reports is the upside averaged over the cases that have none. Dotted rather
+    # than dashed: both are conditional, and dashed already means *risked*.
         (thin(vsweep.possible_mean, vsweep.n_discovery, min_support),
-         "Possible below exit | discovery", "possible", "dash", 2),
+         "Possible below exit | any discovery", "possible", "dash", 2),
+        (thin(vsweep.possible_mean_if_any, vsweep.n_discovery, min_support)
+         if vsweep.possible_mean_if_any is not None else None,
+         "Possible below exit | HC seen to the exit", "possible", "dot", 2),
         (thin(vsweep.attic_mean, vsweep.n_dry, min_support),
          "Attic | dry hole", "attic", "solid", 3),
     ) + (

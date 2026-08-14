@@ -2,7 +2,8 @@
 
 Phases 0–5. Six tabs, ordered so a reader moves **explore, then evaluate**:
 
-    ① Input data and QC   what am I working with, and is it sound?
+    ① Setup and input     what am I working with, is it sound, and what
+                          conventions am I using?
     ② Prospect            what is this prospect, before any well?
     ③ Where to drill      where should the well go? — every figure that sweeps depth
     ④ At this well        what do I get at the depth I chose?
@@ -171,7 +172,7 @@ st.caption("Well POS and volume, from a stochastic prospect model")
 # there, what is it worth, and what does any of it mean.
 tabs = st.tabs(
     [
-        "① Input data and QC",
+        "① Setup and input",
         "② Prospect",
         "③ Where to drill",
         "④ At this well",
@@ -206,17 +207,16 @@ elif choice in DEMOS:
     source = Source.from_any(DEMOS[choice])
 
 if source is None:
-    # The sidebar's controls cannot exist yet -- MEFS scales with the resource column
-    # and the conventions need a loaded file -- but a sidebar that *vanishes* reads as
-    # a crash, so it says why instead of disappearing. The well geometry moved to
-    # tab ③ on 2026-08-13 and is named here so a reader looking for it is told where
-    # it went rather than left to search.
-    st.sidebar.subheader("Settings")
-    st.sidebar.info(
-        "Waiting for trial data.\n\nThe threshold and convention controls take their range "
-        "from the loaded file, so they appear once one is chosen. Pick a demo or upload a "
-        "file in **tab ①**.\n\nWell locations are set on **tab ③**, where they are compared."
-    )
+    # Nothing to configure yet: MEFS scales with the resource column and the
+    # conventions need a loaded file. There is no sidebar to explain itself any more
+    # (removed 2026-08-14), so the message goes in the tab where the controls will
+    # appear -- which is also the tab the file is chosen in.
+    with tabs[0]:
+        st.info(
+            "**Waiting for trial data.** The threshold and convention controls take their "
+            "range from the loaded file, so they appear here once one is chosen. Well "
+            "locations are set on **tab ③**, where they are compared."
+        )
     with tabs[0]:
         st.info(
             "Choose a demo dataset above, or upload your own trial export. "
@@ -350,41 +350,6 @@ with tabs[0]:
 wells = read_wells(ts, zmin, zmax)
 _selected = read_selected(wells)
 entry, exit_ = _selected.entry, _selected.exit
-# MEFS scales with the prospect: 14 MMboe is a sensible threshold against prospect
-# A's 16 MMboe discovery mean and a rounding error against prospect B's 121.
-_default_mefs = float(np.round(np.mean(ts.col("resource")[ts.col("resource") > 0]) * 0.85))
-mefs = st.sidebar.number_input("MEFS (MMboe)", min_value=0.0, value=_default_mefs, step=0.5,
-                               key="w_mefs",
-                               help="Minimum economic field size — Rose's MCFS under another "
-                                    "name. Drawn as a reference line and never applied to the "
-                                    "distributions.")
-
-st.sidebar.divider()
-st.sidebar.subheader("Conventions")
-st.sidebar.caption("Never implicit — every one of these changes the numbers.")
-ref = st.sidebar.radio(
-    "Reference contour for the location factor",
-    [ReferenceContour.CREST, ReferenceContour.P90_AREA],
-    format_func=lambda r: {"crest": "Crest / apex (Milkov 2021)", "p90_area": "P90 area (Rose)"}[r.value],
-    key="w_ref",
-)
-# Default to the equal-cube-root scheme, which is the one the source workbook uses
-# and the one Lars's risk summary is drawn against. Under "none" the location factor
-# is reported separately instead of being attributed to elements — still available,
-# but a poor default for a table whose third column is meant to show the penalty.
-scheme = st.sidebar.selectbox(
-    "Risk-element allocation", SHIPPED_SCHEMES, format_func=lambda k: SCHEME_LABELS[k],
-    index=list(SHIPPED_SCHEMES).index("equal_cube_root"), key="w_scheme",
-)
-# GeoX plots its area-depth curve against area squared, so that convention is
-# offered alongside ours. The transform is on the axis only — every number the
-# tool computes stays in km² (non-negotiable 4).
-area_scale = st.sidebar.selectbox(
-    "Area–depth x-axis", list(AREA_SCALES), index=0,
-    help="area is this tool's default; area² is GeoX's convention; √area straightens a cone.",
-    key="w_area_scale",
-)
-
 with tabs[0]:
     st.divider()
     st.subheader("Import")
@@ -457,6 +422,74 @@ with tabs[0]:
 
 if qc.blocked:
     st.stop()
+
+with tabs[0]:
+    # Declared at the foot of tab (1) and filled a few lines below. `st.empty()`
+    # reserves its position where it is *declared*, so this is what puts the settings
+    # after the import and QC material -- choose a file, check it, then set the
+    # conventions. They have to be *created* before the grouping below, which needs
+    # the reference contour, so declaration and filling are separated. Same device the
+    # case-save button already uses.
+    _settings_slot = st.empty()
+
+# ---------------------------------------------------------------- the settings
+# **No sidebar** (Lars, 2026-08-14). Everything that was in it is here, in tab ①,
+# which is now "Setup and input": the file, the mapping, the QC, the threshold and
+# the four conventions. One place to set a session up, and the six analysis tabs are
+# then all output.
+#
+# They are still *created* before the tabs are rendered, because `mefs`, `ref`,
+# `scheme` and `area_scale` are needed by every tab below -- so the widgets are
+# written into a container declared inside tab ① earlier in the script. That is the
+# same device the case-save button already uses, and it is what lets a control live
+# on a tab while its value is available to the whole page.
+with _settings_slot.container():
+    st.divider()
+    st.subheader("Threshold and conventions")
+    st.caption(
+        "Never implicit — every one of these changes the numbers, and each is stamped "
+        "in the footer on every tab."
+    )
+    _s1, _s2 = st.columns(2)
+    with _s1:
+        # MEFS scales with the prospect: 14 MMboe is a sensible threshold against
+        # prospect A's 16 MMboe discovery mean and a rounding error against B's 121.
+        _default_mefs = float(np.round(
+            np.mean(ts.col("resource")[ts.col("resource") > 0]) * 0.85))
+        mefs = st.number_input(
+            "MEFS (MMboe)", min_value=0.0, value=_default_mefs, step=0.5, key="w_mefs",
+            help="Minimum economic field size — Rose's MCFS under another name. Drawn "
+                 "as a reference line and never applied to the distributions.")
+        ref = st.radio(
+            "Reference contour for the location factor",
+            [ReferenceContour.CREST, ReferenceContour.P90_AREA],
+            format_func=lambda r: {"crest": "Crest / apex (Milkov 2021)",
+                                   "p90_area": "P90 area (Rose)"}[r.value],
+            key="w_ref",
+        )
+    with _s2:
+        # Default to the equal-cube-root scheme, which is the one Lars's risk summary
+        # is drawn against. Under "none" the location factor is reported separately
+        # instead of being attributed to elements -- still available, but a poor
+        # default for a table whose third column is meant to show the penalty.
+        scheme = st.selectbox(
+            "Risk-element allocation", SHIPPED_SCHEMES,
+            format_func=lambda k: SCHEME_LABELS[k],
+            index=list(SHIPPED_SCHEMES).index("equal_cube_root"), key="w_scheme",
+        )
+        # GeoX plots its area-depth curve against area squared, so that convention is
+        # offered alongside ours. The transform is on the axis only -- every number the
+        # tool computes stays in km2 (non-negotiable 4).
+        area_scale = st.selectbox(
+            "Area–depth x-axis", list(AREA_SCALES), index=0,
+            help="area is this tool's default; area² is GeoX's convention; "
+                 "√area straightens a cone.",
+            key="w_area_scale",
+        )
+    st.caption(
+        "Well locations are **not** here: they are set on tab ③, where candidates are "
+        "compared against every swept figure."
+    )
 
 # The chance table and the risking convention live in **tab ②** now (Lars,
 # 2026-08-11), moved out of tab ①. Both determine POS_prospect, and POS_prospect is

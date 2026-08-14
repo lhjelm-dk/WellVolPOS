@@ -54,19 +54,23 @@ def test_a_leading_code_is_replaced_whatever_the_separator(separator):
     in front of it.
     """
     out = renumber_title(f"B12 {separator} Resource by contact-depth band", "b12")
-    assert out == "3.12 · Resource by contact-depth band"
+    # Read from the mapping, never spelled out: hardcoding "3.12" here is the same
+    # mistake the whole module exists to stop, and it broke the moment 3.5 was
+    # removed and tab ③ renumbered.
+    assert out == f"{FIGURE_NUMBERS['b12']} · Resource by contact-depth band"
     assert not CODE.search(out)
 
 
 def test_a_title_with_no_code_gets_the_number_prepended():
     """The live section and the map view had no index at all, so no way to refer
     to them -- which is how "the one next to A6" became the only way to say it."""
-    assert renumber_title("Live section", "live").startswith("4.3 · ")
+    assert renumber_title("Live section", "live").startswith(
+        f"{FIGURE_NUMBERS['live']} · ")
 
 
 def test_prose_in_a_title_is_not_mistaken_for_a_code():
     title = "Chance against volume · the location trade-off"
-    assert renumber_title(title, "b7") == f"3.8 · {title}"
+    assert renumber_title(title, "b7") == f"{FIGURE_NUMBERS['b7']} · {title}"
 
 
 def test_an_unmapped_key_leaves_the_title_alone():

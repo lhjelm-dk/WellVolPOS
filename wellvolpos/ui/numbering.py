@@ -39,14 +39,17 @@ FIGURE_NUMBERS = {
     "a3": "3.2",
     "b3": "3.3",
     "b11": "3.4",
-    "b0": "3.5",
-    "b1": "3.6",
-    "b2": "3.7",
-    "b7": "3.8",
-    "b8": "3.9",
-    "b9": "3.10",
-    "b6": "3.11",
-    "b12": "3.12",
+    # b0 (the schematic section) was removed from this tab on 2026-08-14: 4.3
+    # draws the same section at the chosen well, from the same A(z), and two
+    # copies of one figure on two tabs is one more place for them to disagree.
+    # The figure function survives -- 4.3 *is* it -- and keeps its export key.
+    "b1": "3.5",
+    "b2": "3.6",
+    "b7": "3.7",
+    "b8": "3.8",
+    "b9": "3.9",
+    "b6": "3.10",
+    "b12": "3.11",
     # ④ At this well
     "c1": "4.1",
     "c2": "4.2",
@@ -144,9 +147,6 @@ FIGURE_GUIDE = {
             "curve is P_well against depth for a different POS_prospect. They are all the "
             "same shape scaled vertically, because only r_location moves with depth -- so "
             "revising the chance table and moving the well are independent levers."),
-    "b0": ("schematic section",
-           "The three volumes in section. Width is a circular-closure proxy, so the shape is "
-           "illustrative; the depths on y are the real quantity."),
     "b1": ("volume split vs location",
            "Proven, possible and attic against location, with the proven P90/P50/P10 family "
            "around the mean."),
@@ -184,9 +184,11 @@ FIGURE_GUIDE = {
            "so the vertical gap between the top two *is* the location penalty. Values are "
            "labelled on the conditional curves only — risking scales the probability, never "
            "the volume."),
-    "live": ("live section",
-             "{b0} drawn at the well you have chosen, so the classes are the ones the current "
-             "entry and exit actually produce."),
+    "live": ("the section at this well",
+             "The closure in section, from A(z), with the three volume classes shaded where "
+             "the current entry and exit actually put them. This *is* the schematic section — "
+             "it was drawn twice, on two tabs, until 2026-08-14; one copy is one fewer place "
+             "for them to disagree."),
     "a6": ("where the four classes overlap",
            "Schneider's *“surprising overlap”*: a dry hole's attic against a discovery's "
            "proven volume, seen against the two larger distributions they are carved out of. "

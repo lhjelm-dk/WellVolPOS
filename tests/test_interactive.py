@@ -249,7 +249,7 @@ def test_a5_draws_the_prospect_only_in_both_readings(reduced, groups, vc):
 def test_b1_uses_the_class_colours(vsweep):
     fig = I.pfig_b1_volume_split(vsweep)
     assert _line_colour(fig, "Proven | discovery") == colour("proven")
-    assert _line_colour(fig, "Possible below exit | discovery") == colour("possible")
+    assert _line_colour(fig, "Possible below exit | any discovery") == colour("possible")
     assert _line_colour(fig, "Attic | dry hole") == colour("attic")
 
 

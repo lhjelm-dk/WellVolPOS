@@ -261,7 +261,7 @@ def test_b1_depth_axis_and_class_colours(volume_sweep):
     assert is_depth_axis_correct(ax)
     lines = {line.get_label(): line for line in ax.get_lines()}
     assert lines["Proven | discovery"].get_color() == colour("proven")
-    assert lines["Possible below exit | discovery"].get_color() == colour("possible")
+    assert lines["Possible below exit | any discovery"].get_color() == colour("possible")
     assert lines["Attic | dry hole"].get_color() == colour("attic")
 
 

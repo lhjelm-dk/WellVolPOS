@@ -706,7 +706,13 @@ def fig_b1_volume_split(
 
     ax.plot(proven, vsweep.z, color=colour("proven", dark), lw=2.0, label="Proven | discovery")
     ax.plot(possible, vsweep.z, color=colour("possible", dark), lw=1.6, ls="--",
-            label="Possible below exit | discovery")
+            label="Possible below exit | any discovery")
+    # The same volume conditioned on there being any -- see the plotly twin. Dotted,
+    # because both are conditional and dashed already means risked.
+    if vsweep.possible_mean_if_any is not None:
+        ax.plot(thin(vsweep.possible_mean_if_any, vsweep.n_discovery, min_support),
+                vsweep.z, color=colour("possible", dark), lw=1.4, ls=":",
+                label="Possible below exit | HC seen to the exit")
     ax.plot(attic, vsweep.z, color=colour("attic", dark), lw=2.0, label="Attic | dry hole")
     # The volume when the contact lands on the well -- Results!G8 swept, Rose's
     # "No Regrets" curve. Neutral grey: it is the seam between two classes, not a

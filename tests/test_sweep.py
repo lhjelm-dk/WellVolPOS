@@ -604,3 +604,44 @@ def test_uncertainty_reduction_is_unchanged_on_a_file_with_no_chance_failures(fu
         pytest.skip("this fixture carries chance failures")
     sweep = run_sweep(full, 0.9, z_gap=50.0)
     assert 0.0 < sweep.reduction_optimum < 100.0
+
+
+def test_the_possible_volume_decomposes_into_a_chance_and_a_size(reduced, area_depth):
+    """``possible_mean = p_well_exits_in_hc x possible_mean_if_any``, exactly.
+
+    Lars, 2026-08-14: the possible-below-exit curve was not intuitively meaningful,
+    and the reason is arithmetic. ``possible_mean`` averages over **every** discovery
+    trial, and a discovery whose contact falls inside the penetrated interval leaves
+    nothing below the exit and contributes exactly zero -- 81 % of the discovery group
+    on this file at 3500-3550 m. So the curve reports the upside averaged over the
+    cases that have none.
+
+    Both readings are kept because each is wrong alone: the unconditional one is the
+    *additive* member of the volume classes, the conditional one is the size of the
+    prize. The identity is the same shape as ``P_well = POS x r``, one level down.
+
+    It is asserted to floating point rather than approximately, because it was 1e-2
+    off at first: the conditional mean selected on ``possible > 0`` while the chance
+    counted ``contact > z_exit``, and the wedge integral rounds a hair-thin interval
+    to zero. An identity that is nearly true is the kind that gets quoted as true.
+    """
+    import numpy as np
+
+    from wellvolpos.core import run_volume_sweep
+
+    vs = run_volume_sweep(reduced, area_depth, 0.7605, n=25, z_gap=50.0, mefs=15.0)
+    assert vs.possible_mean_if_any is not None
+    assert vs.p_well_exits_in_hc is not None
+
+    ok = (np.isfinite(vs.possible_mean) & np.isfinite(vs.possible_mean_if_any)
+          & np.isfinite(vs.p_well_exits_in_hc))
+    assert ok.sum() > 5, "not enough supported steps to test the identity"
+    lhs = vs.possible_mean[ok]
+    rhs = vs.p_well_exits_in_hc[ok] * vs.possible_mean_if_any[ok]
+    assert np.allclose(lhs, rhs, rtol=0, atol=1e-9), float(np.nanmax(np.abs(lhs - rhs)))
+
+    # And the conditional reading is the larger one wherever the chance is below 1 --
+    # which is the whole reason it is worth drawing separately.
+    partial = ok & (vs.p_well_exits_in_hc < 0.99)
+    assert partial.any()
+    assert np.all(vs.possible_mean_if_any[partial] > vs.possible_mean[partial])

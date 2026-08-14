@@ -345,6 +345,25 @@ class VolumeSweep:
     #: may be read against ``p_well`` as if on one scale.
     p_possible_exceeds_mefs: np.ndarray | None = None
     p_well_exits_in_hc: np.ndarray | None = None
+    #: The **size of the upside when there is one**: mean possible volume over only the
+    #: discovery trials whose contact is deeper than the exit (Lars, 2026-08-14).
+    #:
+    #: ``possible_mean`` above is the mean over *every* discovery trial, and a
+    #: discovery whose contact falls inside the penetrated interval contributes exactly
+    #: zero -- the well saw the whole accumulation. Those zeros are 81 % of the
+    #: discovery group on prospect A, so the unconditional mean reads as "the upside is
+    #: tiny" when what it reports is the upside averaged over the cases that have none.
+    #:
+    #: The two are related exactly, and it is the same shape as ``P_well = POS x r``:
+    #:
+    #:     possible_mean = p_well_exits_in_hc x possible_mean_if_any
+    #:
+    #: Both are kept because each is wrong alone. The unconditional one is *additive*
+    #: -- proven + possible = well associated -- which is what makes the volume classes
+    #: a decomposition. The conditional one is the prize, and quoting it without
+    #: ``p_well_exits_in_hc`` overstates that prize the way quoting a success-case
+    #: volume without POS does.
+    possible_mean_if_any: np.ndarray | None = None
     #: Mean resource of the trials whose contact sits **at** the entry, within
     #: ``at_well_window`` metres -- the workbook's ``Results!G8`` swept over depth,
     #: which is what its charts 5 and 16 plot and what Rose's Figures 7 and 19 show as
@@ -397,6 +416,7 @@ def run_volume_sweep(
     pw = np.empty(z.size)
     proven_mean = np.full(z.size, np.nan)
     possible_mean = np.full(z.size, np.nan)
+    possible_if_any = np.full(z.size, np.nan)
     attic_mean = np.full(z.size, np.nan)
     discovery_mean = np.full(z.size, np.nan)
     p99 = np.full(z.size, np.nan)
@@ -455,7 +475,19 @@ def run_volume_sweep(
             proven = vc.proven[groups_i.discovery]
             associated = vc.discovery_total[groups_i.discovery]
             proven_mean[i] = float(proven.mean())
-            possible_mean[i] = float(vc.possible[groups_i.discovery].mean())
+            _poss = vc.possible[groups_i.discovery]
+            possible_mean[i] = float(_poss.mean())
+            # **Conditioned on the same event the chance counts**: the well leaving
+            # the reservoir still in hydrocarbons, `contact > z_exit`. Selecting on
+            # `possible > 0` instead looked equivalent and was not -- the wedge
+            # integral rounds a hair-thin interval to exactly zero, so the two masks
+            # disagreed on a handful of trials and the identity
+            # `possible_mean = p_well_exits_in_hc x this` came out 1e-2 off instead of
+            # exact. An identity that is nearly true is the kind that gets quoted as
+            # true, so the masks are now one mask.
+            _exits = contact[groups_i.discovery] > zx
+            if _exits.any():
+                possible_if_any[i] = float(_poss[_exits].mean())
             discovery_mean[i] = float(associated.mean())
             # Petroleum orientation: P90 is the low case, so it is the 10th
             # percentile of the values.
@@ -484,6 +516,7 @@ def run_volume_sweep(
         discovery_mean=discovery_mean,
         mefs=mefs, p_proven_exceeds_mefs=p_proven_ex, p_attic_exceeds_mefs=p_attic_ex,
         p_possible_exceeds_mefs=p_possible_ex, p_well_exits_in_hc=p_exits_hc,
+        possible_mean_if_any=possible_if_any,
         at_well_mean=at_well, at_well_n=at_well_n, at_well_window=float(at_well_window),
         p_discovery_exceeds_mefs=p_disc_ex,
         proven_p99=p99, proven_p90=p90, proven_p50=p50, proven_p10=p10,

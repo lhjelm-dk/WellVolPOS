@@ -41,7 +41,6 @@ from ..viz import (
     level_row,
     pfig_a2_outcome_tree,
     pfig_a3_chance_decomposition,
-    pfig_b0_section,
     pfig_b1_volume_split,
     pfig_b2_chance_vs_regret,
     pfig_b3_uncertainty_reduction,
@@ -331,7 +330,7 @@ def _location_sweep_tab(ctx: Ctx):
     )
 
     if not has_area:
-        st.warning(fig_ref("No productive-area column in this export — {b0}, {b1} and {b2} "
+        st.warning(fig_ref("No productive-area column in this export — {b1} and {b2} "
                            "need it and are skipped."))
         return
 
@@ -339,23 +338,53 @@ def _location_sweep_tab(ctx: Ctx):
     with st.spinner("Sweeping the volume split…"):
         vsweep = _volume_sweep(source.name, source.data,
                                tuple(sorted(overrides.items())), pos, gap, mefs, ref.value)
-    f_b0 = pfig_b0_section(ad, z_entry=entry, z_exit=exit_, zlim=zrow_sweep)
+    # **The schematic section is not drawn here** (Lars, 2026-08-14). 4.3 draws the
+    # same section at the chosen well, from the same A(z), and two copies of one
+    # figure on two tabs is one more place for them to disagree. The two curves that
+    # remain are what this row was for: what the well proves, and what it risks.
     f_b1 = pfig_b1_volume_split(vsweep, current_z=entry, zlim=zrow_sweep)
     f_b2 = pfig_b2_chance_vs_regret(vsweep, current_z=entry, zlim=zrow_sweep)
-    for _f in (f_b0, f_b1, f_b2):
+    for _f in (f_b1, f_b2):
         add_well_markers(_f, wells, selected=selected_well)
-    level_row(f_b0, f_b1, f_b2)
-    d1, d2, d3 = st.columns(3)
+    level_row(f_b1, f_b2)
+    d1, d2 = st.columns(2)
     with d1:
-        _chart(f_b0, key="b0", height=int(f_b0.layout.height))
-    with d2:
         _chart(f_b1, key="b1", height=int(f_b1.layout.height))
-    with d3:
+    with d2:
         _chart(f_b2, key="b2", height=int(f_b2.layout.height))
     # Both conditional groups, because they thin at opposite ends: the discovery
     # group fails down-dip, the dry-with-attic group up-dip where almost nothing
     # is dry. Reporting only the first left the missing top of B1's orange curve
     # unexplained.
+    # The two possible-below-exit readings, in the app's own live numbers. Lars asked
+    # what the curve meant and the honest answer is that one curve could not say it:
+    # the unconditional mean is diluted by the discoveries that leave nothing below
+    # the exit, and the conditional one is the prize without the chance of getting it.
+    import numpy as _np
+
+    _i_here = int(_np.argmin(_np.abs(_np.asarray(vsweep.z, dtype=float) - float(entry))))
+    _p_any = (float(vsweep.p_well_exits_in_hc[_i_here])
+              if vsweep.p_well_exits_in_hc is not None else float("nan"))
+    _m_all = float(vsweep.possible_mean[_i_here])
+    _m_any = (float(vsweep.possible_mean_if_any[_i_here])
+              if vsweep.possible_mean_if_any is not None else float("nan"))
+    if _np.isfinite(_p_any) and _np.isfinite(_m_any):
+        st.info(
+            f"**The two possible-below-exit curves, at Well {selected_well}.** *If* the well "
+            f"leaves the reservoir still in hydrocarbons, the untested volume below the exit "
+            f"averages **{_m_any:,.2f} MMboe** — that is the dotted curve, and it is the "
+            f"additional potential you are asking about. The chance of that happening at all "
+            f"is **{_p_any:.1%}**, and the dashed curve is the product: "
+            f"**{_p_any:.1%} × {_m_any:,.2f} = {_m_all:,.2f} MMboe** averaged over *every* "
+            f"discovery, including the ones whose contact falls inside the penetrated interval "
+            f"and leave nothing below it.\n\n"
+            f"**Each is wrong on its own.** The dashed one is the *additive* member of the "
+            f"volume classes — proven + possible = well associated, exactly — so it is what "
+            f"makes the split a decomposition. The dotted one is the size of the upside and "
+            f"cannot be added to proven; quoted alone it overstates the prize exactly the way "
+            f"a success-case volume quoted without POS does. This is `POS × r` one level down."
+        )
+
     sup_disc = describe_support(vsweep.n_discovery, vsweep.z, name="discovery")
     sup_dry = describe_support(vsweep.n_dry, vsweep.z, name="dry-with-attic")
     st.caption(
@@ -389,10 +418,10 @@ def _location_sweep_tab(ctx: Ctx):
     # ---- B7 and B8, both from the 2018 macro workbook (Lars, 2026-08-11)
     st.divider()
     st.subheader("The trade-off, and where it is commercial")
-    tb1, tb2 = st.columns(2)
+    tb1, = st.columns(1)
     with tb1:
         b7_scale = st.radio(
-            f"{fig_ref('{b7}')} chance axis", ["linear", "log"], horizontal=True,
+            f"{fig_ref('{b7}')} chance axis", ["log", "linear"], horizontal=True,
             key="w_b7_scale",
             format_func=lambda k: {"linear": "Linear", "log": "Log"}[k],
             help=("The chance axis, not the volume one (Lars, 2026-08-12). Linear shows "
@@ -406,10 +435,12 @@ def _location_sweep_tab(ctx: Ctx):
         _f_b7 = pfig_b7_frontier(vsweep, current_z=entry, chance_scale=b7_scale)
         add_well_points(_f_b7, vsweep, wells, selected=selected_well)
         _chart(_f_b7, key="b7")
-    with tb2:
-        _f_b8 = pfig_b8_commercial_chance(vsweep, current_z=entry, zlim=zrow_sweep)
-        add_well_markers(_f_b8, wells, selected=selected_well)
-        _chart(_f_b8, key="b8")
+    # 3.9 is full width (Lars, 2026-08-14). It carries three curves and a starred
+    # interior maximum, and half a row was not enough to see where that peak sits.
+    _f_b8 = pfig_b8_commercial_chance(vsweep, current_z=entry, zlim=zrow_sweep,
+                                      height=TALL_PANEL_HEIGHT)
+    add_well_markers(_f_b8, wells, selected=selected_well)
+    _chart(_f_b8, key="b8")
     _f_b9 = pfig_b9_chance_weighted(vsweep, current_z=entry, zlim=zrow_sweep)
     add_well_markers(_f_b9, wells, selected=selected_well)
     _chart(_f_b9, key="b9")

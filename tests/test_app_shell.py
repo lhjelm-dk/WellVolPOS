@@ -45,23 +45,23 @@ def test_the_app_runs_on_the_demo_data_with_no_exception(fresh):
     assert fresh.sidebar.slider.len == 0
 
 
-def test_choosing_upload_does_not_take_the_sidebar_away():
-    """The reported bug. Before the fix the sidebar was empty — which reads as a
-    crash — and the controls could not come back without knowing to change the
-    selector in tab ①."""
+def test_choosing_upload_says_why_the_controls_are_not_there_yet():
+    """Descendant of the original sidebar bug, which was that the controls vanished
+    with no way back that looked like a way back.
+
+    There is **no sidebar at all** since 2026-08-14 -- everything moved into tab ①,
+    now "Setup and input" -- so the same failure mode would be a tab that goes
+    silent. It says why instead, in the tab where the file is chosen.
+    """
     at = AppTest.from_file(APP, default_timeout=TIMEOUT).run()
     at.selectbox[0].select("Upload your own…").run()
 
     assert not at.exception
-    # The controls genuinely cannot exist: their ranges come from the loaded file.
-    # So the sidebar explains itself rather than vanishing.
     assert at.sidebar.slider.len == 0
-    assert [h.value for h in at.sidebar.subheader] == ["Settings"]
-    said = " ".join(e.value for e in at.sidebar.info)
+    assert at.sidebar.number_input.len == 0, "the sidebar is gone; nothing may live there"
+    said = " ".join(e.value for e in at.info)
     assert "Waiting for trial data" in said
-    assert "tab ①" in said
-    # And it says where the well geometry went, rather than leaving a reader to
-    # hunt for sliders that are no longer in the sidebar at all.
+    # And it says where the well geometry is, rather than leaving a reader hunting.
     assert "tab ③" in said
 
 
@@ -69,14 +69,22 @@ def test_going_back_to_a_demo_restores_the_controls():
     """The other half of the same bug: it has to be recoverable."""
     at = AppTest.from_file(APP, default_timeout=TIMEOUT).run()
     at.selectbox[0].select("Upload your own…").run()
-    assert at.sidebar.slider.len == 0
+    assert not any("MEFS" in (w.label or "") for w in at.number_input)
     at.selectbox[0].select("Prospect A — reduced (7 columns)").run()
     assert not at.exception
-    # The sidebar keeps the threshold and the conventions; the well geometry is on
-    # tab ③ since 2026-08-13, because a location decision compares candidates and
-    # four pairs of sliders do not belong beside four global conventions.
-    assert at.sidebar.number_input.len >= 1
-    assert [h.value for h in at.sidebar.subheader] == ["Conventions"]
+    # The threshold and the four conventions are in tab ①'s body now, not a sidebar.
+    assert any("MEFS" in (w.label or "") for w in at.number_input)
+    assert any("Reference contour" in (w.label or "") for w in at.radio)
+    assert any("allocation" in (w.label or "") for w in at.selectbox)
+
+
+def test_nothing_lives_in_a_sidebar(fresh):
+    """The sidebar was removed on 2026-08-14: one place to set a session up, and six
+    tabs that are then all output. A control that reappears there is a control a
+    reader has to find twice."""
+    sb = fresh.sidebar
+    assert (sb.slider.len + sb.number_input.len + sb.selectbox.len
+            + sb.radio.len + sb.checkbox.len) == 0
 
 
 def test_the_well_geometry_lives_in_a_tab_and_defaults_to_one_candidate(fresh):
