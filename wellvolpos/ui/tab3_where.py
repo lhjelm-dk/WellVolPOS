@@ -395,11 +395,13 @@ def _location_sweep_tab(ctx: Ctx):
             f"a success-case volume quoted without POS does. This is `POS × r` one level down."
         )
     st.caption(
-        f"**{fig_ref('{b13}')} — and it is different for every candidate.** This volume "
-        f"depends on the **exit**, so a well that penetrates further proves more of the "
-        f"column and leaves less unproven. Each distinct entry-to-exit spacing among your "
-        f"candidates is swept separately and drawn as its own dashed grey curve; candidates "
-        f"sharing a spacing share a curve."
+        f"**{fig_ref('{b13}')} moves with the exit, and almost nothing else does.** A well "
+        f"that penetrates further proves more of the column and leaves less unproven, so "
+        f"this curve and the proven one on {fig_ref('{b1}')} are the only two that change "
+        f"when you move the exit slider without moving the entry. The chance, the attic and "
+        f"the volume at the well are fixed by the **entry** alone — the discovery group is "
+        f"defined by it. Every curve here is swept at the {exit_ - entry:,.0f} m spacing "
+        f"set in tab ①."
     )
 
     # **P(up-dip <= MEFS) at this well** (Lars, 2026-08-12) -- the workbook's
@@ -435,7 +437,6 @@ def _location_sweep_tab(ctx: Ctx):
                   "which is where the deep locations sit and where a linear axis "
                   "compresses the whole trade into the bottom centimetre."),
         )
-        # 3.8's axes are volume and chance, so a candidate is a **point** on the
         _f_b7 = pfig_b7_frontier(vsweep, current_z=entry, chance_scale=b7_scale)
         _chart(_f_b7, key="b7")
     # 3.9 is full width (Lars, 2026-08-14). It carries three curves and a starred
@@ -557,12 +558,9 @@ def _band_section(ctx: Ctx):
         st.warning(str(exc))
         return
 
-    # 3.12 takes no candidate rules and that is not an omission. Its axes are
-    # resource and probability, so a well is not a line on it -- and more than that,
-    # **the banding itself is anchored on the selected well's entry**, because a band
-    # that straddles the entry mixes dry trials with discoveries. So each candidate
-    # produces a *different figure*, not another curve on this one, and the title says
-    # which well is on screen.
+    # **The banding is anchored on the well's entry**, because a band that straddles
+    # it mixes dry trials with discoveries -- see core/bands.py. So moving the entry
+    # produces a different figure rather than another curve on this one.
     _chart(pfig_b12_banded_percentiles(
         bp, mefs=mefs, show_proven=show_proven, show_mean=show_mean,
         probability_scale=prob_scale, volume_scale=vol_scale,

@@ -1,8 +1,6 @@
 """Which quantities move with the well's **exit**, and which only with its entry.
 
-Lars, 2026-08-14: *"investigate what volume cases are dependent on exit depth and make
-sure that well options plotted in the same plot are plotted with their relevant volume
-case curves."*
+Lars, 2026-08-14: *"investigate what volume cases are dependent on exit depth."*
 
 Measured rather than reasoned about -- hold the entry at 2205 m on prospect B and move
 only the exit:
@@ -21,11 +19,14 @@ where ``split_trials`` cuts the accumulation. So the exit moves the **boundary b
 proven and unproven** and nothing else; their sum, the well-associated volume, is
 fixed.
 
-That has a direct consequence for drawing several candidates on one figure. A curve
-built from an entry-only quantity is **the same curve for every candidate** and drawing
-it once is correct. A curve built from proven or from the unproven volume below LKH is
-a *different curve per entry-to-exit spacing*, and drawing one of them at the selected
-well's spacing quietly answers the wrong question for the others.
+That is what the exit slider does and all it does. Moving it redraws 3.5's proven
+curve and 3.7 entirely, and leaves the chance, the attic and the volume at the well
+exactly where they were -- so a reader who moves it and sees `P_well` unchanged is
+seeing the model work, not a bug.
+
+It also bounds what a *second* well would have needed, which is why the four-candidate
+comparison was removed (2026-08-14, see CLAUDE.md): a curve built from an entry-only
+quantity is the same curve for every location, and only these two would have differed.
 
 :data:`EXIT_DEPENDENT` and :data:`ENTRY_ONLY` name which is which, so a figure can say
 so and a test can check that it does.
@@ -49,7 +50,8 @@ EXIT_DEPENDENT = (
 )
 
 #: Quantities that depend on the **entry** alone -- the grouping is
-#: ``contact > z_entry`` and the exit never enters. One curve serves every candidate.
+#: ``contact > z_entry`` and the exit never enters -- moving the exit cannot move
+#: any of these.
 ENTRY_ONLY = (
     "r_location",
     "p_well",
@@ -64,7 +66,7 @@ ENTRY_ONLY = (
 
 @dataclass(frozen=True)
 class DeviationCheck:
-    """Is a candidate's entry-to-exit spacing consistent with a vertical well?
+    """Is the well's entry-to-exit spacing consistent with a vertical well?
 
     The reservoir has a true vertical thickness, recovered per trial from the pay
     (``core.reservoir.thickness_from_pay``). A **vertical** well entering at the top
@@ -127,7 +129,7 @@ class DeviationCheck:
 
 
 def check_deviation(thickness: np.ndarray, gap: float) -> DeviationCheck:
-    """Compare a candidate's entry-to-exit spacing with the reservoir it must sit in."""
+    """Compare the well's entry-to-exit spacing with the reservoir it must sit in."""
     t = np.asarray(thickness, dtype=float)
     t = t[np.isfinite(t) & (t > 0)]
     if not t.size:
