@@ -25,10 +25,61 @@ def render(*, ts, ad, groups, vc, chance, mefs, entry, exit_, pos_source):
     """Draw the guide. Live numbers throughout, from the loaded trial set."""
     st.subheader("Theory, definitions and references")
     st.caption(
-        "Written to be read beside the concepts figure on the Well location tab. "
         "Every number below is computed from the trials currently loaded, so it agrees "
         "with the rest of the app by construction rather than by proofreading."
     )
+
+    # ------------------------------------------------ what this tool assumes
+    # **First, and assuming competence** (Lars, 2026-08-15, design review). The tab
+    # used to open by defining percentiles and exceedance to a reader who has known
+    # both since university, while the things specific to *this* tool -- the ones that
+    # would change how they read a number -- were spread through long passages further
+    # down. Inverted: the local assumptions lead, each with its number attached, and
+    # the vocabulary that half the industry genuinely disputes stays. The rest went.
+    st.markdown("### What this tool assumes that others do not")
+    st.caption(
+        "Six things worth knowing before quoting anything out of this app. None is "
+        "hidden elsewhere in the tab; this is where they live."
+    )
+    _apex = float(ad.apex_estimate()) if ad is not None else float("nan")
+    _shallow = float(ts.col("contact")[ts.col("resource") > 0].min())
+    st.markdown(
+        f"""
+1. **The split apportions on the wedge, not by map area.** The charged interval stands at
+   full reservoir thickness up-dip and pinches to zero at the contact, so volume sits
+   further up-dip than a per-area rule allows. The old `A(lkh)/A(contact)` rule understated
+   proven and overstated what is left below by about six points of the accumulation. The
+   figure two sections down is the geometry; `apportionment="area"` restores the old rule.
+
+2. **The apex is extrapolated, never mapped.** A(z)'s shallow tail is run out to zero area:
+   **{_apex:,.0f} m** here, against a shallowest *sampled* contact of **{_shallow:,.0f} m**.
+   The trials do not contain the crest, so every column-height statement inherits that
+   error. The export's `crest` column cannot rescue it — 60 % of success trials there carry
+   a "crest" deeper than their own contact.
+
+3. **LKH here is modelled, not logged.** It is `min(contact, exit)` per trial — the same
+   concept as a wellsite lowest-known-hydrocarbon, but an output of the model rather than an
+   observation. Everything called *unproven below LKH* is measured from it.
+
+4. **The exit moves exactly two volume classes.** A discovery is `contact > entry`, so every
+   population — and therefore `r_location` and `P_well` — is fixed by the entry alone.
+   Moving the exit shifts the boundary between proven and unproven below LKH and nothing
+   else. If you move it and the chance does not budge, that is the model working.
+
+5. **MEFS is a line to read against and is never applied to the distributions.** A volume
+   cut-off raises the unrisked mean while lowering commercial chance, and the two do not
+   cancel (Longley 2026), so truncating would bake one reader's economics into everyone's
+   volumes. The one place a threshold does touch a distribution is the *commercial* class,
+   which is an additional class conditional on clearing MEFS — not a cut of the others.
+
+6. **Yield and net-to-gross are uniform inside the charged interval.** The wedge fixes the
+   pay geometry and not this. It is checked on import — area against net pay — and the
+   check warns rather than blocks, because it disqualifies the extension and leaves the
+   reference engine untouched.
+        """
+    )
+
+    st.divider()
 
     # -------------------------------------------------------------- guidelines
     # First on the tab (Lars, 2026-08-12). These and the figure table were at the

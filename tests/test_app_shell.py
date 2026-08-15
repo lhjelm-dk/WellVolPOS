@@ -242,3 +242,30 @@ def test_tab_three_is_grouped_and_the_well_sits_above_qc(fresh):
     readouts = [c.value for c in fresh.caption if c.value.startswith("**Well:**")]
     assert len(readouts) >= 2, readouts
     assert all("set on tab ①" in r for r in readouts)
+
+
+def test_the_guide_opens_with_what_this_tool_assumes(fresh):
+    """Phase 6: assume competence, explain only what is local.
+
+    The tab opened by defining percentiles and exceedance to a reader who has known
+    both since university, while the assumptions that would change how they read a
+    number were spread through long passages further down.
+    """
+    assert not fresh.exception
+    body = _all_text(fresh)
+    i = body.find("What this tool assumes that others do not")
+    assert i >= 0, "the assumptions section is missing"
+
+    # It leads: nothing else in tab ⑥ comes before it.
+    for later in ("Guidelines — six things to get right",
+                  "The one idea everything rests on",
+                  "Colour associations"):
+        j = body.find(later)
+        assert j > i, f"{later} appears before the assumptions"
+
+    # Each of the six is present by its distinguishing phrase, so a rewrite that drops
+    # one fails rather than quietly shortening the list.
+    for phrase in ("wedge, not by map area", "extrapolated, never mapped",
+                   "modelled, not logged", "exactly two volume classes",
+                   "never applied to the distributions", "uniform inside the charged"):
+        assert phrase in body, phrase
