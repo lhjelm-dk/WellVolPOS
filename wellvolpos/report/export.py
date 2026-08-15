@@ -400,6 +400,13 @@ def _draw_export_figures(b: Bundle, *, dark: bool = False) -> dict[str, object]:
         # thickness and contact, so it belongs in the bundle rather than in the docs.
         _thick = thickness_from_pay(b.ts, b.ad).thickness
         _t50 = float(np.nanpercentile(_thick[np.isfinite(_thick) & (_thick > 0)], 50))             if np.isfinite(_thick).any() else 50.0
+        _dc = b.ts.col("contact")[(b.ts.col("resource") > 0)
+                                  & (b.ts.col("contact") > c.entry)]
+        if _dc.size:
+            figs["C5_partitions"] = F.fig_c5_partitions(
+                b.ad, z_entry=c.entry, z_exit=c.exit,
+                z_contact=float(np.median(_dc)), area_scale=c.area_scale,
+                dark=dark)[0]
         figs["C4_wedge"] = F.fig_c4_wedge(
             thickness=_t50, z_contact=float(np.nanmedian(
                 b.ts.col("contact")[b.ts.col("resource") > 0])),

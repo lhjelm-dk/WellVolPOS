@@ -31,6 +31,7 @@ from ..viz import (
     pfig_c1_section,
     pfig_c2_exceedance,
     pfig_c3_mefs_bars,
+    pfig_c5_partitions,
     pfig_c6_outcome_tree,
     pfig_map_view,
 )
@@ -384,9 +385,23 @@ def render(ctx: Ctx) -> None:
                               "the whole accumulation.")
             rc[2].metric("Their sum", f"{_rp.total_mean:.2f}",
                          help="Equals the well-associated mean above, by construction.")
+            # **The contact must be a discovery's.** Passing the median *successful*
+            # contact drew this for a dry hole -- 2203.3 m against a 2205 m entry on
+            # prospect B -- so nothing sat below either cut and only the upper half of
+            # each panel appeared. Conditioning on discovery is also the right reading:
+            # the figure is about how a *discovery* gets partitioned.
+            _disc_c = ts.col("contact")[(ts.col("resource") > 0)
+                                        & (ts.col("contact") > entry)]
+            if _disc_c.size:
+                _chart(pfig_c5_partitions(
+                    ad, z_entry=entry, z_exit=exit_,
+                    z_contact=float(np.median(_disc_c)),
+                    area_scale=area_scale), key="c5")
             figure_note(
                 "Rose cuts at the well, this app at the interval the well penetrates. The "
-                "violet band is the slice they disagree about.",
+                "violet band is the slice they disagree about"
+                + (f", drawn at the median discovery contact, "
+                   f"{float(np.median(_disc_c)):,.0f} m." if _disc_c.size else "."),
                 detail=f"**Two cuts of one closure.** Rose splits at the well; this app splits at "
                 f"the interval the well actually penetrates, because a well proves what it "
                 f"drills through. So his updip ({_rp.updip_mean:.2f}) is our proven "

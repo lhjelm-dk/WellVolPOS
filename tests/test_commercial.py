@@ -218,3 +218,69 @@ def test_the_wedge_has_an_export_twin_that_draws_the_same_thing():
     p_int = next(t for t in I.pfig_c4_wedge(**kw).data
                  if t.name and "Area-averaged" in t.name)
     assert f"{abs(float(p_int.y[0]) - float(p_int.y[1])):,.0f} m" in labels
+
+
+# --------------------------------------------------------- C5, restored and fixed
+def test_c5_refuses_a_dry_hole_rather_than_drawing_half_a_figure(reduced):
+    """The bug that made C5 look broken, now an error.
+
+    It was called with the median *successful* contact — 2203.3 m on prospect B against
+    a 2205 m entry — so the figure was drawn for a dry hole, nothing sat below either
+    cut, and only the upper half of each panel appeared. It looked like a styling
+    problem and was a data one.
+    """
+    import wellvolpos.viz.interactive as I
+
+    ad = AreaDepth.from_trials(reduced.col("contact"), reduced.col("area"))
+    with pytest.raises(ValueError, match="dry hole"):
+        I.pfig_c5_partitions(ad, z_entry=3500.0, z_exit=3550.0, z_contact=3499.0)
+
+
+def test_c5_draws_all_four_regions_on_a_discovery_contact(reduced):
+    import numpy as np
+    import wellvolpos.viz.interactive as I
+
+    ad = AreaDepth.from_trials(reduced.col("contact"), reduced.col("area"))
+    c, r = reduced.col("contact"), reduced.col("resource")
+    zc = float(np.median(c[(r > 0) & (c > 3500.0)]))
+    # On prospect A the median discovery contact is 3,527.7 m, *above* the 3,550 m
+    # exit — so LKH = the contact and there is genuinely nothing unproven below it.
+    # Three regions is the correct answer there, and the figure must not invent a
+    # fourth. Rose still gets two, because his cut is the entry.
+    fig = I.pfig_c5_partitions(ad, z_entry=3500.0, z_exit=3550.0, z_contact=zc)
+    names = [t.name for t in fig.data if t.name]
+    assert names[:3] == ["Rose updip", "Rose downdip", "Proven"]
+    assert ("Unproven below LKH" in names) == (zc > 3550.0)
+
+    # A contact below the exit does produce all four.
+    deep = I.pfig_c5_partitions(ad, z_entry=3500.0, z_exit=3550.0, z_contact=3620.0)
+    assert [t.name for t in deep.data if t.name] == [
+        "Rose updip", "Rose downdip", "Proven", "Unproven below LKH"]
+
+    # Every region drawn has real extent — the failure mode was one drawing nothing.
+    for t in deep.data:
+        y = np.asarray(t.y, dtype=float)
+        assert y.max() - y.min() > 1.0, t.name
+
+
+def test_4_2_carries_a_brace_for_the_commercial_class(reduced):
+    """Lars: "there are 4 bars but the commercial is missing". It was in ``spans`` and
+    dropped by a hardcoded order list."""
+    import wellvolpos.viz.interactive as I
+    from wellvolpos.core import p_well as p_well_fn
+    from wellvolpos.core.rose import commercial_chance
+
+    ad = AreaDepth.from_trials(reduced.col("contact"), reduced.col("area"))
+    g = group_trials(reduced, ENTRY, EXIT)
+    vc = split_trials(reduced, ad, g, ENTRY, EXIT)
+    ch = p_well_fn(reduced, ENTRY, POS)
+    cc = commercial_chance(reduced, g, vc.proven, ch.p_well, MEFS)
+
+    fig = I.pfig_c2_exceedance(reduced, g, vc, pos_prospect=ch.pos_prospect,
+                               p_well=ch.p_well, mefs=MEFS, pc_well=cc.pc_well)
+    labels = [a.text.strip() for a in fig.layout.annotations if a.text]
+    for name in ("Commercial accumulation", "Up-dip volume", "Resource tested by well",
+                 "Well associated resource potential", "Prospect resource potential"):
+        assert name in labels, (name, labels)
+    # And the axis grew to hold five braces rather than clipping the last.
+    assert fig.layout.yaxis.range[0] < -40
