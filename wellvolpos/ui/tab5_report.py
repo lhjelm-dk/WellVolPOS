@@ -227,11 +227,14 @@ def render(ctx: Ctx) -> None:
         st.warning(w)
     st.divider()
 
-    c1, c2 = st.columns(2)
-    with c1:
-        _chart(pfig_b4_chance_waterfall(elements, chance.r_location, pos, scheme=scheme), key="b4")
-    with c2:
-        _chart(pfig_b5_allocation_dumbbell(elements, chance.r_location, pos_prospect=pos), key="b5")
+    # **Stacked, not side by side** (Lars, 2026-08-15). 5.1 is a waterfall of six or
+    # seven steps and 5.2 a dumbbell across three schemes; at half width the step
+    # labels on one and the scheme names on the other both wrap. They are also read
+    # in sequence rather than compared -- 5.1 decomposes the chance under the scheme
+    # in use, 5.2 asks what a different scheme would have done -- so the second is a
+    # follow-on, not a companion.
+    _chart(pfig_b4_chance_waterfall(elements, chance.r_location, pos, scheme=scheme), key="b4")
+    _chart(pfig_b5_allocation_dumbbell(elements, chance.r_location, pos_prospect=pos), key="b5")
     st.caption(
         f"{fig_ref('{b4}')} decomposes the POS in use through the location factor at the current entry, under "
         "the sidebar's allocation scheme; hatched steps are location, solid are geological "

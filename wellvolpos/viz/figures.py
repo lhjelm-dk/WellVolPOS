@@ -390,7 +390,8 @@ def fig_a2_outcome_tree(sweep: Sweep, *, current_z: float | None = None, dark: b
     depth_axis(ax, zlim=(float(sweep.z.min()), float(sweep.z.max())))
     ax.set_xlim(0, 100)
     ax.set_xlabel("Share of trials (%)")
-    ax.set_title(f"A2 · Outcome tree vs location (exit = entry + {sweep.z_gap:.0f} m)")
+    ax.set_title(f"A2 · Outcome tree vs location "
+                 f"(exit = entry + {sweep.z_gap:.0f} m, from the well input)")
     ax.legend(loc="center left", bbox_to_anchor=(1.0, 0.5), fontsize=7.5)
     fig.tight_layout()
     return fig, ax

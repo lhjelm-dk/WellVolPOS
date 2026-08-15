@@ -566,7 +566,8 @@ def pfig_a2_outcome_tree(
         _hline(fig, current_z, p["text"], "dash")
 
     fig.update_layout(
-        title=f"A2 · Outcome tree vs location (exit = entry + {sweep.z_gap:.0f} m)",
+        title=(f"A2 · Outcome tree vs location "
+               f"(exit = entry + {sweep.z_gap:.0f} m, from the well input)"),
         xaxis_title="Share of trials (%)",
     )
     fig.update_xaxes(range=[0, 100])
@@ -1162,7 +1163,7 @@ def pfig_b1_volume_split(
 
     fig.update_layout(
         title=("B1 · Volume split vs location "
-               f"(exit = entry + {vsweep.z_gap:.0f} m"
+               f"(exit = entry + {vsweep.z_gap:.0f} m, from the well input"
                f", {reference_label(vsweep.reference)})"
                "<br><sub>bold = mean · dotted = P90 / P50 / P10 · "
                "each volume conditional on its own outcome</sub>"),
@@ -1237,7 +1238,7 @@ def pfig_b13_below_exit(
 
     fig.update_layout(
         title=("B13 · Unproven below LKH — the volume under the well "
-               f"(exit = entry + {vsweep.z_gap:.0f} m)"
+               f"(exit = entry + {vsweep.z_gap:.0f} m, from the well input)"
                "<br><sub>conditional on the well leaving the reservoir in "
                "hydrocarbons · bold = mean · dotted = P90 / P50 / P10</sub>"),
         xaxis_title="Unproven volume below LKH (MMboe)",
@@ -1324,7 +1325,7 @@ def pfig_b2_chance_vs_regret(
         title=(
             f"B2 · Chance vs regret (MEFS {vsweep.mefs:.1f} MMboe, "
             f"{reference_label(vsweep.reference)}, "
-            f"exit = entry + {vsweep.z_gap:.0f} m)"
+            f"exit = entry + {vsweep.z_gap:.0f} m, from the well input)"
         ),
         xaxis_title="Probability (%)",
     )
@@ -1855,7 +1856,7 @@ def pfig_b6_inverse(
     fig.update_layout(
         title=(f"B6 \u00b7 Inverse \u2014 how deep must the well go to prove a "
                f"{stat_label} volume? "
-               f"(exit = entry + {vsweep.z_gap:.0f} m)"),
+               f"(exit = entry + {vsweep.z_gap:.0f} m, from the well input)"),
         # Both readings named on the axis itself. One pair of axes carrying two
         # definitions of volume and two kinds of depth is only honest if the axis
         # says so -- unlabelled, this is the figure Lars could not read.
@@ -2110,7 +2111,7 @@ def pfig_b9_chance_weighted(
     fig.update_layout(
         title=("B9 · Chance-weighted resource vs location (expected, not a volume "
                "anyone finds; "
-               f"exit = entry + {vsweep.z_gap:.0f} m)"),
+               f"exit = entry + {vsweep.z_gap:.0f} m, from the well input)"),
         xaxis_title="P_well × mean volume  (MMboe, expected)",
     )
     fig.update_xaxes(rangemode="tozero")
@@ -2600,7 +2601,7 @@ def pfig_b7_frontier(
         title=("B7 · Chance against volume — the location trade-off "
                f"({reference_label(vsweep.reference)})"
                "<br><sub>bold = well associated mean · thin = its P90 / P50 / P10 · "
-               f"dashed = proven, at exit = entry + {vsweep.z_gap:.0f} m</sub>"),
+               f"dashed = proven, at the well's own {vsweep.z_gap:.0f} m spacing</sub>"),
         xaxis_title="Mean resource (MMboe)",
         yaxis_title=("P_well  (%, log scale 1–110 — equal steps are equal "
                      "*proportional* loss of chance)" if log else "P_well  (%)"),

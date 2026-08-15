@@ -55,17 +55,15 @@ def render(ctx: Ctx) -> None:
         split_caveat(ctx)
 
     # ------------------------------------------------------------ the well
-    st.subheader("The well")
-    st.metric("Reservoir entry to exit", f"{entry:,.0f} – {exit_:,.0f} m TVDSS",
-              help=f"{exit_ - entry:,.0f} m of reservoir penetrated.")
+    # **The depths are stated once** (Lars, 2026-08-15). They were in a metric and
+    # again in the heading two lines below it, which invites the reader to check
+    # whether the two agree -- and they always will, because both read `ctx`.
+    st.subheader(f"At {entry:,.0f}–{exit_:,.0f} m TVDSS")
     st.caption(
-        "**Tab ③ is where the depth is chosen** — it sweeps every entry depth and "
-        "shows what each one buys. This tab is the write-up at the depth you settled "
-        "on; the sliders are on tab ①."
+        f"**{exit_ - entry:,.0f} m of reservoir penetrated.** Tab ③ is where the depth "
+        f"is chosen — it sweeps every entry depth and shows what each one buys. This "
+        f"tab is the write-up at the depth you settled on; the sliders are on tab ①."
     )
-
-    st.divider()
-    st.subheader(f"At {entry:,.0f}–{exit_:,.0f} m")
     _split_caveat()
 
     # --------------------------------------------------------------- the chance
