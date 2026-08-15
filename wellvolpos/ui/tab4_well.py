@@ -31,7 +31,6 @@ from ..viz import (
     pfig_c1_section,
     pfig_c2_exceedance,
     pfig_c3_mefs_bars,
-    pfig_c5_partitions,
     pfig_c6_outcome_tree,
     pfig_map_view,
 )
@@ -385,14 +384,6 @@ def render(ctx: Ctx) -> None:
                               "the whole accumulation.")
             rc[2].metric("Their sum", f"{_rp.total_mean:.2f}",
                          help="Equals the well-associated mean above, by construction.")
-            # **The two cuts, drawn** (Lars, 2026-08-15). This took about 120 words
-            # to explain and is inherently a picture: same closure, twice, cut line in
-            # a different place, and the slice they disagree about shaded on both.
-            _chart(pfig_c5_partitions(
-                ad, z_entry=entry, z_exit=exit_,
-                z_contact=float(np.nanmedian(
-                    ts.col("contact")[ts.col("resource") > 0])),
-                area_scale=area_scale), key="c5")
             figure_note(
                 "Rose cuts at the well, this app at the interval the well penetrates. The "
                 "violet band is the slice they disagree about.",

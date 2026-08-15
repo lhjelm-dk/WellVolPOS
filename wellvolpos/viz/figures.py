@@ -2057,59 +2057,6 @@ def fig_c4_wedge(
     ax.legend(fontsize=7.5, loc="lower left", frameon=False)
     fig.tight_layout()
     return fig, ax
-
-
-def fig_c5_partitions(
-    ad, *, z_entry: float, z_exit: float, z_contact: float,
-    area_scale: str = "area", dark: bool = False,
-):
-    """C5, for the export path. Twin of ``pfig_c5_partitions``.
-
-    The same closure cut twice: Rose at the well, this app at the penetrated interval.
-    The violet band is the entry-to-exit slice the two disagree about.
-    """
-    p = palette(dark)
-    label, transform = AREA_SCALES.get(area_scale, AREA_SCALES["area"])
-    lkh = min(float(z_contact), float(z_exit))
-
-    fig, axes = new_figure(nrows=1, ncols=2, figsize=(9.0, 4.6), dark=dark,
-                           sharey=True)
-    z = np.linspace(ad.shallowest, float(z_contact), 260)
-    half = transform(np.asarray([ad.area_at(v) for v in z], dtype=float)) / 2.0
-
-    panels = [
-        ("Rose — cut at the well", float(z_entry),
-         "Rose updip", "up_dip", "Rose downdip", "below_lkh"),
-        ("This app — cut at the penetrated interval", lkh,
-         "Proven", "proven", "Unproven below LKH", "below_lkh"),
-    ]
-    for ax, (title, cut, up_name, up_role, lo_name, lo_role) in zip(axes, panels):
-        for name, role, lo_z, hi_z in ((up_name, up_role, z.min(), cut),
-                                       (lo_name, lo_role, cut, float(z_contact))):
-            m = (z >= lo_z) & (z <= hi_z)
-            if m.sum() < 2:
-                continue
-            ax.fill_betweenx(z[m], -half[m], half[m], color=colour(role, dark),
-                             alpha=0.55, lw=1.0, edgecolor=colour(role, dark),
-                             label=name)
-        ax.axhline(cut, color=p["well"], lw=2)
-        if z_exit > z_entry:
-            ax.axhspan(float(z_entry), min(float(z_exit), float(z_contact)),
-                       color=p["well"], alpha=0.16, lw=0)
-        ax.set_title(title, fontsize=9)
-        ax.set_xlabel(label)
-        # ylabel is depth_axis's *first* argument; the second panel drops it, which
-        # is the documented convention for a row sharing one depth range.
-        depth_axis(ax, None if ax is axes[1] else "Depth (m TVDSS)",
-                   (ad.shallowest, float(z_contact)))
-        ax.legend(fontsize=7, loc="lower right", frameon=False)
-
-    fig.suptitle("C5 · Two cuts of one closure — the difference is the "
-                 f"{z_exit - z_entry:,.0f} m the well penetrates", fontsize=11)
-    fig.tight_layout()
-    return fig, axes[0]
-
-
 def fig_c6_outcome_tree(
     groups, *, pos_prospect: float, p_well: float, pc_well: float | None = None,
     volumes: dict | None = None, dark: bool = False,
