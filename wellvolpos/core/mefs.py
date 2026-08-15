@@ -156,6 +156,20 @@ class Crossing:
     n: int
 
     @property
+    def short(self) -> str:
+        """The name with the words a bar chart does not need taken off.
+
+        4.2 needs the long form: its legend sits beside three other curves and has to
+        say which volume each is. A bar chart's rows are already the only thing on the
+        axis, and *"resource potential"* appears on two of the four, so it separates
+        nothing while making the labels wide enough to be clipped -- which is what
+        happened (Lars, 2026-08-15).
+        """
+        return (self.name
+                .replace(" resource potential", "")
+                .replace("Resource tested by well", "Tested by well"))
+
+    @property
     def risked(self) -> float:
         """The dashed curve's height at the line: ``chance × conditional``.
 

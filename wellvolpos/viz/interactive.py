@@ -3055,7 +3055,7 @@ def pfig_c3_mefs_bars(
     # Reversed, so the widest concept sits at the top: a horizontal bar chart builds
     # upward from the axis, and the nesting reads outside-in the way 4.2's braces do.
     crossings = tuple(reversed(crossings))
-    labels = [c.name for c in crossings]
+    labels = [c.short for c in crossings]
 
     fig = go.Figure()
     for reading, values, pattern in (
@@ -3066,6 +3066,13 @@ def pfig_c3_mefs_bars(
             x=[v * 100.0 for v in values], y=labels, orientation="h",
             name=READING_LABELS["conditional" if reading == "unrisked"
                                 else "unconditional"],
+            # **No legend.** Every bar takes its concept's colour, so a legend swatch
+            # can only show one of the four and reads as if the entry belonged to that
+            # row -- it was drawing the up-dip light blue against both entries. A grey
+            # dummy trace would fix the colour and reintroduce the phantom legend
+            # entries Lars reported twice on 3.12, so the subtitle carries the key
+            # instead, which is where that figure's ended up too.
+            showlegend=False,
             marker=dict(
                 color=[rgba(c.role, 0.85 if reading == "unrisked" else 0.35, dark)
                        for c in crossings],
@@ -3100,6 +3107,17 @@ def pfig_c3_mefs_bars(
     # probability -- autoscaling gave a different ceiling per prospect, so two runs
     # could not be compared by eye.
     fig.update_xaxes(range=[0, 108])
-    fig.update_yaxes(automargin=True)
     apply_plotly(fig, dark, height)
+    # **The row labels need a margin, and `automargin` cannot give them one.**
+    # ``apply_plotly`` pins the margins with ``autoexpand=False``, which is what makes
+    # a row of depth panels share one plot area -- and it defeats ``automargin``
+    # silently, so the labels were simply cut off ("...ce potential"). Same shape as
+    # the colourbar that rendered 76 px past the figure edge.
+    #
+    # This figure is **not** a panel in a depth row -- it has no depth axis at all --
+    # so widening its left margin costs nothing that the row rule protects. Sized from
+    # the longest label rather than a constant, so a longer concept name cannot quietly
+    # reintroduce the clipping.
+    widest = max((len(c.short) for c in crossings), default=0)
+    fig.update_layout(margin=dict(l=int(12 + 7.0 * widest)), showlegend=False)
     return fig

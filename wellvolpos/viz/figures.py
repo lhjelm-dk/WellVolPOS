@@ -1968,17 +1968,18 @@ def fig_c3_mefs_bars(
             ax.barh(y[i] + offset, v * 100.0, height=h,
                     color=colour(c.role, dark),
                     alpha=0.85 if reading == "unrisked" else 0.35,
-                    edgecolor=colour(c.role, dark), linewidth=1.0, hatch=hatch,
-                    label=(READING_LABELS["conditional" if reading == "unrisked"
-                                          else "unconditional"]
-                           if i == 0 else None))
+                    edgecolor=colour(c.role, dark), linewidth=1.0, hatch=hatch)
             ax.text(v * 100.0 + 1.2, y[i] + offset, f"{v:.1%}", va="center",
                     fontsize=7.5, color=p["text"])
     ax.set_yticks(y)
-    ax.set_yticklabels([c.name for c in crossings], fontsize=8)
+    ax.set_yticklabels([c.short for c in crossings], fontsize=8)
     ax.set_xlim(0, 108)
     ax.set_xlabel("Probability of exceeding the threshold (%)")
     ax.set_title(f"C3 · Chance of clearing MEFS / MCFS, {mefs:,.1f} MMboe")
-    ax.legend(fontsize=7.5, loc="lower right", frameon=False)
+    # The key lives in the subtitle, as on the plotly twin: with a colour per row a
+    # legend swatch can only show one of them.
+    ax.text(0.0, 1.02, "solid = unrisked (given the case happens) · "
+                       "hatched = risked (the case happening AND clearing)",
+            transform=ax.transAxes, fontsize=7.5, color=p["text_secondary"])
     fig.tight_layout()
     return fig, ax

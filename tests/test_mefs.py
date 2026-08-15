@@ -196,7 +196,10 @@ def test_c3_draws_the_same_eight_numbers_the_table_reports(reduced):
     # bar chart -- the nesting reads outside-in the way 4.2's braces do.
     expected = list(reversed(cx))
     unrisked, risked = fig.data
-    assert list(unrisked.y) == [c.name for c in expected]
+    # Short labels on the rows -- the long form is 4.2's, where a legend has to
+    # separate four curves. Here it only made the labels wide enough to be clipped.
+    assert list(unrisked.y) == [c.short for c in expected]
+    assert "Well associated" in unrisked.y and "resource potential" not in " ".join(unrisked.y)
     for drawn, c in zip(unrisked.x, expected):
         assert float(drawn) == pytest.approx(c.conditional * 100.0, abs=1e-9)
     for drawn, c in zip(risked.x, expected):
@@ -207,6 +210,14 @@ def test_c3_draws_the_same_eight_numbers_the_table_reports(reduced):
     # Grouped, never stacked: the risked bar is not a *part* of the unrisked one, so
     # a stack would draw a sum that means nothing.
     assert fig.layout.barmode == "group"
+    # **No legend, and a left margin wide enough for the labels.** apply_plotly pins
+    # margins with autoexpand=False for the depth rows, which defeats automargin
+    # silently -- the labels were clipped to "...ce potential". A legend swatch can
+    # only carry one of four row colours, so the key is in the subtitle instead.
+    assert fig.layout.showlegend is False
+    assert not any(t.showlegend for t in fig.data)
+    assert fig.layout.margin.l >= 100, fig.layout.margin.l
+    assert "hatched = risked" in fig.layout.title.text
 
     # And the export twin draws the same eight.
     _f, ax = F.fig_c3_mefs_bars(reduced, g, vc, **kw)
