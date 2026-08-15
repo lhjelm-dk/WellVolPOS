@@ -216,3 +216,22 @@ def figure_note(headline: str, detail: str = "", *,
     if detail:
         with st.expander(label):
             st.markdown(detail)
+
+
+def well_readout(entry: float, exit_: float, *, note: str = "") -> None:
+    """The current well, at the top of a tab that is about it.
+
+    Lars, 2026-08-15, design review: the sliders live on tab ① and a reader on ③ or ④
+    could not see what they were set to without going back. This is **display only**.
+
+    Not a second pair of sliders, and that is a constraint rather than a preference:
+    two widgets cannot own one session-state key, so a duplicate would either raise or
+    need its own key -- and a second key is a second source of truth for the one number
+    every figure in the app is computed from. One place to set it, everywhere to see it.
+    """
+    st.caption(
+        f"**Well:** {entry:,.0f} – {exit_:,.0f} m TVDSS  ·  "
+        f"{exit_ - entry:,.0f} m of reservoir penetrated"
+        + (f"  ·  {note}" if note else "")
+        + "  ·  *set on tab ①*"
+    )

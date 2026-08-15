@@ -212,3 +212,33 @@ def test_the_risk_elements_are_named_closure_not_trap(fresh):
     assert not stray, f"'trap' still shown to the reader: {sorted(set(stray))}"
 
 
+
+
+def test_tab_three_is_grouped_and_the_well_sits_above_qc(fresh):
+    """Phase 3 of the work plan: twelve figures under three questions, and the most
+    used control reachable.
+
+    The well sliders sat seventh of eight blocks on tab ①, below the QC a reader sets
+    once — the layout had the frequency of use exactly backwards.
+    """
+    assert not fresh.exception
+    subs = [s.value for s in fresh.subheader]
+
+    # Three headings, in the order a reader meets the question.
+    for a, b in (("What changes as the well moves", "What the well would prove"),
+                 ("What the well would prove", "Where the optimum sits")):
+        assert a in subs and b in subs, (a, b)
+        assert subs.index(a) < subs.index(b), subs
+
+    # The well is above quality control, and both are on tab ①.
+    assert subs.index("The well") < subs.index("Quality control"), subs
+
+    # 3.12 is behind an expander rather than in the scroll.
+    labels = " | ".join(e.label for e in fresh.expander)
+    assert "Resource by contact-depth band" in labels, labels
+
+    # And the current well is readable from the tabs that are about it, without
+    # being a second widget that could disagree with tab ①'s.
+    readouts = [c.value for c in fresh.caption if c.value.startswith("**Well:**")]
+    assert len(readouts) >= 2, readouts
+    assert all("set on tab ①" in r for r in readouts)

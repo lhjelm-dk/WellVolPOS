@@ -54,7 +54,8 @@ from ..viz import (
     pfig_b12_banded_percentiles,
     row_zlim,
 )
-from .common import chart as _chart, figure_note, split_caveat
+from .common import (chart as _chart, figure_note, split_caveat,
+                     well_readout)
 from .context import Ctx
 from .numbering import ref as fig_ref
 from .loading import volume_sweep as _volume_sweep
@@ -194,8 +195,24 @@ def _location_sweep_tab(ctx: Ctx):
     def _split_caveat() -> None:
         split_caveat(ctx)
 
+    # **Three headings, and a way in** (Lars, 2026-08-15, design review). Twelve
+    # figures with no grouping is a wall, and nothing said which of them decide the
+    # question. The headings name the question each group answers rather than the
+    # figures they contain, so a reader picks the group before the figure.
     st.divider()
-    st.subheader("Location sweep")
+    well_readout(entry, exit_,
+                 note="every curve below is swept at this spacing")
+    st.info(
+        "**If you only read three:** "
+        + fig_ref("{a3}") + " for what the location costs in chance, "
+        + fig_ref("{b7}") + " for the trade it buys, and "
+        + fig_ref("{b6}") + " to invert it — name a volume, get a depth. "
+        "The rest is the working."
+    )
+
+    st.subheader("What changes as the well moves")
+    st.caption("Chance, outcome shares and how much a well here would tell you. "
+               "No volumes yet — these are properties of the location alone.")
     _split_caveat()
     # The sweeps carry the well's *own* entry-to-exit spacing, so a swept
     # location is the same well moved up or down the structure. Left at a
@@ -332,6 +349,9 @@ def _location_sweep_tab(ctx: Ctx):
         return
 
     st.divider()
+    st.subheader("What the well would prove")
+    st.caption("The volume split, swept: what a well at each depth establishes, what "
+               "it leaves unproven below, and what it forfeits up-dip if it is dry.")
     with st.spinner("Sweeping the volume split…"):
         vsweep = _volume_sweep(source.name, source.data,
                                tuple(sorted(overrides.items())), pos, gap, mefs, ref.value,
@@ -342,52 +362,6 @@ def _location_sweep_tab(ctx: Ctx):
     # remain are what this row was for: what the well proves, and what it risks.
     # **One per line** (Lars, 2026-08-14). Three depth panels in a row left each of
     # them a third of the width, and all three carry percentile families now.
-    # ------------------------------------------------------ candidate depths
-    # **The three optima, named together** (Lars, 2026-08-15, design review). The
-    # tool already finds each of them, on three different figures, and a reader
-    # comparing them had to remember two while looking at the third.
-    #
-    # It names depths; it does not select one. "Use this depth" buttons were offered
-    # and declined on 2026-08-11 so the tab informs rather than decides, and that
-    # still holds -- there is no control here, only a table and the figure each row
-    # came from.
-    _cands = candidate_depths(vsweep)
-    if _cands:
-        st.subheader("Candidate depths")
-        st.dataframe(
-            pd.DataFrame([{
-                "Best at": c.label,
-                "Entry (m TVDSS)": c.describe_depth(),
-                "Value there": c.value,
-                "Figure": fig_ref("{" + c.figure + "}"),
-            } for c in _cands]),
-            hide_index=True, width="stretch",
-        )
-        # **A range, where the maximum is weak.** Reporting one depth was false
-        # precision: prospect B's commercial optimum moved 2064 -> 2115 m between two
-        # grid resolutions at an identical Pc of 21.9 %, because the curve is exactly
-        # flat above the shallowest contact -- there every success trial is a
-        # discovery, so r_location is 1 and nothing changes until the entry passes it.
-        # The span is every depth within 2 % of the best.
-        _flat = [c for c in _cands if c.is_flat]
-        _widest = max(_cands, key=lambda c: (c.plateau[1] - c.plateau[0])
-                      if c.plateau else 0.0)
-        st.caption(
-            ("**These are ranges, not points.** " if _flat else
-             "**Three measures, three depths.** ")
-            + (f"Everything within 2 % of the best counts, and on this prospect that "
-               f"is a wide band — {_widest.label.lower()} is flat over "
-               f"{_widest.plateau[1] - _widest.plateau[0]:,.0f} m. A single depth "
-               f"would be false precision: the curve barely moves across it. "
-               if _flat else "")
-            + "Best chance is the shallowest supported depth by construction — "
-            "P_well only falls down-dip — so read that row as the top of the sweep "
-            "rather than as advice. The other two optimise different things: one the "
-            "volume a portfolio adds up, the other the chance of clearing MEFS. "
-            "Nothing here changes the well; the depth is set on tab ①."
-        )
-        st.divider()
-
     f_b2 = pfig_b2_chance_vs_regret(vsweep, current_z=entry, zlim=zrow_sweep,
                                     height=TALL_PANEL_HEIGHT)
     f_b1 = pfig_b1_volume_split(vsweep, current_z=entry, zlim=zrow_sweep,
@@ -496,7 +470,56 @@ def _location_sweep_tab(ctx: Ctx):
 
     # ---- B7 and B8, both from the 2018 macro workbook (Lars, 2026-08-11)
     st.divider()
-    st.subheader("The trade-off, and where it is commercial")
+    st.subheader("Where the optimum sits")
+    st.caption("Three different optima — most volume for the chance, most "
+               "chance-weighted volume, best commercial chance — and the inverse that "
+               "turns a volume you must prove into a depth.")
+    # ------------------------------------------------------ candidate depths
+    # **The three optima, named together** (Lars, 2026-08-15, design review). The
+    # tool already finds each of them, on three different figures, and a reader
+    # comparing them had to remember two while looking at the third.
+    #
+    # It names depths; it does not select one. "Use this depth" buttons were offered
+    # and declined on 2026-08-11 so the tab informs rather than decides, and that
+    # still holds -- there is no control here, only a table and the figure each row
+    # came from.
+    _cands = candidate_depths(vsweep)
+    if _cands:
+        st.markdown("**Candidate depths** — the three optima this tab finds")
+        st.dataframe(
+            pd.DataFrame([{
+                "Best at": c.label,
+                "Entry (m TVDSS)": c.describe_depth(),
+                "Value there": c.value,
+                "Figure": fig_ref("{" + c.figure + "}"),
+            } for c in _cands]),
+            hide_index=True, width="stretch",
+        )
+        # **A range, where the maximum is weak.** Reporting one depth was false
+        # precision: prospect B's commercial optimum moved 2064 -> 2115 m between two
+        # grid resolutions at an identical Pc of 21.9 %, because the curve is exactly
+        # flat above the shallowest contact -- there every success trial is a
+        # discovery, so r_location is 1 and nothing changes until the entry passes it.
+        # The span is every depth within 2 % of the best.
+        _flat = [c for c in _cands if c.is_flat]
+        _widest = max(_cands, key=lambda c: (c.plateau[1] - c.plateau[0])
+                      if c.plateau else 0.0)
+        st.caption(
+            ("**These are ranges, not points.** " if _flat else
+             "**Three measures, three depths.** ")
+            + (f"Everything within 2 % of the best counts, and on this prospect that "
+               f"is a wide band — {_widest.label.lower()} is flat over "
+               f"{_widest.plateau[1] - _widest.plateau[0]:,.0f} m. A single depth "
+               f"would be false precision: the curve barely moves across it. "
+               if _flat else "")
+            + "Best chance is the shallowest supported depth by construction — "
+            "P_well only falls down-dip — so read that row as the top of the sweep "
+            "rather than as advice. The other two optimise different things: one the "
+            "volume a portfolio adds up, the other the chance of clearing MEFS. "
+            "Nothing here changes the well; the depth is set on tab ①."
+        )
+        st.divider()
+
     tb1, = st.columns(1)
     with tb1:
         b7_scale = st.radio(
@@ -562,7 +585,6 @@ def _band_section(ctx: Ctx):
     ``np.percentile`` calls, so this redraws instantly.
     """
     st.divider()
-    st.subheader("Resource by contact-depth band")
     ts, groups, vc = ctx.ts, ctx.groups, ctx.vc
     entry, exit_, mefs = ctx.entry, ctx.exit_, ctx.mefs
     split_caveat(ctx)
@@ -703,4 +725,11 @@ def _peel_note(bp) -> str:
 
 def render(ctx: Ctx) -> None:
     _location_sweep_tab(ctx)
-    _band_section(ctx)
+    # **3.12 behind an expander** (Lars, 2026-08-15). It is the specialist view on this
+    # tab -- log-probit axes, a banding scheme with its own two controls -- and it is
+    # also the most expensive figure here. A reader choosing a depth does not need it
+    # open; a reader arguing about the shape of the distribution does, and one click is
+    # the right price for that.
+    with st.expander("Resource by contact-depth band — the prospect cut by where the "
+                     "contact lands", expanded=False):
+        _band_section(ctx)

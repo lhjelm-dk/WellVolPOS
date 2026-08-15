@@ -37,7 +37,7 @@ from ..core import MEFS_RUNGS, c2_crossings, headline as _headline, mefs_readout
 from ..core.rose import AT_WELL_WINDOW_M, commercial_chance
 from ..viz.theme import reference_label
 from .common import (C2_HEIGHT, chart as _chart, kpi_ladder, split_caveat,
-                     track_deltas)
+                     track_deltas, well_readout)
 from .context import Ctx
 from .numbering import ref as fig_ref
 
@@ -72,6 +72,7 @@ def render(ctx: Ctx) -> None:
                       mefs=mefs if has_area else None)
 
     st.subheader(f"At {entry:,.0f}–{exit_:,.0f} m TVDSS")
+    well_readout(entry, exit_)
     st.markdown(_head.sentence())
 
     # **What the last move did** (Lars, 2026-08-15). The tool's subject is

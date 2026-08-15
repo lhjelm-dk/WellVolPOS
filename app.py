@@ -389,6 +389,16 @@ with tabs[0]:
         f"TrialNumber is shown but is **not** a reliable key in a GeoX export — never join on it."
     )
 
+    # **The well goes above QC** (Lars, 2026-08-15, design review). It sat seventh of
+    # eight blocks on this tab, below the file, the case, the mapping, the trial table,
+    # the QC list and the zero-volume detector -- and it is the control a reader
+    # touches every few seconds while the QC is read once. Its own `st.empty()`, for
+    # the same reason the settings block has one: the widgets must be *created* before
+    # the analysis tabs render, but they belong *here*, and `st.empty()` reserves the
+    # position where it is declared.
+    st.divider()
+    _well_slot = st.empty()
+
     st.divider()
     st.subheader("Quality control")
     for c in qc.checks:
@@ -442,13 +452,12 @@ with tabs[0]:
 # written into a container declared inside tab ① earlier in the script. That is the
 # same device the case-save button already uses, and it is what lets a control live
 # on a tab while its value is available to the whole page.
-with _settings_slot.container():
-    st.divider()
-    # **The well geometry is a setting.** It was in the sidebar until 2026-08-13,
-    # then on tab (3) for a day as four candidate locations, and is here now that
-    # there is one well again: tab (3) sweeps *every* entry depth and argues about
-    # which to pick, so the pair of numbers you settle on belongs with the other
-    # conventions rather than on the tab whose whole subject is not having settled.
+with _well_slot.container():
+    # **The well geometry is a setting**, and the one most often changed. It was in the
+    # sidebar until 2026-08-13, then on tab (3) for a day as four candidate locations;
+    # tab (3) sweeps *every* entry depth and argues about which to pick, so the pair
+    # you settle on belongs with the settings rather than on the tab whose subject is
+    # not having settled.
     st.subheader("The well")
     st.caption(
         "Where the well enters and leaves the reservoir. Tab ③ sweeps every entry "
@@ -457,6 +466,7 @@ with _settings_slot.container():
     )
     _deviation_slot = well_editor(well, zmin, zmax)
 
+with _settings_slot.container():
     st.divider()
     st.subheader("Threshold and conventions")
     st.caption(
