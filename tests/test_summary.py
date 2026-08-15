@@ -91,3 +91,100 @@ def test_the_chance_half_survives_a_file_with_no_area(reduced):
     assert h.pc_well is None and h.proven_mean is None
     assert "chance of finding hydrocarbons" in h.sentence()
     assert "If it works" not in h.sentence()
+
+
+# ------------------------------------------------------------- candidate depths
+def test_the_candidate_depths_agree_with_the_stars_the_figures_draw(reduced):
+    """The panel is a second implementation of two figures' argmax, and stays one.
+
+    ``candidate_depths`` mirrors B8's and B9's arithmetic rather than refactoring
+    them, because moving their starred markers is a bigger change than the panel
+    warrants. That is only safe with this test: if either figure changes how it
+    weights or thins, the panel starts naming a depth the figure does not star.
+    """
+    from wellvolpos.core import candidate_depths, run_volume_sweep
+    from wellvolpos.core.stats import thin
+
+    ad = AreaDepth.from_trials(reduced.col("contact"), reduced.col("area"))
+    sw = run_volume_sweep(reduced, ad, POS, z_gap=50.0, mefs=14.0, n=40)
+    cands = {c.key: c for c in candidate_depths(sw)}
+    assert {"chance", "expected", "commercial"} <= set(cands)
+
+    pw = thin(sw.p_well, sw.n_discovery, 30)
+
+    # B9 stars nanargmax(P_well x well-associated mean).
+    weighted = pw * thin(sw.discovery_mean, sw.n_discovery, 30)
+    assert cands["expected"].depth == pytest.approx(
+        float(sw.z[int(np.nanargmax(weighted))]), abs=0)
+
+    # B8 stars nanargmax(P_well x P(discovery > MEFS)).
+    pc = pw * thin(sw.p_discovery_exceeds_mefs, sw.n_discovery, 30)
+    assert cands["commercial"].depth == pytest.approx(
+        float(sw.z[int(np.nanargmax(pc))]), abs=0)
+
+
+def test_best_chance_is_the_shallow_end_and_says_so(reduced):
+    """P_well falls monotonically down-dip, so its maximum is not a recommendation.
+
+    Reporting it without that caveat would put the shallowest depth in the app at the
+    top of a table headed "candidate depths", which reads as advice to drill the crest.
+    """
+    from wellvolpos.core import candidate_depths, run_volume_sweep
+
+    ad = AreaDepth.from_trials(reduced.col("contact"), reduced.col("area"))
+    sw = run_volume_sweep(reduced, ad, POS, z_gap=50.0, mefs=14.0, n=40)
+    best = next(c for c in candidate_depths(sw) if c.key == "chance")
+    supported = sw.z[np.asarray(sw.n_discovery) >= 30]
+    assert best.depth == pytest.approx(float(supported.min()), abs=0)
+    assert "by construction" in best.note
+
+
+def test_a_required_depth_joins_the_panel_only_when_given(reduced):
+    from wellvolpos.core import candidate_depths, run_volume_sweep
+
+    ad = AreaDepth.from_trials(reduced.col("contact"), reduced.col("area"))
+    sw = run_volume_sweep(reduced, ad, POS, z_gap=50.0, mefs=14.0, n=40)
+    assert not any(c.key == "required" for c in candidate_depths(sw))
+    with_req = candidate_depths(sw, required_depth=3520.0, required_target=15.0)
+    req = next(c for c in with_req if c.key == "required")
+    assert req.depth == 3520.0 and "15.0 MMboe" in req.value
+
+
+def test_the_optimum_is_reported_as_a_plateau_and_survives_a_grid_change(reduced):
+    """A depth that moves 51 m when the grid changes is false precision.
+
+    Prospect B's commercial optimum came out at 2064 m on one sweep and 2115 m on
+    another, both at Pc 21.9 % — because above the shallowest contact every success
+    trial is a discovery, so r_location is 1 and the curve is exactly flat. argmax was
+    breaking a genuine tie and reporting the winner as if it were a peak.
+    """
+    from wellvolpos.core import candidate_depths, run_volume_sweep
+
+    ad = AreaDepth.from_trials(reduced.col("contact"), reduced.col("area"))
+    coarse = {c.key: c for c in
+              candidate_depths(run_volume_sweep(reduced, ad, POS, z_gap=50.0,
+                                                mefs=14.0, n=40))}
+    fine = {c.key: c for c in
+            candidate_depths(run_volume_sweep(reduced, ad, POS, z_gap=50.0,
+                                              mefs=14.0, n=60))}
+    assert set(coarse) == set(fine)
+    for key in coarse:
+        a, b = coarse[key].plateau, fine[key].plateau
+        assert a is not None and b is not None, key
+        # The reported span must not depend on how finely the sweep was sampled.
+        assert abs(a[0] - b[0]) <= 12.0, (key, a, b)
+        assert abs(a[1] - b[1]) <= 12.0, (key, a, b)
+        # And the argmax depth still lies inside the span it is reported with.
+        assert a[0] - 1e-9 <= coarse[key].depth <= a[1] + 1e-9, key
+
+
+def test_a_flat_optimum_prints_a_range_and_a_sharp_one_prints_a_depth(reduced):
+    from wellvolpos.core import Candidate, candidate_depths, run_volume_sweep
+
+    ad = AreaDepth.from_trials(reduced.col("contact"), reduced.col("area"))
+    sw = run_volume_sweep(reduced, ad, POS, z_gap=50.0, mefs=14.0, n=40)
+    for c in candidate_depths(sw):
+        assert ("–" in c.describe_depth()) == c.is_flat, (c.key, c.describe_depth())
+    # A candidate with no plateau — the required depth — states one number.
+    only = Candidate(key="required", label="x", depth=3520.0, value="v", figure="b6")
+    assert only.describe_depth() == "3,520 m" and not only.is_flat

@@ -21,6 +21,7 @@ import pandas as pd
 import streamlit as st
 
 from ..core import (
+    candidate_depths,
     thickness_from_pay,
     BAND_MODES,
     BAND_MODE_LABELS,
@@ -318,6 +319,52 @@ def _location_sweep_tab(ctx: Ctx):
     # remain are what this row was for: what the well proves, and what it risks.
     # **One per line** (Lars, 2026-08-14). Three depth panels in a row left each of
     # them a third of the width, and all three carry percentile families now.
+    # ------------------------------------------------------ candidate depths
+    # **The three optima, named together** (Lars, 2026-08-15, design review). The
+    # tool already finds each of them, on three different figures, and a reader
+    # comparing them had to remember two while looking at the third.
+    #
+    # It names depths; it does not select one. "Use this depth" buttons were offered
+    # and declined on 2026-08-11 so the tab informs rather than decides, and that
+    # still holds -- there is no control here, only a table and the figure each row
+    # came from.
+    _cands = candidate_depths(vsweep)
+    if _cands:
+        st.subheader("Candidate depths")
+        st.dataframe(
+            pd.DataFrame([{
+                "Best at": c.label,
+                "Entry (m TVDSS)": c.describe_depth(),
+                "Value there": c.value,
+                "Figure": fig_ref("{" + c.figure + "}"),
+            } for c in _cands]),
+            hide_index=True, width="stretch",
+        )
+        # **A range, where the maximum is weak.** Reporting one depth was false
+        # precision: prospect B's commercial optimum moved 2064 -> 2115 m between two
+        # grid resolutions at an identical Pc of 21.9 %, because the curve is exactly
+        # flat above the shallowest contact -- there every success trial is a
+        # discovery, so r_location is 1 and nothing changes until the entry passes it.
+        # The span is every depth within 2 % of the best.
+        _flat = [c for c in _cands if c.is_flat]
+        _widest = max(_cands, key=lambda c: (c.plateau[1] - c.plateau[0])
+                      if c.plateau else 0.0)
+        st.caption(
+            ("**These are ranges, not points.** " if _flat else
+             "**Three measures, three depths.** ")
+            + (f"Everything within 2 % of the best counts, and on this prospect that "
+               f"is a wide band — {_widest.label.lower()} is flat over "
+               f"{_widest.plateau[1] - _widest.plateau[0]:,.0f} m. A single depth "
+               f"would be false precision: the curve barely moves across it. "
+               if _flat else "")
+            + "Best chance is the shallowest supported depth by construction — "
+            "P_well only falls down-dip — so read that row as the top of the sweep "
+            "rather than as advice. The other two optimise different things: one the "
+            "volume a portfolio adds up, the other the chance of clearing MEFS. "
+            "Nothing here changes the well; the depth is set on tab ①."
+        )
+        st.divider()
+
     f_b2 = pfig_b2_chance_vs_regret(vsweep, current_z=entry, zlim=zrow_sweep,
                                     height=TALL_PANEL_HEIGHT)
     f_b1 = pfig_b1_volume_split(vsweep, current_z=entry, zlim=zrow_sweep,

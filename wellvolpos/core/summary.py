@@ -118,3 +118,151 @@ def headline(*, entry: float, exit_: float, chance, groups,
         n_dry_with_attic=int(np.asarray(groups.dry_with_attic).sum()),
         n_total=int(np.asarray(groups.discovery).size),
     )
+
+
+# ------------------------------------------------------------- candidate depths
+@dataclass(frozen=True)
+class Candidate:
+    """One depth the sweep says is optimal, by one measure."""
+
+    key: str
+    #: What this depth is best *at*, in the reader's words.
+    label: str
+    depth: float
+    #: The value that makes it optimal, already formatted with its unit.
+    value: str
+    #: Which figure shows it, as a numbering key, so the panel can point at it.
+    figure: str
+    note: str = ""
+    #: The depth range over which the measure stays within :data:`PLATEAU_TOL` of its
+    #: maximum. ``argmax`` on a nearly flat curve returns whichever grid point wins by
+    #: a hair, and the winner moves with the grid: prospect B's commercial optimum came
+    #: out at 2064 m on the app's sweep and 2115 m on a coarser one, both at Pc 21.9 %.
+    #: Reporting one of them alone is false precision, so the range travels with it.
+    plateau: tuple[float, float] | None = None
+
+    @property
+    def is_flat(self) -> bool:
+        """Is the optimum weak -- a plateau rather than a peak?"""
+        return (self.plateau is not None
+                and (self.plateau[1] - self.plateau[0]) > 1.0)
+
+    def describe_depth(self) -> str:
+        """The depth, widened to its plateau where the maximum is weak."""
+        if not self.is_flat:
+            return f"{self.depth:,.0f} m"
+        lo, hi = self.plateau
+        return f"{lo:,.0f}–{hi:,.0f} m"
+
+
+#: How close to the maximum still counts as "as good as the best", relatively. A
+#: chance or an expectation within a fiftieth of the peak is not distinguishable given
+#: the sampling error the sweep already reports, so the plateau is drawn at 2 %.
+PLATEAU_TOL = 0.02
+
+
+def _plateau(values, z, i: int, tol: float = PLATEAU_TOL):
+    """The depth span over which ``values`` stays within ``tol`` of its maximum.
+
+    **The whole span, not the contiguous run around the peak.** A sampled curve wiggles
+    at the percent level, so the near-max set is often broken by a grid point that dips
+    just under the tolerance -- and a contiguous rule then reports a one-cell plateau
+    for a curve that is flat over 50 m. Prospect B's commercial optimum showed exactly
+    that: the peak moved 2064 -> 2115 m between two grid resolutions, both at Pc 21.9 %,
+    while a contiguous plateau claimed the maximum was sharp.
+
+    The span can therefore contain depths that are *not* within tolerance. That is the
+    honest reading of "the best is somewhere in here": it is a statement about how far
+    apart equally good locations lie, not a promise about every metre between them.
+    """
+    import numpy as np
+
+    v = np.asarray(values, dtype=float)
+    peak = float(v[i])
+    if not np.isfinite(peak) or peak <= 0:
+        return None
+    near = np.isfinite(v) & (v >= peak * (1.0 - tol))
+    if not near.any():
+        return None
+    zz = np.asarray(z, dtype=float)[near]
+    return (float(zz.min()), float(zz.max()))
+
+
+def candidate_depths(vsweep, *, min_support: int = 30,
+                     required_depth: float | None = None,
+                     required_target: float | None = None,
+                     required_statistic: str = "mean") -> tuple[Candidate, ...]:
+    """The depths the sweep already identifies as optimal, gathered in one place.
+
+    Lars, 2026-08-15, from the design review: the tool finds three optima on three
+    different figures and never names them together, so a reader comparing them has to
+    remember two while looking at the third.
+
+    **The arithmetic mirrors the figures exactly**, including the support thinning --
+    ``thin(...)`` before ``nanargmax``, so a peak can never be reported from a region
+    B8 or B9 declined to plot. It is deliberately a *second* implementation rather than
+    a refactor of the two figures, because moving their starred markers is a bigger
+    change than this warrants; ``test_summary`` cross-checks that the two agree, which
+    is the guarantee that matters.
+
+    **The best-chance row is degenerate and is labelled as such.** ``P_well`` falls
+    monotonically down-dip, so its maximum is always the shallowest supported depth.
+    That is not a recommendation, it is the shallow end of the sweep -- and stating it
+    is what makes the other rows read as a trade rather than as a menu.
+    """
+    import numpy as np
+
+    from .stats import thin
+
+    z = np.asarray(vsweep.z, dtype=float)
+    n = vsweep.n_discovery
+    out: list[Candidate] = []
+
+    pw = thin(vsweep.p_well, n, min_support)
+    if np.any(np.isfinite(pw)):
+        i = int(np.nanargmax(pw))
+        out.append(Candidate(
+            key="chance", label="Best chance of finding hydrocarbons",
+            depth=float(z[i]), value=f"P_well {pw[i]:.1%}", figure="a3",
+            plateau=_plateau(pw, z, i),
+            note="The shallowest supported depth, by construction — P_well only "
+                 "falls as the well goes down-dip.",
+        ))
+
+    # B9's own arithmetic: P_well x the well-associated mean, thinned the same way.
+    if vsweep.discovery_mean is not None:
+        weighted = pw * thin(vsweep.discovery_mean, n, min_support)
+        if np.any(np.isfinite(weighted)):
+            i = int(np.nanargmax(weighted))
+            out.append(Candidate(
+                key="expected", label="Most chance-weighted volume",
+                depth=float(z[i]), value=f"{weighted[i]:,.1f} MMboe expected",
+                figure="b9", plateau=_plateau(weighted, z, i),
+                note="P_well x the well-associated mean. The one a portfolio adds up, "
+                     "and not a volume anyone finds.",
+            ))
+
+    # B8's: Pc = P_well x P(discovery exceeds MEFS).
+    if vsweep.p_discovery_exceeds_mefs is not None:
+        pc = pw * thin(vsweep.p_discovery_exceeds_mefs, n, min_support)
+        if np.any(np.isfinite(pc)):
+            i = int(np.nanargmax(pc))
+            out.append(Candidate(
+                key="commercial", label="Best commercial chance",
+                depth=float(z[i]), value=f"Pc {pc[i]:.1%}", figure="b8",
+                plateau=_plateau(pc, z, i),
+                note="A rising conditional times a falling P_well, so this one has an "
+                     "interior maximum. Rose's number for an EMV calculation.",
+            ))
+
+    if required_depth is not None and np.isfinite(required_depth):
+        out.append(Candidate(
+            key="required", label="Shallowest depth that proves the target",
+            depth=float(required_depth),
+            value=(f"{required_target:,.1f} MMboe {required_statistic}"
+                   if required_target is not None else "the current target"),
+            figure="b6",
+            note="A guarantee, not a first touch: the statistic stays at or above the "
+                 "target from here all the way down.",
+        ))
+    return tuple(out)
