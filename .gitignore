@@ -31,3 +31,17 @@ reference/*.xlsx
 /sheetB_sweep_risk.png
 /WellVolPOS_Design_Plan.md
 /*.zip
+
+# Prospect B's provenance is unconfirmed and it is treated as the licensee's, so it
+# stays in the working folder and out of the repository. app.py builds its demo list
+# from the files that exist, so a clone runs on prospect A alone.
+/data/demo_prospectB_*.csv
+
+# The source workbooks, in every extension they come in. The .xlsm slipped past an
+# earlier *.xlsx rule and was tracked for months.
+/*.xlsm
+/_local/
+
+# Launchers for the coding agent used to build this, not part of the tool.
+/RUN_CLAUDE.bat
+/SETUP_CLAUDE_CODE.bat

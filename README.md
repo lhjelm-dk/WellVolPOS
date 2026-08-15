@@ -76,9 +76,28 @@ roughly 40 % too low.
 | 4 | Inverse tool, optimum finders, bootstrap bands | **done** |
 | — | The teaching layer: map view, concepts figure, reservoir-thickness inversion, Rose's three quantities, theory & guide tab | **done** |
 | 5 | Export, case save/load, synthetic generators, docs | **done** |
+| — | Design pass: headline and candidate depths, three-tier captions, tab grouping, the wedge and outcome-tree figures, commercial volume class, type scale and crosshair | **done** |
 
-Six tabs, all live. Every interactive figure has a matplotlib twin for the export
-path, and a test compares the two modules so a new figure cannot skip it.
+Six tabs, all live, and **551 tests**. Every interactive figure has a matplotlib
+twin for the export path, and a test compares the two modules so a new figure
+cannot skip it.
+
+---
+
+## Data
+
+`data/` ships **prospect A** only — a fictional GeoX export, in a 7-column paste
+and the full 60-column form, so both the everyday case and the duplicate-header
+trap stay exercised. It is what the parity suite is locked to.
+
+A second demo (prospect B) exists in the author's working copy and is
+deliberately **not** in this repository: its provenance is unconfirmed, and
+publishing subsurface data whose origin nobody has established is not a risk
+worth taking for a demo file. `app.py` builds its demo list from the files that
+are present, so a clone runs on prospect A alone with nothing to configure.
+
+To try it on your own data, choose **Upload your own…** in tab ①. Nothing is
+written to disk — an upload is read as bytes and passed straight to the adapter.
 
 ---
 
@@ -90,13 +109,18 @@ wellvolpos/
   io/adapters/               trial-file readers; add a simulator by adding a file
   io/adapters/source.py      a name and some bytes — so an upload never hits the disk
   io/adapters/generic.py     the fallback reader; proposes a mapping, never assumes one
+  io/adapters/stubs.py       RoseRA, Petrel PPA, @RISK, Crystal Ball — registered, unbuilt
   io/units.py                unit validation: reject, never convert
   io/failure.py              chance-failure detector -> POS from the trials
   io/qc.py                   the report that gates the analysis tabs
   io/synthetic.py            two generators for cases the real data cannot reach
   core/structure.py          A(z), recovered from the trials themselves
   core/groups.py             reference engine: whole-trial grouping (Schneider et al. 2023)
-  core/classes.py            extension: proven / possible / attic per trial
+  core/classes.py            extension: proven / unproven-below-LKH / attic per trial
+  core/summary.py            the headline, and the depths the sweep says are optimal
+  core/mefs.py               every volume read against the MEFS / MCFS line
+  core/dependence.py         what the exit moves, and whether the spacing is a vertical well
+  core/bands.py              the prospect cut by contact-depth band
   core/chance.py             r_location, reference contours, risk allocation
   core/reservoir.py          reservoir thickness, back-calculated from pay
   core/rose.py               No Regrets, Pmcfs(well), Pc(well) — the poster's definitions

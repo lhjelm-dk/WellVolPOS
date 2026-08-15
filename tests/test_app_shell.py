@@ -70,7 +70,7 @@ def test_going_back_to_a_demo_restores_the_controls():
     at = AppTest.from_file(APP, default_timeout=TIMEOUT).run()
     at.selectbox[0].select("Upload your own…").run()
     assert not any("MEFS" in (w.label or "") for w in at.number_input)
-    at.selectbox[0].select("Prospect A — reduced (7 columns)").run()
+    at.selectbox[0].select("Prospect A — reduced (7 columns, default)").run()
     assert not at.exception
     # The threshold and the four conventions are in tab ①'s body now, not a sidebar.
     assert any("MEFS" in (w.label or "") for w in at.number_input)

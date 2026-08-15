@@ -103,11 +103,22 @@ DATA = Path(__file__).parent / "data"
 # no real file previously reached — POS comes from the chance table and the footer
 # says so. Prospect A stays: it is what the parity suite is locked to, and its
 # duplicate-header trap is the one the reader most needs to keep passing.
+#
+# **Prospect A leads, and prospect B is not in the repository** (2026-08-15). A's
+# provenance is confirmed fictional and safe to publish; B's is *unconfirmed*, and
+# CLAUDE.md has treated it as the licensee's since it arrived. Publishing data whose
+# origin nobody has established is not a risk worth taking for a demo file, so it stays
+# in the working folder and out of git.
+#
+# Built by filtering on existence rather than listed flat: a clone has A only, this
+# machine has both, and neither should need a different app.py.
 DEMOS = {
-    "Prospect B — full export, 43 columns (default)": DATA / "demo_prospectB_full.csv",
-    "Prospect B — reduced (7 columns)": DATA / "demo_prospectB_reduced.csv",
-    "Prospect A — reduced (7 columns)": DATA / "demo_prospectA_reduced.csv",
-    "Prospect A — full GeoX export (60 columns)": DATA / "demo_prospectA_full.csv",
+    label: path for label, path in (
+        ("Prospect A — reduced (7 columns, default)", DATA / "demo_prospectA_reduced.csv"),
+        ("Prospect A — full GeoX export (60 columns)", DATA / "demo_prospectA_full.csv"),
+        ("Prospect B — full export, 43 columns", DATA / "demo_prospectB_full.csv"),
+        ("Prospect B — reduced (7 columns)", DATA / "demo_prospectB_reduced.csv"),
+    ) if path.exists()
 }
 
 # Stable keys for the risking convention. The app branches on these; the text
