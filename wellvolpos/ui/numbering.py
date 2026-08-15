@@ -55,15 +55,20 @@ FIGURE_NUMBERS = {
     "b6": "3.11",
     "b12": "3.12",
     # ④ At this well
-    "c1": "4.1",
-    "c2": "4.2",
-    "c3": "4.3",
-    "live": "4.4",
-    "a6": "4.5",
-    "mapview": "4.6",
+    "c6": "4.1",
+    "c5": "4.2",
+    "c1": "4.3",
+    "c2": "4.4",
+    "c3": "4.5",
+    "live": "4.6",
+    "a6": "4.7",
+    "mapview": "4.8",
     # ⑤ Risk & report
     "b4": "5.1",
     "b5": "5.2",
+
+    # ⑥ Theory & guide — the wedge is a schematic and the only figure on that tab.
+    "c4": "6.1",
 }
 
 #: The letter code each number replaced, so a caption or the guide can still say
@@ -187,6 +192,21 @@ FIGURE_GUIDE = {
             "lognormal is a straight line. Solid is the whole resource in the band, dotted is "
             "what this well would prove in it — so where the dotted curve peels away from the "
             "solid one is where going deeper stops buying proven volume."),
+    "c6": ("what happens if this well is drilled",
+           "The four outcomes as one bar: chance failure, dry with attic, and a discovery "
+           "split at MEFS into sub-commercial and commercial. Every share is risked onto "
+           "the POS in use, so the leaves partition to 100 % and the discovery branch is "
+           "P_well by construction."),
+    "c5": ("two cuts of one closure",
+           "Rose partitions at the well; this app partitions at the interval the well "
+           "penetrates. Same closure twice, and the violet band is the slice they "
+           "disagree about — Rose counts it below his cut, this app above. Both sum to "
+           "the well-associated volume."),
+    "c4": ("the wedge — why pay is less than reservoir thickness",
+           "Schematic. A dipping layer of constant true vertical thickness under a flat "
+           "contact gives a charged interval at full thickness up-dip, pinching to zero "
+           "where the top surface meets the contact. The two rules on the right are "
+           "area-averaged pay against the thickness; the gap between them is the point."),
     "c1": ("the structure, with the volume classes",
            "Where each volume sits in the structure at this well. Read as a pair with 4.2."),
     "c2": ("the same volumes as exceedance curves",

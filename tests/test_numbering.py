@@ -100,3 +100,43 @@ def test_the_guide_table_shows_no_legacy_codes_and_no_hardcoded_numbers():
     for number in re.findall(r"\*\*(\d+\.\d+)\*\*", table):
         assert number in set(FIGURE_NUMBERS.values())
     assert "{" not in table, "an unresolved ref() placeholder reached the reader"
+
+
+def test_every_figure_the_app_charts_has_a_number():
+    """The mapping is checked against the *tabs*, not only against itself.
+
+    Every test here inspected ``FIGURE_NUMBERS`` and never the code that draws, so
+    three figures — the outcome tree, the two partitions and the wedge — were charted
+    for a day carrying raw letter codes (``C6 · …``) while everything around them read
+    ``4.1``, ``4.2``. Nothing failed, because the mapping was internally consistent and
+    simply did not mention them.
+
+    ``chart(key=…)`` leaves an unmapped title alone by design, which is right for a
+    one-off but is exactly what made this silent.
+    """
+    import re
+    from pathlib import Path
+
+    from wellvolpos.ui.numbering import FIGURE_NUMBERS
+
+    ui = Path(__file__).resolve().parents[1] / "wellvolpos" / "ui"
+    charted: dict[str, str] = {}
+    for f in sorted(ui.glob("tab*.py")) + [
+            Path(__file__).resolve().parents[1] / "wellvolpos" / "report" / "guide.py"]:
+        s = f.read_text(encoding="utf-8")
+        # `_chart(..., key="x")` — widget keys start with `w_` and are excluded.
+        for m in re.finditer(r'_chart\((?:[^()]|\([^()]*\))*?key="([a-z0-9]+)"', s):
+            charted.setdefault(m.group(1), f.name)
+
+    # Not figures, and listed rather than pattern-matched so a *new* stray fails.
+    NOT_FIGURES = {
+        "colourkey": "the palette legend on tab ⑥ — a key to the figures, not one",
+    }
+
+    assert charted, "found no charted figures — the pattern above has drifted"
+    missing = {k: v for k, v in charted.items()
+               if k not in FIGURE_NUMBERS and k not in NOT_FIGURES}
+    assert not missing, (
+        f"charted but unnumbered: {missing}. A figure with no entry in FIGURE_NUMBERS "
+        f"keeps its raw letter code on screen while its neighbours are numbered."
+    )
