@@ -36,7 +36,7 @@ from ..core.chance import (
     step_element,
 )
 from ..core.chance import waterfall_steps as chance_waterfall_steps
-from ..core.mefs import c2_cases
+from ..core.mefs import c2_cases, c2_crossings
 from ..core.classes import (
     READING_LABELS,
     VolumeClasses,
@@ -104,6 +104,7 @@ __all__ = [
     "fig_colour_key",
     "fig_c1_section",
     "fig_c2_exceedance",
+    "fig_c3_mefs_bars",
     "fig_map_view",
 ]
 
@@ -1947,3 +1948,37 @@ def fig_c2_exceedance(
     fig.tight_layout()
     return fig, ax_exc
 
+
+def fig_c3_mefs_bars(
+    ts: TrialSet, groups: Groups, vc: VolumeClasses, *,
+    pos_prospect: float, p_well: float, mefs: float, dark: bool = False,
+):
+    """C3, for the export path. Twin of ``pfig_c3_mefs_bars``."""
+    p = palette(dark)
+    crossings = tuple(reversed(
+        c2_crossings(ts, groups, vc, pos_prospect, p_well, mefs)))
+    fig, ax = new_figure(figsize=(7.6, 3.6), dark=dark)
+    y = np.arange(len(crossings), dtype=float)
+    h = 0.36
+    for offset, reading, values, hatch in (
+        (+h / 2, "unrisked", [c.conditional for c in crossings], None),
+        (-h / 2, "risked", [c.risked for c in crossings], "///"),
+    ):
+        for i, (c, v) in enumerate(zip(crossings, values)):
+            ax.barh(y[i] + offset, v * 100.0, height=h,
+                    color=colour(c.role, dark),
+                    alpha=0.85 if reading == "unrisked" else 0.35,
+                    edgecolor=colour(c.role, dark), linewidth=1.0, hatch=hatch,
+                    label=(READING_LABELS["conditional" if reading == "unrisked"
+                                          else "unconditional"]
+                           if i == 0 else None))
+            ax.text(v * 100.0 + 1.2, y[i] + offset, f"{v:.1%}", va="center",
+                    fontsize=7.5, color=p["text"])
+    ax.set_yticks(y)
+    ax.set_yticklabels([c.name for c in crossings], fontsize=8)
+    ax.set_xlim(0, 108)
+    ax.set_xlabel("Probability of exceeding the threshold (%)")
+    ax.set_title(f"C3 · Chance of clearing MEFS / MCFS, {mefs:,.1f} MMboe")
+    ax.legend(fontsize=7.5, loc="lower right", frameon=False)
+    fig.tight_layout()
+    return fig, ax

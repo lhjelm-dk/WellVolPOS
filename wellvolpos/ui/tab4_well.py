@@ -29,6 +29,7 @@ from ..viz import (
     pfig_b0_section,
     pfig_c1_section,
     pfig_c2_exceedance,
+    pfig_c3_mefs_bars,
     pfig_map_view,
 )
 from ..core import MEFS_RUNGS, c2_crossings, mefs_readout
@@ -497,10 +498,21 @@ def render(ctx: Ctx) -> None:
             f"**The ringed markers on the MEFS line are the eight crossings** — filled on the "
             f"solid curves, open on the dashed. Each exceedance curve *is* a probability "
             f"curve, so the chance of clearing MEFS is where the curve meets the line rather "
-            f"than a separate series. The numbers are tabulated below rather than printed on "
-            f"the figure, because several of them land within a percentage point of each "
-            f"other and eight labels on one vertical line overlap."
+            f"than a separate series. They are not labelled here because several land within "
+            f"a percentage point of each other and eight labels on one vertical line "
+            f"overlap — {fig_ref('{c3}')} gives them an axis of their own, and the table "
+            f"under it gives the numbers."
         )
+
+        # ---------------------------------------------- the eight crossings, drawn
+        # 4.2 marks them on its curves and cannot label them -- three of the four
+        # conditional crossings land within half a point of each other on the demo
+        # data, so eight labels on one vertical line overlap. Here they get an axis
+        # of their own, from the same c2_cases definition, so the bars cannot
+        # describe curves the figure above them did not draw.
+        _chart(pfig_c3_mefs_bars(
+            ts, groups, vc, pos_prospect=chance.pos_prospect,
+            p_well=chance.p_well, mefs=mefs), key="c3")
 
         # ------------------------------------------- the eight crossings, tabulated
         # Lars, 2026-08-14: *"can I get a probability curve in 4.2 for exceedance MEFS,

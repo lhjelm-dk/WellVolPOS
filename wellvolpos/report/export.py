@@ -391,6 +391,9 @@ def _draw_export_figures(b: Bundle, *, dark: bool = False) -> dict[str, object]:
         figs["C2_exceedance"] = F.fig_c2_exceedance(
             b.ts, b.groups, b.vc, pos_prospect=b.pos, p_well=ch.p_well,
             mefs=c.mefs, dark=dark)[0]
+        figs["C3_mefs_bars"] = F.fig_c3_mefs_bars(
+            b.ts, b.groups, b.vc, pos_prospect=b.pos, p_well=ch.p_well,
+            mefs=c.mefs, dark=dark)[0]
         figs["A5_exceedance"] = F.fig_a5_exceedance(
             b.ts, b.groups, b.vc, mefs=c.mefs,
             pos_prospect=b.pos, p_well=ch.p_well, dark=dark)[0]

@@ -168,3 +168,49 @@ def test_the_four_c2_crossings_agree_with_the_curves_the_figure_draws(reduced):
     for c in cx:
         v, pct = risked_exceedance(values[c.name], 1.0)
         assert float(np.interp(mefs, v, pct)) == pytest.approx(c.conditional * 100.0, abs=0.5)
+
+
+def test_c3_draws_the_same_eight_numbers_the_table_reports(reduced):
+    """4.3's bars and the table under it are one calculation, both backends.
+
+    The figure exists because 4.2 cannot label these crossings -- three of the four
+    conditional ones sit within half a point of each other -- so the risk it carries
+    is being a *second* calculation that drifts from the marks it was built to
+    replace. It reads ``c2_crossings`` and nothing else.
+    """
+    import wellvolpos.viz.figures as F
+    import wellvolpos.viz.interactive as I
+    from wellvolpos.core import c2_crossings
+
+    ad = AreaDepth.from_trials(reduced.col("contact"), reduced.col("area"))
+    g = group_trials(reduced, ENTRY, EXIT)
+    vc = split_trials(reduced, ad, g, ENTRY, EXIT)
+    pos, pw, mefs = 0.7605, 0.4576, 14.0
+    kw = dict(pos_prospect=pos, p_well=pw, mefs=mefs)
+
+    cx = c2_crossings(reduced, g, vc, pos, pw, mefs)
+    fig = I.pfig_c3_mefs_bars(reduced, g, vc, **kw)
+    assert len(fig.data) == 2, [t.name for t in fig.data]
+
+    # Reversed on the figure, so the widest concept sits at the top of a horizontal
+    # bar chart -- the nesting reads outside-in the way 4.2's braces do.
+    expected = list(reversed(cx))
+    unrisked, risked = fig.data
+    assert list(unrisked.y) == [c.name for c in expected]
+    for drawn, c in zip(unrisked.x, expected):
+        assert float(drawn) == pytest.approx(c.conditional * 100.0, abs=1e-9)
+    for drawn, c in zip(risked.x, expected):
+        assert float(drawn) == pytest.approx(c.risked * 100.0, abs=1e-9)
+
+    # A probability axis is pinned, so two prospects can be compared by eye.
+    assert tuple(fig.layout.xaxis.range) == (0, 108)
+    # Grouped, never stacked: the risked bar is not a *part* of the unrisked one, so
+    # a stack would draw a sum that means nothing.
+    assert fig.layout.barmode == "group"
+
+    # And the export twin draws the same eight.
+    _f, ax = F.fig_c3_mefs_bars(reduced, g, vc, **kw)
+    widths = sorted(round(p.get_width(), 6) for p in ax.patches)
+    wanted = sorted(round(v * 100.0, 6)
+                    for c in cx for v in (c.conditional, c.risked))
+    assert widths == pytest.approx(wanted, abs=1e-6)

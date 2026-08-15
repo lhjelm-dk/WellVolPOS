@@ -57,9 +57,10 @@ FIGURE_NUMBERS = {
     # ④ At this well
     "c1": "4.1",
     "c2": "4.2",
-    "live": "4.3",
-    "a6": "4.4",
-    "mapview": "4.5",
+    "c3": "4.3",
+    "live": "4.4",
+    "a6": "4.5",
+    "mapview": "4.6",
     # ⑤ Risk & report
     "b4": "5.1",
     "b5": "5.2",
@@ -72,7 +73,7 @@ LEGACY_CODE = {
     "a8": "A8", "a9": "A9", "b0": "B0", "b1": "B1", "b2": "B2", "b3": "B3",
     "b4": "B4", "b5": "B5", "b6": "B6", "b7": "B7", "b8": "B8", "b9": "B9",
     "b11": "B11", "b12": "B12", "b13": "B13",
-    "c1": "C1", "c2": "C2",
+    "c1": "C1", "c2": "C2", "c3": "C3",
 }
 
 __all__ = ["FIGURE_NUMBERS", "LEGACY_CODE", "ref", "renumber_title"]
@@ -193,6 +194,11 @@ FIGURE_GUIDE = {
            "so the vertical gap between the top two *is* the location penalty. Values are "
            "labelled on the conditional curves only — risking scales the probability, never "
            "the volume."),
+    "c3": ("the chance of clearing MEFS, per volume",
+           "The eight numbers 4.2 marks on its MEFS line, given an axis of their own. "
+           "Solid is unrisked and hatched is risked; the ratio within a pair is the chance "
+           "of the case itself, which differs per row — the up-dip bar is risked by "
+           "POS − P_well, not by P_well."),
     "live": ("the section at this well",
              "The closure in section, from A(z), with the three volume classes shaded where "
              "the current entry and exit actually put them. This *is* the schematic section — "

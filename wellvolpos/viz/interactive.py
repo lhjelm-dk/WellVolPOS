@@ -38,7 +38,7 @@ from ..core.chance import (
     step_element,
 )
 from ..core.chance import waterfall_steps as chance_waterfall_steps
-from ..core.mefs import c2_cases
+from ..core.mefs import c2_cases, c2_crossings
 from ..core.classes import (
     conditional_exceedance,
     READING_DASH,
@@ -96,6 +96,7 @@ __all__ = [
     "CONCEPT_KEY",
     "pfig_c1_section",
     "pfig_c2_exceedance",
+    "pfig_c3_mefs_bars",
     "pfig_map_view",
     "pfig_a1_area_depth",
     "pfig_a2_outcome_tree",
@@ -3015,4 +3016,90 @@ def pfig_colour_key(dark: bool = False, height: int = 300):
     fig.update_layout(margin=dict(l=6, r=6, t=6, b=6))
     fig.update_xaxes(visible=False)
     fig.update_yaxes(visible=False)
+    return fig
+
+
+# ------------------------------------------------------------------- C3
+def pfig_c3_mefs_bars(
+    ts: TrialSet, groups: Groups, vc: VolumeClasses, *,
+    pos_prospect: float, p_well: float, mefs: float,
+    dark: bool = False, height: int | None = PANEL_HEIGHT,
+):
+    """C3 -- the chance of clearing MEFS, per volume concept, both readings.
+
+    Lars, 2026-08-15. 4.2 already carries these eight numbers as crossings on its
+    curves, and they are marked there -- but three of the four conditional crossings
+    land within half a point of each other on the demo data, so on the curve figure
+    they are eight rings on one vertical line that cannot be labelled. Here the same
+    eight numbers get an axis to themselves.
+
+    **Paired bars, not stacked.** The risked bar is not a *part* of the unrisked one;
+    it is the same quantity under a different question, so stacking would invent a
+    sum that means nothing. Side by side, sharing a row, sharing a colour.
+
+    **Solid = unrisked (conditional), hatched = risked (unconditional)**, the bar
+    equivalent of the solid/dashed rule every other figure uses. Not opacity: a paler
+    fill reads as *less certain*, which is the opposite of what risking does -- the
+    risked number is not fuzzier, it is smaller.
+
+    The gap between a pair is the chance of the case itself, and it differs per row:
+    the up-dip bar is risked by ``POS - P_well``, because it is the volume you leave
+    behind when the well fails. That is why the pairs do not shrink by a constant
+    factor and why the rows cannot be compared by eye alone -- the chance is printed.
+
+    Read with 4.2: that figure shows the whole probability curve for every volume,
+    this one reads all of them at one threshold.
+    """
+    p = palette(dark)
+    crossings = c2_crossings(ts, groups, vc, pos_prospect, p_well, mefs)
+    # Reversed, so the widest concept sits at the top: a horizontal bar chart builds
+    # upward from the axis, and the nesting reads outside-in the way 4.2's braces do.
+    crossings = tuple(reversed(crossings))
+    labels = [c.name for c in crossings]
+
+    fig = go.Figure()
+    for reading, values, pattern in (
+        ("unrisked", [c.conditional for c in crossings], ""),
+        ("risked", [c.risked for c in crossings], "/"),
+    ):
+        fig.add_bar(
+            x=[v * 100.0 for v in values], y=labels, orientation="h",
+            name=READING_LABELS["conditional" if reading == "unrisked"
+                                else "unconditional"],
+            marker=dict(
+                color=[rgba(c.role, 0.85 if reading == "unrisked" else 0.35, dark)
+                       for c in crossings],
+                line=dict(color=[colour(c.role, dark) for c in crossings], width=1.4),
+                pattern=dict(shape=[pattern] * len(crossings),
+                             fgcolor=[colour(c.role, dark) for c in crossings],
+                             size=6, solidity=0.25),
+            ),
+            text=[f"{v:.1%}" for v in values], textposition="outside",
+            textfont=dict(size=10, color=p["text"]),
+            customdata=[[c.chance * 100.0, c.n] for c in crossings],
+            hovertemplate=(
+                "%{y}<br>" + ("unrisked — given the case happens"
+                              if reading == "unrisked"
+                              else "risked — the case happening and clearing MEFS")
+                + "<br><b>%{x:.1f}%</b> chance of exceeding "
+                + f"{mefs:.2f} MMboe"
+                + "<br>chance of the case itself %{customdata[0]:.1f}%"
+                  "<br>%{customdata[1]:,} trials<extra></extra>"
+            ),
+        )
+
+    fig.update_layout(
+        title=(f"C3 · Chance of clearing MEFS / MCFS, {mefs:,.1f} MMboe"
+               "<br><sub>solid = unrisked (given the case happens) · "
+               "hatched = risked (the case happening AND clearing) · "
+               "their ratio is the chance of the case</sub>"),
+        xaxis_title="Probability of exceeding the threshold (%)",
+        barmode="group", bargap=0.32, bargroupgap=0.08,
+    )
+    # Headroom for the outside labels, and a ceiling of 100 because this is a
+    # probability -- autoscaling gave a different ceiling per prospect, so two runs
+    # could not be compared by eye.
+    fig.update_xaxes(range=[0, 108])
+    fig.update_yaxes(automargin=True)
+    apply_plotly(fig, dark, height)
     return fig
