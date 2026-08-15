@@ -25,6 +25,7 @@ from ..core import (
     group_summary,
 )
 from ..viz import (
+    OVERLAP_OPACITY,
     pfig_a6_overlap,
     pfig_b0_section,
     pfig_c1_section,
@@ -691,7 +692,17 @@ def render(ctx: Ctx) -> None:
                   "Conditional only: a risked curve beside an unrisked histogram would be two "
                   "readings on one figure, which is the mistake 4.2 exists to keep apart."),
         )
-        _chart(pfig_a6_overlap(vc, groups, ts=ts, mefs=mefs,
+        # **The fill is a control, not a constant** (Lars, 2026-08-15). This figure is
+        # about where the classes overlap, and five series at the old 0.45 hid each
+        # other -- but the right value depends on how many are on and how far apart
+        # they sit, so there is no one number to tune it to.
+        a6_opacity = st.slider(
+            "Histogram transparency", min_value=0.05, max_value=1.0,
+            value=OVERLAP_OPACITY, step=0.05, key="w_a6_opacity",
+            help="Lower is more transparent. Turn it down to see the classes that sit "
+                 "behind the others; turn it up to read one of them on its own.",
+        )
+        _chart(pfig_a6_overlap(vc, groups, ts=ts, mefs=mefs, opacity=a6_opacity,
                                normalise=a6_norm, show_exceedance=a6_curves), key="a6")
         # **The overlap, as a number** (Lars, 2026-08-12). The figure has always shown
         # that it is larger than anyone expects and never said how large. Schneider

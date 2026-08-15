@@ -77,6 +77,7 @@ from .theme import (
     new_figure,
     palette,
     reference_label,
+    OVERLAP_OPACITY,
 )
 
 __all__ = [
@@ -584,6 +585,7 @@ def fig_a6_overlap(
     vc: VolumeClasses, groups: Groups, *, ts: TrialSet | None = None,
     mefs: float | None = None, dark: bool = False, bins: int = 40,
     normalise: str = "density", show_exceedance: bool = False,
+    opacity: float = OVERLAP_OPACITY,
 ):
     """A6 for the export path. Twin of ``pfig_a6_overlap``.
 
@@ -623,7 +625,7 @@ def fig_a6_overlap(
         # Explicit bars, matching the plotly twin: histnorm has no peak option
         # there, so re-binning separately would make the two disagree about edges.
         ax.bar(centres, counts, width=float(edges[1] - edges[0]),
-               color=colour(role, dark), alpha=0.45,
+               color=colour(role, dark), alpha=float(opacity),
                label=f"{name} (n={values.size:,})")
 
     if show_exceedance:

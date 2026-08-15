@@ -89,6 +89,7 @@ from .theme import (
     palette,
     reference_label,
     rgba,
+    OVERLAP_OPACITY,
 )
 
 __all__ = [
@@ -902,6 +903,7 @@ def pfig_a6_overlap(
     vc: VolumeClasses, groups: Groups, *, ts: TrialSet | None = None,
     mefs: float | None = None, bins: int = 40, normalise: str = "density",
     show_exceedance: bool = False,
+    opacity: float = OVERLAP_OPACITY,
     dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
     """A6 -- Schneider et al.'s "surprising overlap", now against all four classes.
@@ -932,6 +934,15 @@ def pfig_a6_overlap(
         meaning anything absolute. Said out loud in the axis title, because a
         density axis and a peak-scaled axis look identical and mean different things.
 
+    ``opacity`` sets the histogram fill. Lowered from 0.45 to
+    :data:`OVERLAP_OPACITY` and made adjustable (Lars, 2026-08-15): the whole content
+    of this figure is where the classes *overlap*, and a fill opaque enough to read on
+    its own is opaque enough to hide the one behind it. Five series since the
+    commercial class arrived, so the last one drawn was covering a good deal.
+
+    There is no single right value -- it depends how many series are on and how far
+    apart they sit -- which is why it is a control rather than a tuned constant.
+
     ``show_exceedance`` overlays the same four classes as **conditional** cumulative
     curves on a second x-axis in per cent. Conditional only, deliberately: a risked
     curve beside an unrisked histogram is two readings on one figure, which is the
@@ -939,6 +950,8 @@ def pfig_a6_overlap(
     """
     if normalise not in ("density", "peak"):
         raise ValueError(f"unknown normalise {normalise!r}; expected 'density' or 'peak'")
+    if not 0.0 < float(opacity) <= 1.0:
+        raise ValueError(f"opacity must be in (0, 1]; got {opacity!r}")
     p = palette(dark)
     series = [
         ("Prospect resource potential", ts.col("resource")[ts.col("resource") > 0]
@@ -1005,7 +1018,7 @@ def pfig_a6_overlap(
         # about where a bar edge is.
         fig.add_bar(
             x=centres, y=counts, name=f"{name} (n={values.size:,})",
-            marker=dict(color=colour(role, dark)), opacity=0.45,
+            marker=dict(color=colour(role, dark)), opacity=float(opacity),
             width=float(edges[1] - edges[0]),
             hovertemplate=name + " %{x:.1f} MMboe<br>%{y:.4f}<extra></extra>",
         )

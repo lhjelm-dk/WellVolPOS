@@ -180,16 +180,28 @@ def test_a6_has_no_depth_axis_and_draws_all_four_classes(reduced, groups, vc):
     so Schneider's attic/proven pair is now seen against the two larger
     distributions it is carved out of. Still no depth on either axis.
 
-    Opacity had to come down with four series: at 0.6 the fourth histogram hid the
-    first, and what shows through what is the entire content of this figure.
+    Opacity came down again with the fifth series (the commercial class) and is a
+    control now rather than a constant -- what shows through what is the entire
+    content of this figure, and the right value depends on how many series are on.
     """
+    from wellvolpos.viz.theme import OVERLAP_OPACITY
+
     fig, ax = figures.fig_a6_overlap(vc, groups, ts=reduced, mefs=14.0)
     assert not is_depth_axis_correct(ax)
     labels = " ".join(t.get_text() for t in ax.get_legend().get_texts())
-    for expected in ("Prospect", "Well associated", "Attic", "Proven"):
+    for expected in ("Prospect", "Well associated", "Attic", "Proven", "Commercial"):
         assert expected in labels, expected
     alphas = {round(float(p.get_alpha() or 1.0), 2) for p in ax.patches}
-    assert alphas == {0.45}
+    assert alphas == {round(OVERLAP_OPACITY, 2)}
+
+    # And it honours an explicit value, in both backends.
+    _f, ax2 = figures.fig_a6_overlap(vc, groups, ts=reduced, mefs=14.0, opacity=0.7)
+    assert {round(float(p.get_alpha() or 1.0), 2) for p in ax2.patches} == {0.7}
+    import wellvolpos.viz.interactive as I
+    pf = I.pfig_a6_overlap(vc, groups, ts=reduced, mefs=14.0, opacity=0.7)
+    assert {round(float(t.opacity), 2) for t in pf.data if t.type == "bar"} == {0.7}
+    with pytest.raises(ValueError, match="opacity"):
+        I.pfig_a6_overlap(vc, groups, ts=reduced, mefs=14.0, opacity=0.0)
 
 def test_a6_densities_each_integrate_to_one(groups, vc):
     """What makes the two series comparable despite n = 4576 vs 3029.

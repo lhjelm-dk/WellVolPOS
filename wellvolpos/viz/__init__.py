@@ -78,9 +78,11 @@ from .theme import (
     depth_axis,
     depth_axis_plotly,
     palette,
+    OVERLAP_OPACITY,
 )
 
 __all__ = [
+    "OVERLAP_OPACITY",
     "apply", "palette", "colour", "depth_axis",
     "apply_plotly", "depth_axis_plotly", "PANEL_HEIGHT", "level_row", "row_zlim", "AREA_SCALES",
     # matplotlib / export

@@ -564,6 +564,11 @@ def reference_label(reference) -> str:
 
 
 # --------------------------------------------------------- log-probit axes
+#: Default histogram fill on 4.5. Lower than the 0.45 it was, because that figure
+#: is *about* the overlap and five series at 0.45 hide each other. Adjustable in the
+#: app; this is only where it starts.
+OVERLAP_OPACITY = 0.30
+
 #: The exceedance percentiles the probit grid is ruled at. Fixed, and deliberately
 #: *not* the ladder a given figure ends up drawing (see
 #: :func:`wellvolpos.core.bands.supported_percentiles`): two figures with
