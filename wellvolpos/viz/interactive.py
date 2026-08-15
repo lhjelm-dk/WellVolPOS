@@ -3338,3 +3338,86 @@ def pfig_c4_wedge(
     depth_axis_plotly(fig, (float(min(z_top.min(), zc - T)) - 0.1 * T,
                             float(max(z_base.max(), zc)) + 0.1 * T))
     return fig
+
+
+# ------------------------------------------------------------------- C5
+def pfig_c5_partitions(
+    ad, *, z_entry: float, z_exit: float, z_contact: float,
+    area_scale: str = "area", dark: bool = False,
+    height: int | None = PANEL_HEIGHT,
+):
+    """C5 -- two cuts of one closure: Rose's, at the well; ours, at the interval.
+
+    Lars, 2026-08-15, design review. Tab ④ spent about 120 words explaining that
+    Schneider & Cook partition at the **well location** while this app partitions at
+    the **penetrated interval**, and that the two are easy to confuse because both use
+    the word "below". It is inherently a picture: the same closure, twice, with the cut
+    line in a different place.
+
+    * **Left, Rose.** One cut, at the entry. Above it is his *updip* -- what a dry hole
+      leaves behind, and what his deterministic "No Regrets" volume evaluates. Below it
+      is his *downdip*.
+    * **Right, this app.** The cut is at **LKH = min(contact, exit)**, because a well
+      proves what it drills *through* rather than what it touches. Above is proven,
+      below is the unproven volume below LKH.
+
+    **The difference is one slice**, and it is shaded on both panels: the entry-to-exit
+    interval. Rose counts it as downdip, this app counts it as proven. Both partitions
+    sum to the same well-associated volume -- neither is wrong, and neither is the
+    well-associated volume on its own.
+
+    Two panels on one depth axis, so the cuts can be read straight across at constant
+    depth. That is the depth rule doing exactly the work it exists for.
+    """
+    from plotly.subplots import make_subplots
+
+    p = palette(dark)
+    label, transform = AREA_SCALES.get(area_scale, AREA_SCALES["area"])
+    lkh = min(float(z_contact), float(z_exit))
+
+    fig = make_subplots(rows=1, cols=2, shared_yaxes=True, horizontal_spacing=0.06,
+                        subplot_titles=("Rose — cut at the well",
+                                        "This app — cut at the penetrated interval"))
+
+    z = np.linspace(ad.shallowest, float(z_contact), 260)
+    half = transform(np.asarray([ad.area_at(v) for v in z], dtype=float)) / 2.0
+
+    # (cut depth, upper name, upper role, lower name, lower role)
+    panels = [
+        (float(z_entry), "Rose updip", "up_dip", "Rose downdip", "below_lkh"),
+        (lkh, "Proven", "proven", "Unproven below LKH", "below_lkh"),
+    ]
+    for col, (cut, up_name, up_role, lo_name, lo_role) in enumerate(panels, start=1):
+        for name, role, lo_z, hi_z in ((up_name, up_role, z.min(), cut),
+                                       (lo_name, lo_role, cut, float(z_contact))):
+            m = (z >= lo_z) & (z <= hi_z)
+            if m.sum() < 2:
+                continue
+            fig.add_scatter(
+                x=np.concatenate([-half[m], half[m][::-1]]),
+                y=np.concatenate([z[m], z[m][::-1]]),
+                fill="toself", fillcolor=rgba(role, 0.55, dark), mode="lines",
+                line=dict(color=colour(role, dark), width=1.0), name=name,
+                showlegend=col == 1 or "Proven" in name or "Unproven" in name,
+                hoverinfo="skip", row=1, col=col,
+            )
+        # The cut itself, and the entry-to-exit slice that the two panels disagree
+        # about -- drawn on both so the eye can carry it across.
+        fig.add_hline(y=cut, line=dict(color=p["well"], width=2), row=1, col=col)
+        if z_exit > z_entry:
+            fig.add_hrect(y0=float(z_entry), y1=min(float(z_exit), float(z_contact)),
+                          fillcolor=rgba("well", 0.16, dark), line_width=0,
+                          row=1, col=col)
+
+    fig.update_layout(
+        title=("C5 · Two cuts of one closure — the difference is the "
+               f"{z_exit - z_entry:,.0f} m the well penetrates"
+               "<br><sub>violet band = entry to exit · Rose counts it below the cut, "
+               "this app counts it above · both sum to the well-associated volume</sub>"),
+    )
+    for col in (1, 2):
+        fig.update_xaxes(title_text=label, row=1, col=col)
+    apply_plotly(fig, dark, height)
+    depth_axis_plotly(fig, (ad.shallowest, float(z_contact)))
+    fig.update_yaxes(autorange="reversed", row=1, col=2)
+    return fig
