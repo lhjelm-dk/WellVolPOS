@@ -26,13 +26,10 @@ UI = Path(__file__).resolve().parents[1] / "wellvolpos" / "ui"
 #: ``tab3`` is the tiered one and its budget is real: 344 words today against a ceiling
 #: of 600, which is room for a few more figures at tier-1 length.
 #:
-#: ``tab4`` was tiered the same day, 1,388 -> 513.
-#:
-#: ``tab2`` is **provisional** — the last still to be tiered, and its number is today's
-#: count with a little headroom so the test locks the current state in rather than
-#: blessing it. Bring it to 600 when it is done.
+#: All four analysis tabs are tiered now — 2,082 -> 421, 1,388 -> 522, 1,010 -> 432 —
+#: so every budget below is real rather than a placeholder holding today's count.
 BUDGET = {
-    "tab2_prospect": 1_100,
+    "tab2_prospect": 600,
     "tab3_where": 600,
     "tab4_well": 700,
     "tab5_report": 400,
@@ -74,7 +71,7 @@ def test_a_tab_stays_within_its_caption_budget(stem, ceiling):
     )
 
 
-@pytest.mark.parametrize("stem", ["tab3_where", "tab4_well"])
+@pytest.mark.parametrize("stem", ["tab2_prospect", "tab3_where", "tab4_well"])
 def test_the_tiered_tabs_actually_came_down(stem):
     """If either regresses, the tiering has been undone rather than extended."""
     assert visible_caption_words(UI / f"{stem}.py") < 700
@@ -83,7 +80,7 @@ def test_the_tiered_tabs_actually_came_down(stem):
 def test_every_long_caption_on_a_tiered_tab_is_behind_an_expander():
     """A tier-1 line is one or two sentences. Anything longer belongs in the detail."""
     s = "\n".join((UI / f"{stem}.py").read_text(encoding="utf-8")
-                  for stem in ("tab3_where", "tab4_well"))
+                  for stem in ("tab2_prospect", "tab3_where", "tab4_well"))
     for m in re.finditer(r"figure_note\(", s):
         i = m.end()
         depth, j = 1, i

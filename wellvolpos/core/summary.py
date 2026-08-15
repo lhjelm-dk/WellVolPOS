@@ -161,7 +161,7 @@ class Candidate:
 PLATEAU_TOL = 0.02
 
 
-def _plateau(values, z, i: int, tol: float = PLATEAU_TOL):
+def plateau_span(values, z, i: int, tol: float = PLATEAU_TOL):
     """The depth span over which ``values`` stays within ``tol`` of its maximum.
 
     **The whole span, not the contiguous run around the peak.** A sampled curve wiggles
@@ -224,7 +224,7 @@ def candidate_depths(vsweep, *, min_support: int = 30,
         out.append(Candidate(
             key="chance", label="Best chance of finding hydrocarbons",
             depth=float(z[i]), value=f"P_well {pw[i]:.1%}", figure="a3",
-            plateau=_plateau(pw, z, i),
+            plateau=plateau_span(pw, z, i),
             note="The shallowest supported depth, by construction — P_well only "
                  "falls as the well goes down-dip.",
         ))
@@ -237,7 +237,7 @@ def candidate_depths(vsweep, *, min_support: int = 30,
             out.append(Candidate(
                 key="expected", label="Most chance-weighted volume",
                 depth=float(z[i]), value=f"{weighted[i]:,.1f} MMboe expected",
-                figure="b9", plateau=_plateau(weighted, z, i),
+                figure="b9", plateau=plateau_span(weighted, z, i),
                 note="P_well x the well-associated mean. The one a portfolio adds up, "
                      "and not a volume anyone finds.",
             ))
@@ -250,7 +250,7 @@ def candidate_depths(vsweep, *, min_support: int = 30,
             out.append(Candidate(
                 key="commercial", label="Best commercial chance",
                 depth=float(z[i]), value=f"Pc {pc[i]:.1%}", figure="b8",
-                plateau=_plateau(pc, z, i),
+                plateau=plateau_span(pc, z, i),
                 note="A rising conditional times a falling P_well, so this one has an "
                      "interior maximum. Rose's number for an EMV calculation.",
             ))

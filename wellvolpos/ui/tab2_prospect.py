@@ -41,7 +41,8 @@ from .conventions import (
     PLAY_DEFAULTS,
     PLAY_HELP,
 )
-from .common import chart as _chart, kpi_ladder, element_chip, split_caveat
+from .common import (chart as _chart, element_chip, figure_note,
+                     kpi_ladder, split_caveat)
 from .context import Ctx
 from .numbering import ref as fig_ref
 
@@ -255,14 +256,16 @@ def render(ctx: Ctx) -> None:
                 st.warning(_cc.message())
             else:
                 st.success(_cc.message())
-            st.caption(
-                "**A trial with its contact at or above the apex would be a contradiction** "
+            figure_note(
+                "Every successful trial sits below the derived apex, as it must — a contact "
+            "above the crest would be hydrocarbon outside the closure.",
+                detail="**A trial with its contact at or above the apex would be a contradiction** "
                 "— positive volume, no column — and would mean either the apex "
                 "extrapolation has overshot or the export is inconsistent. Ideally there "
                 "are none, and on both demo files there are none. If a minimum column "
                 "height is set, sub-minimum trials are counted as **chance failures**, so "
                 "the cut lowers POS rather than renormalising what is left: too thin to "
-                "flow is a failed well, not a smaller discovery."
+                "flow is a failed well, not a smaller discovery.",
             )
 
     if not has_area:
@@ -318,8 +321,9 @@ def render(ctx: Ctx) -> None:
                 render=a4_render, n_resource=int(a4_nx), n_depth=int(a4_ny),
                 zlim=zrow_prospect,
             ), key="a4")
-        st.caption(
-            f"**{fig_ref('{a1}')}** now carries the reservoir too: top reservoir is A(z), and the base is that "
+        figure_note(
+            fig_ref("**{a1}** — the closure in section: top reservoir from A(z), the base a thickness below it, and the area uncertainty around both."),
+            detail=f"**{fig_ref('{a1}')}** now carries the reservoir too: top reservoir is A(z), and the base is that "
             f"curve shifted down by the thickness back-calculated from pay — drawn four times, "
             f"P90/P50/mean/P10, because that thickness is a distribution and one base line "
             f"implied a surface the trials do not support. The three shaded classes are the same "
@@ -336,7 +340,7 @@ def render(ctx: Ctx) -> None:
             f"thin and grey — the mean is the number that gets quoted, and on a skewed distribution "
             f"it is not the P50. {fig_ref('{a4}')} uses success trials only: the chance-failure "
             f"zeros belong to "
-            f"POS, not to the shape of the resource distribution."
+            f"POS, not to the shape of the resource distribution.",
         )
 
         st.divider()
@@ -348,15 +352,16 @@ def render(ctx: Ctx) -> None:
         _chart(pfig_a5_exceedance(
                 ts, groups, vc, mefs=mefs, pos_prospect=chance.pos_prospect,
             ), key="a5")
-        st.caption(
-            f"**{fig_ref('{a5}')} — the prospect's resource, both readings.** The **solid** curve is "
+        figure_note(
+            fig_ref("**{a5}** — the prospect's resource. Solid is the success case and starts at 100 %; dashed folds the chance in and starts at it."),
+            detail=f"**{fig_ref('{a5}')} — the prospect's resource, both readings.** The **solid** curve is "
             f"*conditional*: the success case, given the prospect works. It starts at 100 % and "
             f"it is where the percentiles live — that is what anyone means by \"the P50\". The "
             f"**dashed** curve is *unconditional* (risked): the same volumes with POS_prospect "
             f"folded in, so it starts at **{chance.pos_prospect:.0%}** instead.\n\n"
             f"The volumes are identical between the two — only the probability attached to them "
             f"changes, and the risked one is what a portfolio adds up. No depth axis, so this "
-            f"sits below the row rather than in it."
+            f"sits below the row rather than in it.",
         )
 
         # One wide row rather than six long ones (Lars, 2026-08-12). The long form
@@ -388,8 +393,10 @@ def render(ctx: Ctx) -> None:
                 **_vol_cols,
             },
         )
-        st.caption(
-            "**Volumes are conditional** — the success case, given the prospect works. That is "
+        figure_note(
+            "Conditional volumes — the success case, given the prospect works. That is "
+        "where percentiles live; the chance is applied once, separately.",
+            detail="**Volumes are conditional** — the success case, given the prospect works. That is "
             "where percentiles live and it is the distribution the industry quotes: an unrisked "
             "P90 is exceeded 90 % of the time *by definition*. To get the unconditional "
             f"(risked) probability of any of them, multiply by the prospect POS beside it — "
@@ -400,14 +407,15 @@ def render(ctx: Ctx) -> None:
             "**Pmean is not a percentile.** It is the arithmetic mean, and on this distribution it "
             f"is exceeded {_a5_stats['mean_at']:.0f} % of the time rather than 50 % — above the "
             "P50, as it must be on a right-skewed distribution. It sits at the end of the ladder "
-            "rather than between P50 and P10 so that it cannot be read as one of them."
+            "rather than between P50 and P10 so that it cannot be read as one of them.",
         )
 
         st.divider()
         _chart(pfig_a9_prospect_density(ts, mefs=mefs), key="a9")
         _a9_vals = res_all[res_all > 0]
-        st.caption(
-            f"**{fig_ref('{a9}')}** — the same distribution {fig_ref('{a5}')} draws as a curve, "
+        figure_note(
+            fig_ref("**{a9}** — the same distribution as a shape rather than a curve: where the mass sits, not how likely each volume is."),
+            detail=f"**{fig_ref('{a9}')}** — the same distribution {fig_ref('{a5}')} draws as a curve, "
             f"drawn as a shape. {fig_ref('{a5}')} answers "
             f"*how likely is at least this much*; {fig_ref('{a9}')} answers *where does the mass "
             f"actually sit*, "
@@ -416,13 +424,14 @@ def render(ctx: Ctx) -> None:
             f"distribution they are different numbers and the mean is the one that gets quoted — "
             f"here {float(np.mean(_a9_vals)):.1f} against a P50 of "
             f"{float(np.percentile(_a9_vals, 50)):.1f} MMboe. It is the only volume figure on "
-            f"this tab that needs no well at all."
+            f"this tab that needs no well at all.",
         )
 
         st.divider()
         _chart(pfig_a8_contact_distribution(ts), key="a8")
-        st.caption(
-            f"**{fig_ref('{a8}')}** — the contact distribution recovered from the trials, and "
+        figure_note(
+            fig_ref("**{a8}** — where the contact lands, and the share of the prospect lying below any depth. This is what r_location reads off."),
+            detail=f"**{fig_ref('{a8}')}** — the contact distribution recovered from the trials, and "
             f"`P(contact deeper "
             "than this depth)` over it. Read a depth off the y-axis and the line gives the "
             "fraction of success trials whose contact lies below it, which **is** `r_location` at "
@@ -430,5 +439,5 @@ def render(ctx: Ctx) -> None:
             f"material shown as a distribution "
             "instead of as a chance curve, and the two agree at every depth by construction. "
             "This distribution is what the HCWC Builder produces and GeoX consumes; every "
-            "location result in this tool ultimately rests on its shape."
+            "location result in this tool ultimately rests on its shape.",
         )

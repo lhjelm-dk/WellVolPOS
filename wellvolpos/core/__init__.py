@@ -14,7 +14,8 @@ from .dependence import (
     DeviationCheck,
     check_deviation,
 )
-from .summary import Candidate, Headline, candidate_depths, headline
+from .summary import (Candidate, Headline, PLATEAU_TOL, candidate_depths,
+                      headline, plateau_span)
 from .mefs import (
     CONCEPTS as MEFS_CONCEPTS,
     RUNGS as MEFS_RUNGS,
@@ -109,6 +110,7 @@ __all__ = [
     "MEFS_CONCEPTS", "MEFS_RUNGS", "ConceptReadout", "MefsReadout", "mefs_readout",
     "Crossing", "c2_cases", "c2_crossings",
     "Headline", "headline", "Candidate", "candidate_depths",
+    "PLATEAU_TOL", "plateau_span",
     "BAND_MODES", "BAND_MODE_LABELS", "BAND_PERCENTILES", "DEFAULT_N_BANDS",
     "BandedPercentiles", "DepthBand", "banded_percentiles", "supported_percentiles",
     "AreaDepth", "group_trials", "group_summary", "boundary_ties", "split_trials", "class_summary",

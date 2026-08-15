@@ -248,3 +248,51 @@ def test_the_outcome_tree_works_without_a_threshold(reduced):
                            "Dry hole, hydrocarbons up-dip", "Discovery"}
     assert sum(leaves.values()) == pytest.approx(1.0, abs=1e-12)
     assert leaves["Discovery"] == pytest.approx(ch.p_well, abs=1e-12)
+
+
+def test_the_starred_optima_report_a_band_not_a_grid_point(reduced):
+    """3.9 and 3.10 starred an arbitrary tie-break until 2026-08-15.
+
+    Above the shallowest contact every success trial is a discovery, so r_location is 1
+    and both curves are exactly flat there. ``argmax`` picked whichever grid point won
+    by a hair and the star claimed it as a peak -- prospect B's commercial optimum moved
+    2064 -> 2115 m between two sweeps at an identical Pc of 21.9 %.
+    """
+    import re
+
+    import wellvolpos.viz.interactive as I
+    from wellvolpos.core import run_volume_sweep
+
+    ad = AreaDepth.from_trials(reduced.col("contact"), reduced.col("area"))
+
+    def band(n):
+        sw = run_volume_sweep(reduced, ad, POS, z_gap=50.0, mefs=14.0, n=n)
+        fig = I.pfig_b8_commercial_chance(sw, current_z=ENTRY)
+        text = next(t.text[0] for t in fig.data
+                    if t.text and "best Pc" in str(t.text[0]))
+        found = re.findall(r"([\d,]+)–([\d,]+) m", text)
+        assert found, f"the star still reports a single depth: {text!r}"
+        return tuple(float(v.replace(",", "")) for v in found[0])
+
+    coarse, fine = band(40), band(60)
+    # The reported band must not depend on how finely the sweep was sampled.
+    assert abs(coarse[0] - fine[0]) <= 12.0, (coarse, fine)
+    assert abs(coarse[1] - fine[1]) <= 12.0, (coarse, fine)
+    assert coarse[1] > coarse[0]
+
+
+def test_the_figures_and_the_panel_use_one_plateau_definition(reduced):
+    """``plateau_span`` is shared, so 3.9's band and the candidate panel's range for the
+    same measure cannot disagree."""
+    import numpy as np
+
+    from wellvolpos.core import candidate_depths, plateau_span, run_volume_sweep
+    from wellvolpos.core.stats import thin
+
+    ad = AreaDepth.from_trials(reduced.col("contact"), reduced.col("area"))
+    sw = run_volume_sweep(reduced, ad, POS, z_gap=50.0, mefs=14.0, n=40)
+    pw = thin(sw.p_well, sw.n_discovery, 30)
+    pc = pw * thin(sw.p_discovery_exceeds_mefs, sw.n_discovery, 30)
+    direct = plateau_span(pc, sw.z, int(np.nanargmax(pc)))
+    panel = next(c for c in candidate_depths(sw) if c.key == "commercial").plateau
+    assert direct == pytest.approx(panel, abs=1e-9)

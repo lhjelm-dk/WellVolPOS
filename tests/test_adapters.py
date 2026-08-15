@@ -73,3 +73,50 @@ def test_grv_identity_survives_the_file_precision(reduced):
     m = (v > 0) & (a > 0) & (g > 0)
     ratio = v[m] / (a[m] * g[m])
     assert np.allclose(ratio, 1.0, atol=1e-4)
+
+
+# ------------------------------------------------------------------ the stubs
+def test_a_stub_never_outranks_a_working_adapter():
+    """Design plan §8. The stubs exist so the protocol is exercised by six
+    implementations rather than two — but a stub that scored anything above zero on an
+    unverified format is how a real GeoX export ends up on a half-written path.
+    """
+    from pathlib import Path
+
+    from wellvolpos.io.adapters import ADAPTERS, STUB_ADAPTERS, score_adapters
+
+    assert len(STUB_ADAPTERS) == 4
+    assert all(a in ADAPTERS for a in STUB_ADAPTERS)
+
+    data = Path(__file__).resolve().parents[1] / "data" / "demo_prospectA_reduced.csv"
+    ranked = score_adapters(data)
+    assert all(score == 0.0 for score, a in ranked if a in STUB_ADAPTERS)
+    # And the real one still wins outright.
+    assert ranked[0][0] > 0.0 and ranked[0][1] not in STUB_ADAPTERS
+
+
+def test_a_stub_refuses_rather_than_half_importing():
+    """A file that half-loads and produces plausible numbers is worse than one that
+    refuses, so every stub raises and says what is missing."""
+    import pytest
+
+    from wellvolpos.io.adapters import STUB_ADAPTERS
+
+    for adapter in STUB_ADAPTERS:
+        with pytest.raises(NotImplementedError) as e:
+            adapter.read("anything.csv")
+        msg = str(e.value)
+        assert adapter.name in msg
+        # It has to point somewhere useful, not just decline.
+        assert "generic" in msg.lower() or "GeoX" in msg
+        assert adapter.needs and adapter.needs in msg
+
+
+def test_every_stub_satisfies_the_adapter_protocol():
+    """The claim the stubs exist to keep honest: adding a simulator is a file, not a
+    refactor. If the protocol changes, this fails here rather than in six months."""
+    from wellvolpos.io.adapters import STUB_ADAPTERS
+    from wellvolpos.io.adapters.base import TrialAdapter
+
+    for adapter in STUB_ADAPTERS:
+        assert isinstance(adapter, TrialAdapter), adapter.name

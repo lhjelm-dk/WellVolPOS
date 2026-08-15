@@ -18,10 +18,15 @@ from pathlib import Path
 
 from .base import CANONICAL_FIELDS, TrialAdapter, TrialSet
 from .generic import GenericCsvAdapter, Proposal, propose, signature
+from .stubs import STUB_ADAPTERS
 from .geox import GeoXAdapter
 from .source import Source
 
-ADAPTERS: list[TrialAdapter] = [GeoXAdapter(), GenericCsvAdapter()]
+# **The stubs are registered, not omitted** (design plan §8). They sniff to 0.0 and
+# raise on read, so they can never take a file from a working adapter -- but they are
+# real TrialAdapter implementations, which is what keeps "adding a simulator is a file
+# rather than a refactor" a checked claim instead of an aspiration.
+ADAPTERS: list[TrialAdapter] = [GeoXAdapter(), GenericCsvAdapter(), *STUB_ADAPTERS]
 
 __all__ = [
     "TrialSet",
@@ -34,6 +39,7 @@ __all__ = [
     "propose",
     "signature",
     "ADAPTERS",
+    "STUB_ADAPTERS",
     "read_trials",
     "score_adapters",
 ]

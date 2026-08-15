@@ -39,6 +39,7 @@ from ..core.chance import (
 )
 from ..core.chance import waterfall_steps as chance_waterfall_steps
 from ..core.mefs import c2_cases, c2_crossings
+from ..core.summary import plateau_span
 from ..core.classes import (
     conditional_exceedance,
     READING_DASH,
@@ -2189,10 +2190,24 @@ def pfig_b9_chance_weighted(
         )
         if np.any(np.isfinite(weighted)):
             i = int(np.nanargmax(weighted))
+            # Same tie as B8's: flat above the shallowest contact, so the peak is a
+            # band. Drawn per series, because each has its own plateau.
+            _sp = plateau_span(weighted, z, i)
+            if _sp is not None and _sp[1] - _sp[0] > 1.0:
+                fig.add_scatter(
+                    x=[float(np.nanmax(weighted))] * 2, y=list(_sp), mode="lines",
+                    line=dict(color=colour(role, dark), width=6), opacity=0.30,
+                    showlegend=False,
+                    hovertemplate=(f"within 2 % of the best anywhere from "
+                                   f"{_sp[0]:,.0f} to {_sp[1]:,.0f} m<extra></extra>"),
+                )
             fig.add_scatter(
                 x=[weighted[i]], y=[z[i]], mode="markers+text",
                 marker=dict(symbol="star", size=13, color=colour(role, dark)),
-                text=[f"  {weighted[i]:.1f} MMboe at {z[i]:.0f} m"],
+                text=[(f"  {weighted[i]:.1f} MMboe, "
+                       + (f"{_sp[0]:,.0f}–{_sp[1]:,.0f} m"
+                          if _sp is not None and _sp[1] - _sp[0] > 1.0
+                          else f"at {z[i]:.0f} m"))],
                 textposition="middle right",
                 textfont=dict(size=9, color=colour(role, dark)), showlegend=False,
                 hovertemplate=f"maximum expectation<br>{weighted[i]:.2f} MMboe at "
@@ -2768,13 +2783,37 @@ def pfig_b8_commercial_chance(
             hovertemplate=name + "<br>%{x:.1f}% at " + DEPTH_HOVER + "<extra></extra>",
         )
 
-    # The interior maximum of Pc, which is the decision this figure supports.
+    # **The optimum is a band, not a point** (found 2026-08-15 while writing the
+    # candidate-depths panel). Above the shallowest contact every success trial is a
+    # discovery, so ``r_location`` is 1 and this curve is *exactly* flat -- prospect B's
+    # maximum moved 2064 -> 2115 m between two grid resolutions at an identical
+    # Pc 21.9 %. ``argmax`` was breaking a genuine tie and the star reported the winner
+    # as if it were a peak.
+    #
+    # The band spans every depth within ``PLATEAU_TOL`` of the best, so it does not move
+    # with the grid, and it is the more useful answer besides: it says how far the well
+    # can move without paying for it.
     if np.any(np.isfinite(pc)):
         best = int(np.nanargmax(pc))
+        _span = plateau_span(pc, z, best)
+        if _span is not None and _span[1] - _span[0] > 1.0:
+            fig.add_hrect(y0=_span[0], y1=_span[1],
+                          fillcolor=rgba("minimum", 0.10, dark), line_width=0,
+                          layer="below")
+            fig.add_scatter(
+                x=[float(np.nanmax(pc))] * 2, y=list(_span), mode="lines",
+                line=dict(color=colour("minimum", dark), width=6),
+                opacity=0.35, showlegend=False,
+                hovertemplate=(f"within 2 % of the best Pc anywhere from "
+                               f"{_span[0]:,.0f} to {_span[1]:,.0f} m<extra></extra>"),
+            )
         fig.add_scatter(
             x=[pc[best]], y=[z[best]], mode="markers+text",
             marker=dict(symbol="star", size=13, color=colour("minimum", dark)),
-            text=[f"  best Pc {pc[best]:.1f}% at {z[best]:.0f} m"],
+            text=[(f"  best Pc {pc[best]:.1f}%, "
+                   + (f"{_span[0]:,.0f}–{_span[1]:,.0f} m"
+                      if _span is not None and _span[1] - _span[0] > 1.0
+                      else f"at {z[best]:.0f} m"))],
             textposition="middle right",
             textfont=dict(size=9, color=colour("minimum", dark)), showlegend=False,
             hovertemplate=f"maximum commercial chance<br>{pc[best]:.1f}% at "
