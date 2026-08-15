@@ -72,6 +72,11 @@ LIGHT = {
     "up_dip": "#4cb8e0",           # light blue   -- attic / up-dip / regret
     "below_lkh": "#cf9a4e",         # tan          -- well associated, not tested
     "well": "#7a4bb8",             # violet       -- the well itself
+    # Green is the one hue the palette had not spent, and it reads as "commercial"
+    # without being borrowed from anything else. Added 2026-08-15 with the commercial
+    # volume class; the value is the output of a search over the green-teal region for
+    # the largest CVD separation from every role it can share a figure with.
+    "commercial": "#007c58",       # deep green   -- the accumulation given it clears MEFS
 }
 
 DARK = {
@@ -87,6 +92,7 @@ DARK = {
     "up_dip": "#86dbf5",
     "below_lkh": "#e0ad63",
     "well": "#b184e6",
+    "commercial": "#73be64",
 }
 
 # Sets of roles that can appear together in a single figure, and therefore have
@@ -101,7 +107,9 @@ CO_OCCURRING = {
     "A3 chance decomposition": ("well_associated", "muted"),
     "A4 resource vs depth": ("prospect", "muted", "minimum"),
     "A5 exceedance": ("prospect", "well_associated", "tested", "up_dip", "minimum"),
-    "A6 overlap": ("tested", "up_dip", "minimum"),
+    "C2 exceedance": ("prospect", "well_associated", "tested", "up_dip", "minimum",
+                      "commercial"),
+    "A6 overlap": ("tested", "up_dip", "minimum", "commercial"),
     "B0 section": ("up_dip", "tested", "below_lkh"),
     "B1 volume split": ("tested", "below_lkh", "up_dip", "muted"),
     "B2 chance vs regret": ("well_associated", "tested", "up_dip", "muted"),

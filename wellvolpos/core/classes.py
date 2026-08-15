@@ -158,7 +158,9 @@ def split_trials(
                          apportionment=apportionment, n_thickness_assumed=n_assumed)
 
 
-def class_summary(vc: VolumeClasses, groups: Groups) -> dict[str, dict[str, float]]:
+def class_summary(vc: VolumeClasses, groups: Groups, *,
+                  mefs: float | None = None,
+                  resource: 'np.ndarray | None' = None) -> dict[str, dict[str, float]]:
     """Percentiles and mean for each class, over the trials where it is defined.
 
     "Where it is defined" is the operative phrase and it differs per class: the attic
@@ -192,7 +194,7 @@ def class_summary(vc: VolumeClasses, groups: Groups) -> dict[str, dict[str, floa
     # must not be reported under the *possible* label, because 41 % of its population
     # (81 % on the other demo prospect) contributes an exact zero and drags every
     # percentile with it. On prospect B the P50 is 1.68 against 20.16.
-    return {
+    out = {
         "discovery": stat(vc.discovery_total, groups.discovery),
         "proven": stat(vc.proven, groups.discovery),
         # ``groups.hc_to_exit`` *is* this event -- ``discovery & contact > z_exit``,
@@ -205,6 +207,27 @@ def class_summary(vc: VolumeClasses, groups: Groups) -> dict[str, dict[str, floa
         "below_lkh_of_discovery": stat(vc.below_lkh, groups.discovery),
         "attic_dry_hole": stat(vc.attic, groups.dry_with_attic),
     }
+
+    # **The commercial class** (Lars, 2026-08-15): the well-associated volume among
+    # the discoveries that clear MEFS. Its chance is Rose's ``Pc(well)``, so it is the
+    # distribution that goes with the number an EMV calculation takes -- everything
+    # else on the tab is conditional on an event Pc does not describe.
+    #
+    # **This is not the MEFS cut CLAUDE.md forbids.** That rule is about never
+    # truncating the *existing* distributions, because a volume cut-off raises the
+    # unrisked mean while lowering commercial chance (Longley 2026) and baking it in
+    # would put one reader's economics into everyone's volumes. Nothing here is
+    # truncated: the four classes above are untouched and this is an additional class
+    # conditional on a *different event*. Its mean is higher than the well-associated
+    # mean by construction, which is exactly Longley's point made visible rather than
+    # hidden.
+    if mefs is not None and resource is not None:
+        import numpy as _np
+
+        res = _np.asarray(resource, dtype=float)
+        disc = _np.asarray(groups.discovery, dtype=bool)
+        out["commercial"] = stat(res, disc & (res > float(mefs)))
+    return out
 
 
 def check_area_pay_correlation(ts: TrialSet) -> tuple[str, str, float]:

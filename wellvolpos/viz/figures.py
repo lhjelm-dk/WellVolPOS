@@ -602,6 +602,12 @@ def fig_a6_overlap(
         ("Attic | dry hole", vc.attic[groups.dry_with_attic], "attic"),
         ("Proven | discovery", vc.proven[groups.discovery], "proven"),
     ]
+    # The commercial class -- see the plotly twin for why it belongs on this figure.
+    if mefs is not None and ts is not None:
+        _res = np.asarray(ts.col("resource"), dtype=float)
+        _comm = _res[np.asarray(groups.discovery, dtype=bool) & (_res > float(mefs))]
+        if _comm.size:
+            series.append(("Commercial | clears MEFS", _comm, "commercial"))
     hi = max([float(v.max()) for _n, v, _r in series if v.size] + [1.0])
     edges = np.linspace(0.0, hi, bins + 1)
     if normalise not in ("density", "peak"):
@@ -1856,9 +1862,15 @@ def fig_c1_section(
 
 def fig_c2_exceedance(
     ts: TrialSet, groups: Groups, vc: VolumeClasses, *,
-    pos_prospect: float, p_well: float, mefs: float | None = None, dark: bool = False,
+    pos_prospect: float, p_well: float, mefs: float | None = None,
+    pc_well: float | None = None, dark: bool = False,
 ):
     """C2 for the export path. Twin of ``pfig_c2_exceedance``.
+
+    Takes ``pc_well`` so the exported figure carries the commercial class as well.
+    The per-reading toggles are deliberately *not* mirrored: an exported figure
+    showing one reading without saying which would be the risked/unrisked confusion
+    this pair exists to prevent, so the export always draws both.
 
     Two curves per concept in one colour: **solid** conditional (success case),
     starting at 100 % and carrying the percentiles, and **dashed** unconditional
@@ -1871,7 +1883,8 @@ def fig_c2_exceedance(
     disc, dry = groups.discovery, groups.dry_with_attic
     # One definition, shared with the plotly twin and with the caption that
     # quotes these curves' MEFS crossings -- see core/mefs.c2_cases.
-    cases = c2_cases(ts, groups, vc, pos_prospect, p_well)
+    cases = c2_cases(ts, groups, vc, pos_prospect, p_well,
+                     mefs=mefs, pc_well=pc_well)
     spans: dict[str, tuple[float, float, str]] = {}
     for name, values, chance_of, role in cases:
         for reading, chance_used in (("conditional", 1.0), ("unconditional", chance_of)):

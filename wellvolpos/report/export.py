@@ -385,12 +385,15 @@ def _draw_export_figures(b: Bundle, *, dark: bool = False) -> dict[str, object]:
             b.ad, apex=float(b.ad.apex_estimate()), z_entry=c.entry, z_exit=c.exit,
             interval=c.map_interval, well_azimuth_deg=c.map_azimuth_deg, dark=dark)[0]
     if b.vc is not None and b.ad is not None:
+        # Computed here rather than reused from the workbook sheet: this function is
+        # called on its own by figures_zip, where that sheet was never built.
+        _cc = commercial_chance(b.ts, b.groups, b.vc.proven, ch.p_well, c.mefs)
         figs["C1_section"] = F.fig_c1_section(
             b.ad, b.ts, z_entry=c.entry, z_exit=c.exit,
             area_scale=c.area_scale, dark=dark)[0]
         figs["C2_exceedance"] = F.fig_c2_exceedance(
             b.ts, b.groups, b.vc, pos_prospect=b.pos, p_well=ch.p_well,
-            mefs=c.mefs, dark=dark)[0]
+            mefs=c.mefs, pc_well=_cc.pc_well, dark=dark)[0]
         figs["C3_mefs_bars"] = F.fig_c3_mefs_bars(
             b.ts, b.groups, b.vc, pos_prospect=b.pos, p_well=ch.p_well,
             mefs=c.mefs, dark=dark)[0]

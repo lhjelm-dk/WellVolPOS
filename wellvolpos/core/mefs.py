@@ -179,7 +179,8 @@ class Crossing:
         return self.chance * self.conditional
 
 
-def c2_cases(ts, groups, vc, pos_prospect: float, p_well: float):
+def c2_cases(ts, groups, vc, pos_prospect: float, p_well: float, *,
+             mefs: float | None = None, pc_well: float | None = None):
     """The four concepts 4.2 draws, with the chance each one is risked by.
 
     **One definition, used by the figure and by the caption that quotes its numbers.**
@@ -194,12 +195,27 @@ def c2_cases(ts, groups, vc, pos_prospect: float, p_well: float):
     """
     res = ts.col("resource")
     disc, dry = groups.discovery, groups.dry_with_attic
-    return [
+    cases = [
         ("Prospect resource potential", res[res > 0], float(pos_prospect), "prospect"),
         ("Well associated resource potential", res[disc], float(p_well), "well_associated"),
         ("Resource tested by well", vc.proven[disc], float(p_well), "tested"),
         ("Up-dip volume", res[dry], float(max(pos_prospect - p_well, 0.0)), "up_dip"),
     ]
+    # **The commercial class, when a threshold is given** (Lars, 2026-08-15). The
+    # accumulation conditional on clearing MEFS, risked by Pc -- the distribution that
+    # belongs to the number an EMV calculation takes.
+    #
+    # It is deliberately **not** returned to :func:`c2_crossings`, which is why the
+    # threshold is a keyword rather than a positional: its own chance of exceeding
+    # MEFS is 1.0 by construction, so a row for it on 4.3 would report 100 % and say
+    # nothing. The nesting concepts are the four above; this is a fifth thing.
+    if mefs is not None and pc_well is not None:
+        import numpy as np
+
+        r = np.asarray(res, dtype=float)
+        cases.append(("Commercial accumulation", r[disc & (r > float(mefs))],
+                      float(pc_well), "commercial"))
+    return cases
 
 
 def c2_crossings(ts, groups, vc, pos_prospect: float, p_well: float,

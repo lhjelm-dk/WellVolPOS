@@ -61,7 +61,8 @@ def render(ctx: Ctx) -> None:
     #
     # `core.summary` does the assembly. This block only formats -- a tab that
     # computes is a tab that can disagree with the figure under it.
-    _cs_head = class_summary(vc, groups) if has_area else None
+    _cs_head = (class_summary(vc, groups, mefs=mefs, resource=ts.col('resource'))
+                if has_area else None)
     _cc_head = (commercial_chance(ts, groups, vc.proven, chance.p_well, mefs)
                 if has_area else None)
     _head = _headline(entry=entry, exit_=exit_, chance=chance, groups=groups,
@@ -175,7 +176,7 @@ def render(ctx: Ctx) -> None:
         )
 
     if has_area:
-        cs = class_summary(vc, groups)
+        cs = class_summary(vc, groups, mefs=mefs, resource=ts.col('resource'))
         gs = group_summary(ts, groups)
         # Same thickness and apex the split above used, so Rose's cut and ours cannot
         # disagree about the geometry.
@@ -246,6 +247,38 @@ def render(ctx: Ctx) -> None:
         # reader scans for, and the exact chance beside it. core/mefs.py owns the
         # arithmetic and asserts the two cannot contradict each other.
         _mr = mefs_readout(vc, groups, cs, mefs)
+        # **The commercial class, with its own n and chance** (Lars, 2026-08-15).
+        # It is the accumulation *given* it clears MEFS, so its chance is Pc and its
+        # mean sits above the well-associated mean -- which is Longley's point, not a
+        # contradiction: a threshold raises the surviving mean while lowering the
+        # chance of surviving. Both halves are in the row, so neither reads alone.
+        _comm = cs.get("commercial")
+        if _comm and _comm["n"] > 0:
+            st.markdown("##### The commercial accumulation — given it clears "
+                        f"MEFS / MCFS, {mefs:,.1f} MMboe")
+            st.dataframe(
+                pd.DataFrame([{
+                    "Volume": "Commercial accumulation",
+                    "Chance (Pc)": f"{_cc.pc_well:.1%}",
+                    "Trials": f"{int(_comm['n']):,} of {int(cs['discovery']['n']):,} "
+                              f"discoveries",
+                    "P90": f"{_comm['p90']:,.2f}", "P50": f"{_comm['p50']:,.2f}",
+                    "Pmean": f"{_comm['mean']:,.2f}", "P10": f"{_comm['p10']:,.2f}",
+                }]), hide_index=True, width="stretch",
+            )
+            st.caption(
+                f"**The distribution behind Pc.** Everything else on this tab is "
+                f"conditional on an event Pc does not describe — this is the one it "
+                f"does. Its mean is **{_comm['mean']:,.1f} MMboe** against the "
+                f"well-associated **{cs['discovery']['mean']:,.1f}**, and that gap is "
+                f"the threshold at work rather than an inconsistency: cutting at MEFS "
+                f"raises the mean of what is left while lowering the chance of getting "
+                f"it (Longley 2026). **The four classes above are not truncated** — "
+                f"this is an additional class conditional on a different event, which "
+                f"is why the app can show it without applying the cut anywhere else."
+            )
+            st.divider()
+
         st.markdown(f"##### Every volume against the MEFS / MCFS line, {mefs:,.1f} MMboe")
         _rows = []
         for _c in _mr.concepts:
@@ -504,9 +537,19 @@ def render(ctx: Ctx) -> None:
         _chart(pfig_c1_section(
                 ad, ts, z_entry=entry, z_exit=exit_, area_scale=area_scale,
             ), key="c1")
+        # **The two readings toggle separately** (Lars, 2026-08-15). Plotly's legend
+        # groups by concept, so clicking hid both of a concept's curves; there was no
+        # way to see every risked curve on its own. Checkboxes rather than legend
+        # state, so the exported figure honours the same choice.
+        _r1, _r2, _r3 = st.columns([1, 1, 2])
+        _show_cond = _r1.checkbox("Unrisked (conditional)", value=True,
+                                  key="w_c2_conditional")
+        _show_uncond = _r2.checkbox("Risked (unconditional)", value=True,
+                                    key="w_c2_unconditional")
         _chart(pfig_c2_exceedance(
                 ts, groups, vc, pos_prospect=chance.pos_prospect,
-                p_well=chance.p_well, mefs=mefs,
+                p_well=chance.p_well, mefs=mefs, pc_well=_cc.pc_well,
+                show_conditional=_show_cond, show_unconditional=_show_uncond,
             ), key="c2", height=C2_HEIGHT)
         st.caption(
             "**4.1 and 4.2 — the concepts, twice.** 4.1 shows where each volume sits in the "

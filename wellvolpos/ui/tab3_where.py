@@ -210,7 +210,19 @@ def _location_sweep_tab(ctx: Ctx):
     # otherwise get three different plot areas -- and a shared depth range does not
     # put a depth on the same pixel row unless the plot areas match too. level_row
     # takes the largest margin and height across the row; see theme.level_row.
-    f_a2 = pfig_a2_outcome_tree(sweep, current_z=entry, zlim=zrow_sweep)
+    # **A log share axis** (Lars, 2026-08-15). On a linear axis an outcome worth 2 %
+    # of trials is a sliver beside the 60 % band next to it, and how fast the small
+    # shares grow down-dip is most of what this figure is for. Log gives up the
+    # stacking -- cumulative bands are addition, which a log scale does not preserve
+    # -- so the figure switches to each outcome's own share and the subtitle says so.
+    _a2_scale = st.radio(
+        "3.1 share axis", ["linear", "log"], horizontal=True, key="w_a2_scale",
+        help="Linear stacks the four outcomes to 100 %. Log draws each outcome's own "
+             "share from 1 % to 110 %, which is the only way to read the small ones — "
+             "cumulative bands cannot stack on a log axis.",
+    )
+    f_a2 = pfig_a2_outcome_tree(sweep, current_z=entry, zlim=zrow_sweep,
+                                share_scale=_a2_scale)
     f_a3 = pfig_a3_chance_decomposition(
         sweep, pos_prospect=pos, pos_trials=pos_trials, current_z=entry, zlim=zrow_sweep)
     f_b3 = pfig_b3_uncertainty_reduction(sweep, current_z=entry, zlim=zrow_sweep,

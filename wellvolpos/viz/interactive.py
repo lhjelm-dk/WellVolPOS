@@ -508,7 +508,7 @@ def pfig_map_view(
 # ------------------------------------------------------------------- A2
 def pfig_a2_outcome_tree(
     sweep: Sweep, *, current_z: float | None = None, zlim: tuple[float, float] | None = None,
-    show_depth_labels: bool = True, dark: bool = False, height: int | None = PANEL_HEIGHT,
+    show_depth_labels: bool = True, share_scale: str = "linear", dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
     """A2 -- the four outcomes vs entry depth, as stacked bands summing to 100 %.
 
@@ -534,20 +534,49 @@ def pfig_a2_outcome_tree(
         (cum1, cum2, "Discovery, contact seen", "tested"),
         (cum2, cum3, "Discovery, HC to exit", "below_lkh"),
     ]
+    if share_scale not in ("linear", "log"):
+        raise ValueError(f"unknown share_scale {share_scale!r}; expected 'linear' or 'log'")
+
     fig = go.Figure()
-    for lower, upper, name, role in bands:
-        # Closed polygon rather than fill='tonextx': explicit, and immune to
-        # trace ordering.
-        fig.add_scatter(
-            x=np.concatenate([lower, upper[::-1]]),
-            y=np.concatenate([z, z[::-1]]),
-            fill="toself", fillcolor=rgba(role, 0.55, dark), mode="lines",
-            line=dict(color=colour(role, dark), width=1.0), name=name, hoverinfo="skip",
-        )
+    if share_scale == "log":
+        # **Log means unstacked, and that is not a workaround.** These bands are
+        # *cumulative* shares -- each one starts where the last ended -- and stacking
+        # is addition, which a log axis does not preserve. So on a log axis the same
+        # four outcomes are drawn as their own shares rather than as a running total.
+        #
+        # It is worth having because the shares that matter are often the small ones:
+        # on a linear axis an outcome worth 2 % of trials is a sliver against the
+        # 60 % band beside it, and the whole question at the deep end is how fast the
+        # small ones grow. 1 % is the floor, as on 3.8 -- a log axis has no zero.
+        shares = [
+            (np.full_like(z, sweep.share_chance_failure), "Chance failure", "muted"),
+            (sweep.share_dry_with_attic, "Dry, with attic", "attic"),
+            (sweep.share_contact_seen, "Discovery, contact seen", "tested"),
+            (sweep.share_hc_to_exit, "Discovery, HC to exit", "below_lkh"),
+        ]
+        for values, name, role in shares:
+            fig.add_scatter(
+                x=np.asarray(values, dtype=float) * 100.0, y=z, mode="lines",
+                line=dict(color=colour(role, dark), width=2.4), name=name,
+                hovertemplate=name + "<br>%{x:.2f}% of trials at " + DEPTH_HOVER
+                              + "<extra></extra>",
+            )
+    else:
+        for lower, upper, name, role in bands:
+            # Closed polygon rather than fill='tonextx': explicit, and immune to
+            # trace ordering.
+            fig.add_scatter(
+                x=np.concatenate([lower, upper[::-1]]),
+                y=np.concatenate([z, z[::-1]]),
+                fill="toself", fillcolor=rgba(role, 0.55, dark), mode="lines",
+                line=dict(color=colour(role, dark), width=1.0), name=name,
+                hoverinfo="skip",
+            )
     # An invisible trace carrying the real numbers, so hovering reads out the
     # four shares at one depth instead of a polygon vertex.
     fig.add_scatter(
         x=cum3, y=z, mode="lines", line=dict(width=0), showlegend=False,
+        visible=share_scale == "linear",
         customdata=np.column_stack([
             np.full_like(z, sweep.share_chance_failure) * 100.0,
             sweep.share_dry_with_attic * 100.0,
@@ -567,10 +596,21 @@ def pfig_a2_outcome_tree(
 
     fig.update_layout(
         title=(f"A2 · Outcome tree vs location "
-               f"(exit = entry + {sweep.z_gap:.0f} m, from the well input)"),
-        xaxis_title="Share of trials (%)",
+               f"(exit = entry + {sweep.z_gap:.0f} m, from the well input)"
+               + ("<br><sub>log axis: each outcome's own share, not a running "
+                  "total — cumulative bands cannot stack on a log scale</sub>"
+                  if share_scale == "log" else "")),
+        xaxis_title=("Share of trials (%) · log scale" if share_scale == "log"
+                     else "Share of trials (%)"),
     )
-    fig.update_xaxes(range=[0, 100])
+    if share_scale == "log":
+        # 1 % to 110 %, as on 3.8 and for the same reason: a log axis has no zero, and
+        # an outcome whose share rounds to nothing contributes nothing to read.
+        fig.update_xaxes(type="log", range=[np.log10(1.0), np.log10(110.0)],
+                         tickvals=log_ticks(1.0, 110.0),
+                         ticktext=log_tick_text(log_ticks(1.0, 110.0)))
+    else:
+        fig.update_xaxes(range=[0, 100])
     apply_plotly(fig, dark, height)
     # After apply_plotly, which owns legend *placement* -- keeping it inside the
     # axes for every panel is what stops one figure's legend expanding its
@@ -907,6 +947,45 @@ def pfig_a6_overlap(
         ("Attic | dry hole", vc.attic[groups.dry_with_attic], "attic"),
         ("Proven | discovery", vc.proven[groups.discovery], "proven"),
     ]
+    # **The commercial class** (Lars, 2026-08-15): the accumulation conditional on
+    # clearing MEFS. Drawn here because this figure is about where the classes
+    # *overlap*, and the commercial one is the clearest case of all -- it is the
+    # right-hand part of the well-associated histogram, so seeing the two together
+    # shows the threshold cutting a distribution rather than defining a new one.
+    #
+    # Conditional only, like every other series here: its unconditional twin belongs
+    # on 4.2, where the risking is the subject.
+    if mefs is not None and ts is not None:
+        _res = np.asarray(ts.col("resource"), dtype=float)
+        _comm = _res[np.asarray(groups.discovery, dtype=bool) & (_res > float(mefs))]
+        if _comm.size:
+            series.append(("Commercial | clears MEFS", _comm, "commercial"))
+    # **The commercial class** (Lars, 2026-08-15): the accumulation conditional on
+    # clearing MEFS. Drawn here because this figure is about where the classes
+    # *overlap*, and the commercial one is the clearest case of all -- it is the
+    # right-hand part of the well-associated histogram, so seeing the two together
+    # shows the threshold cutting a distribution rather than defining a new one.
+    #
+    # Conditional only, like every other series here: its unconditional twin belongs
+    # on 4.2, where the risking is the subject.
+    if mefs is not None and ts is not None:
+        _res = np.asarray(ts.col("resource"), dtype=float)
+        _comm = _res[np.asarray(groups.discovery, dtype=bool) & (_res > float(mefs))]
+        if _comm.size:
+            series.append(("Commercial | clears MEFS", _comm, "commercial"))
+    # **The commercial class** (Lars, 2026-08-15): the accumulation conditional on
+    # clearing MEFS. Drawn here because this figure is about where the classes
+    # *overlap*, and the commercial one is the clearest case of all -- it is the
+    # right-hand part of the well-associated histogram, so seeing the two together
+    # shows the threshold cutting a distribution rather than defining a new one.
+    #
+    # Conditional only, like every other series here: its unconditional twin belongs
+    # on 4.2, where the risking is the subject.
+    if mefs is not None and ts is not None:
+        _res = np.asarray(ts.col("resource"), dtype=float)
+        _comm = _res[np.asarray(groups.discovery, dtype=bool) & (_res > float(mefs))]
+        if _comm.size:
+            series.append(("Commercial | clears MEFS", _comm, "commercial"))
     hi = max([float(v.max()) for _n, v, _r in series if v.size] + [1.0])
     size = hi / bins
 
@@ -2786,6 +2865,8 @@ def pfig_c1_section(
 def pfig_c2_exceedance(
     ts: TrialSet, groups: Groups, vc: VolumeClasses, *,
     pos_prospect: float, p_well: float, mefs: float | None = None,
+    pc_well: float | None = None,
+    show_conditional: bool = True, show_unconditional: bool = True,
     dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
     """C2 -- the same volumes as exceedance curves, both readings drawn.
@@ -2834,10 +2915,18 @@ def pfig_c2_exceedance(
     # their MEFS crossings and two copies of the list is how the two come to disagree.
     # The up-dip case takes its own chance -- dry but charged, POS_prospect - P_well,
     # not P_well -- which is the entry a second copy would get wrong.
-    cases = c2_cases(ts, groups, vc, pos_prospect, p_well)
+    cases = c2_cases(ts, groups, vc, pos_prospect, p_well,
+                     mefs=mefs, pc_well=pc_well)
+    # **The two readings toggle independently** (Lars, 2026-08-15). Plotly's legend
+    # groups by *concept*, so clicking an entry hid both of a concept's curves and
+    # there was no way to see, say, every risked curve alone. These are figure
+    # arguments rather than legend state so the export path can honour them too.
+    _readings = ([("conditional", 1.0)] if show_conditional else []) + \
+                ([("unconditional", None)] if show_unconditional else [])
     spans: dict[str, tuple[float, float, str]] = {}
     for name, values, chance_of, role in cases:
-        for reading, chance_used in (("conditional", 1.0), ("unconditional", chance_of)):
+        for reading, _fixed in _readings:
+            chance_used = 1.0 if reading == "conditional" else chance_of
             v, pct = risked_exceedance(values, chance_used)
             if v.size == 0:
                 continue
