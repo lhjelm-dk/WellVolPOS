@@ -252,7 +252,7 @@ def at_the_well_volume(
     """Mean resource of the trials whose contact sits **at** the well.
 
     The source workbook's ``Results!G8``, *"Entry depth asso. vol."*, and the third
-    of the three things CLAUDE.md recorded the workbook as having that this app did
+    of the three things the source workbook had that this app did
     not. Returns ``(mean, n)``; the count matters because a narrow window on a small
     trial file can leave nothing to average.
 

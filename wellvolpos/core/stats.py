@@ -22,7 +22,8 @@ Two separate jobs, deliberately not conflated:
 Neither addresses model error. A bootstrap band says how well the *trial file*
 pins the statistic down; it says nothing about whether the contact distribution
 that produced the file is right. That is the HCWC Builder's question, and
-CLAUDE.md's decision 9 keeps it out of this tool.
+It is kept out of this tool deliberately: `r_location` already carries the
+depth-dependent risk, so modelling it again would double-count.
 """
 
 from __future__ import annotations

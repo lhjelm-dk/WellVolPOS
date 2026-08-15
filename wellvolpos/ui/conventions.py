@@ -1,7 +1,7 @@
 """Stable keys, their user-facing labels, and the chance-table defaults.
 
 **The app branches on the keys, never on the label text.** Rewording user copy
-must not be able to change which POS the whole tool uses -- see CLAUDE.md's "POS
+must not be able to change which POS the whole tool uses -- see the "POS
 provenance" section. Keeping the two in one module, side by side, is what makes
 that separation visible instead of a convention someone has to know.
 """

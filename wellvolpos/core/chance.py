@@ -380,7 +380,8 @@ def risk_summary(
     is ``POS_prospect x r_location = P_well`` by construction, and
     ``test_the_summary_multiplies_to_p_well`` checks it against
     :func:`wellvolpos.core.chance.p_well` rather than against this table's own
-    numbers, for the reason CLAUDE.md gives after the B4 defect.
+    numbers: a figure that totals its own steps can agree with itself and still
+    disagree with `p_well`, which is how B4 shipped a wrong total.
 
     **The play is risked element by element** (Lars, 2026-08-11), not as a single
     number: ``play_elements`` carries a chance for each of charge, closure, reservoir

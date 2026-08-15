@@ -4,7 +4,7 @@ Reproduces the summary block Lars keeps in the workbook. The tests below pin two
 things: that it *is* the workbook's arithmetic, and that its bottom line is
 ``P_well`` under every allocation scheme -- cross-checked against
 ``core.chance.p_well`` rather than against the table's own product, which is the
-defence CLAUDE.md asks for after the B4 defect.
+defence B4's defect called for.
 """
 
 import numpy as np

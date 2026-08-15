@@ -46,7 +46,7 @@ class Groups:
         share is POS_trials, not the entered POS_prospect. Use
         :meth:`risked_shares` wherever the number is shown next to a P_well
         that came from an entered chance table, or the two will disagree
-        exactly the way CLAUDE.md's "one idea" warns against.
+        exactly the way that counts the geological chance twice.
         """
         return {
             "chance_failure": float(self.chance_failure.mean()),

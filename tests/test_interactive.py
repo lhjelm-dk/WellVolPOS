@@ -1,6 +1,6 @@
 """The plotly figures: the depth rule, colour by meaning, and level rows.
 
-The non-negotiables in CLAUDE.md are backend-independent, so they have to be
+The non-negotiables are backend-independent, so they have to be
 enforced on the interactive path as well as the export path -- otherwise the
 half the user actually looks at is the unchecked half. ``test_axes.py`` covers
 the matplotlib side of the same rules.
@@ -1126,7 +1126,7 @@ def test_b7_marks_the_current_well_on_the_frontier(vsweep):
 
 def test_b8_is_a_depth_figure_and_multiplies_to_the_commercial_chance(vsweep):
     """``Pc(well) = P_well x Pmcfs(well)``, checked as arithmetic rather than
-    against the figure's own drawing -- the defence CLAUDE.md asks for after B4."""
+    against the figure's own drawing -- the defence B4's defect called for."""
     fig = I.pfig_b8_commercial_chance(vsweep, current_z=ENTRY)
     assert is_depth_axis_correct_plotly(fig)
     named = {str(t.name).split(" —")[0]: np.asarray(t.x, dtype=float) for t in fig.data if t.name}

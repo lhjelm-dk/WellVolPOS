@@ -7,7 +7,7 @@ A/B/C series came from the design plan's own grouping, which the tab order no
 longer follows.
 
 **Only the displayed prefix changes.** The function names stay ``pfig_b0_section``
-and ``fig_b0_section``, the export keys stay ``B0_section``, and CLAUDE.md still
+and ``fig_b0_section``, the export keys stay ``B0_section``, and the notes still
 argues about B6 and C2 by letter. Renaming those would churn every test, every
 docstring and every commit message that discusses a figure, for no gain: the
 letter is the figure's *identity*, the number is where it sits today. If a figure

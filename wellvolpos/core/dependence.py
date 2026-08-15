@@ -25,7 +25,7 @@ exactly where they were -- so a reader who moves it and sees `P_well` unchanged 
 seeing the model work, not a bug.
 
 It also bounds what a *second* well would have needed, which is why the four-candidate
-comparison was removed (2026-08-14, see CLAUDE.md): a curve built from an entry-only
+comparison was removed (2026-08-14): a curve built from an entry-only
 quantity is the same curve for every location, and only these two would have differed.
 
 :data:`EXIT_DEPENDENT` and :data:`ENTRY_ONLY` name which is which, so a figure can say

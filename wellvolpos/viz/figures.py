@@ -406,7 +406,7 @@ def fig_a3_chance_decomposition(
 
     Both curves are the same quantity's family -- a chance -- so both use
     the discovery/chance blue; solid for P_well, dashed for r_location. This
-    is the figure that makes the decomposition in CLAUDE.md's "one idea
+    is the figure that makes the decomposition in the "one idea
     everything rests on" impossible to misread: the two lines never touch
     except at the crest, and only P_well answers "will this well work".
 

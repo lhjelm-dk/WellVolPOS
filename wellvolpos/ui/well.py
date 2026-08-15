@@ -6,7 +6,8 @@ they ask A, B or C"*. **Lars removed it**: the cost was not the model, which is 
 but that only two of the twelve quantities a swept figure draws actually move with the
 exit, so most of the comparison was four copies of one curve and the two that did
 differ needed a curve each on six figures before the tab was honest. Do not rebuild it
-without asking -- see CLAUDE.md for the full argument.
+without asking: only two of the twelve quantities a swept figure draws move
+with the exit, so most of the comparison was four copies of one curve.
 
 **The widgets live in tab ① and are read at the top of ``app.py``.** That is the same
 arrangement the chance table uses and it works for the same reason: Streamlit runs top

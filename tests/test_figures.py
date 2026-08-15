@@ -2,7 +2,7 @@
 
 Correctness of the underlying numbers is covered by test_sweep.py,
 test_groups.py and test_classes.py; this file only checks that the figures
-honour the two non-negotiables from CLAUDE.md -- depth always on y and
+honour the two non-negotiables -- depth always on y and
 inverted, colour assigned by meaning -- since those are easy to silently
 break while iterating on a plot.
 """

@@ -214,7 +214,7 @@ def class_summary(vc: VolumeClasses, groups: Groups, *,
     # distribution that goes with the number an EMV calculation takes -- everything
     # else on the tab is conditional on an event Pc does not describe.
     #
-    # **This is not the MEFS cut CLAUDE.md forbids.** That rule is about never
+    # **This is not a MEFS cut of the existing classes.** The rule is never
     # truncating the *existing* distributions, because a volume cut-off raises the
     # unrisked mean while lowering commercial chance (Longley 2026) and baking it in
     # would put one reader's economics into everyone's volumes. Nothing here is

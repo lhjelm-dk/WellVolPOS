@@ -13,7 +13,7 @@ never execute on it:
 * **The risking branch.** ``POS_trials`` is readable only because GeoX writes
   chance failures into the export as all-zero trials. A success-case-only file
   has none, so the app must fall through to the chance table -- and that path is
-  the one CLAUDE.md's "POS provenance" section is about.
+  the one the risking-convention branch in `app.py` is about.
 
 Both generators emit **GeoX-shaped CSV**, with the same column headers and unit
 conventions as ``data/demo_prospectA_reduced.csv``, so a synthetic file goes in

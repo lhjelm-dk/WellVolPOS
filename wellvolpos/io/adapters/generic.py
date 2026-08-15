@@ -28,7 +28,7 @@ What it handles, all of it observed in real exports rather than imagined:
   GeoX-specific knowledge and belongs in that adapter.
 
 What it deliberately does not do: convert units (see
-:mod:`wellvolpos.io.units` for why), join on a trial identifier (CLAUDE.md:
+:mod:`wellvolpos.io.units` for why), join on a trial identifier (
 ``TrialNumber`` is not a reliable key in a GeoX export and there is no reason to
 trust another tool's more), or invent a column it cannot find. A file without a
 contact and a resource is refused with a list of what it did see.

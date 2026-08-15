@@ -1,6 +1,6 @@
 """Interactive (plotly) versions of A1-A6 and B0-B5.
 
-CLAUDE.md: *"Use plotly for the interactive figures and matplotlib for the
+The rule: *"Use plotly for the interactive figures and matplotlib for the
 export path, both driven from ``viz/theme.py`` so they cannot drift apart."*
 This module is the interactive half; :mod:`wellvolpos.viz.figures` is the
 export half. Neither makes styling choices of its own -- palette, panel height
@@ -2033,7 +2033,7 @@ def pfig_a8_contact_distribution(
     **Two x-axes, and this is the one place the project allows it.** Counts and
     probability share no units and no scale; the alternative is two panels, and the
     whole point is to see the mode of the distribution sitting against the steep
-    part of the cumulative. The rule that matters -- CLAUDE.md's *"no dual y-axes,
+    part of the cumulative. The rule that matters -- *"no dual y-axes,
     ever"* -- is about the *depth* axis meaning one thing, and it is untouched here:
     both series are read against the same y.
     """

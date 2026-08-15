@@ -32,7 +32,8 @@ class Headline:
     #: The chance of finding hydrocarbons at all. ``POS_prospect x r_location``.
     p_well: float
     #: The two factors, carried so the sentence can show the multiplication rather
-    #: than assert the product -- see CLAUDE.md's one idea everything rests on.
+    #: than assert the product: `P_well = POS_prospect x r_location`, two numbers
+    #: with two meanings, never multiplied into one for reporting.
     pos_prospect: float
     r_location: float
 
@@ -53,7 +54,7 @@ class Headline:
     #: The trial count, carried rather than assumed. The first draft of
     #: :meth:`sentence` wrote "of 10,000 trials" as a literal -- which is prospect A's
     #: count and a claim about a file nobody may be looking at. Same failure the two
-    #: captions in CLAUDE.md's "asserted what the data denied" section made.
+    #: two captions that quoted prospect A's numbers above prospect B once made.
     n_total: int
 
     @property

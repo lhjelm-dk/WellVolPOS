@@ -281,7 +281,7 @@ def test_proven_mean_rises_with_depth_over_the_well_supported_range(reduced, are
 
     Restricted to the range where the discovery group is not down to a handful
     of trials -- past that the curve is noise, which is exactly why the deep
-    end still needs a visual caveat (recorded in CLAUDE.md).
+    end still needs a visual caveat.
     """
     vsweep = run_volume_sweep(reduced, area_depth, POS, z_min=3400.0, z_max=3600.0, n=30, z_gap=50.0)
     ok = np.isfinite(vsweep.proven_mean)

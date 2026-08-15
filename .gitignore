@@ -45,3 +45,10 @@ reference/*.xlsx
 # Launchers for the coding agent used to build this, not part of the tool.
 /RUN_CLAUDE.bat
 /SETUP_CLAUDE_CODE.bat
+
+# The working record: why the code is the way it is, what was deliberately not built,
+# and every trap that cost time. It is written to the coding agent, names the author
+# throughout and logs the mistakes made along the way -- valuable here, not something
+# to publish. Kept local (Lars, 2026-08-15). No shipped comment points at it: the
+# references were reworded to carry their own reason instead.
+/CLAUDE.md

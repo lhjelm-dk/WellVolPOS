@@ -749,7 +749,7 @@ def invert_volume_target(
 ) -> InverseResult:
     """Given a volume to prove, where must the well go and what does it cost?
 
-    The fourth question in CLAUDE.md's list, and the source workbook's H38-H40
+    The fourth question this tool exists to answer, and the source workbook's H38-H40
     block as a curve. Inverts the proven-mean-versus-depth relationship: deeper
     entry proves more, because a deeper reservoir entry means the well's lowest
     known hydrocarbon sits further down the area-depth curve -- and costs

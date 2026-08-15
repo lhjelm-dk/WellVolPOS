@@ -130,7 +130,7 @@ def test_no_regrets_refuses_a_trial_set_with_no_successes(reduced, area_depth):
 def test_the_at_the_well_volume_reproduces_the_workbooks_own_number(reduced):
     """``Results!G8``, *"Entry depth asso. vol."* = 11.67 MMboe over 303 trials.
 
-    The third of the three things CLAUDE.md recorded the source workbook as having
+    The third of the three things the source workbook had
     that this app did not. It is the boundary case: not a discovery and not a dry
     hole, but the accumulation you get when the contact lands *on* the well.
     """

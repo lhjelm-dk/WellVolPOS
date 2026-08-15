@@ -57,7 +57,7 @@ def chart(fig, key: str, height: int | None = None):
 
     ``theme=None`` keeps ``wellvolpos.viz.theme`` authoritative. Streamlit's own
     plotly theme otherwise restyles fonts, title and template on top of ours,
-    which is exactly the drift between the two backends that CLAUDE.md's
+    which is exactly the drift between the two backends that
     "both driven from viz/theme.py" rule exists to prevent.
     """
     title = getattr(getattr(fig.layout, "title", None), "text", None)

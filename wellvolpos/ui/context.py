@@ -7,7 +7,7 @@ particular:
 ``pos`` and ``pos_source``
     Which POS is in force depends on the risking convention *and* on what the
     failure detector found in the file, and ``app.py`` resolves that branch once.
-    CLAUDE.md's "POS provenance" section exists to keep it singular; a tab that
+    The risking branch is kept singular on purpose; a tab that
     recomputed it would be the second implementation.
 
 ``vc``

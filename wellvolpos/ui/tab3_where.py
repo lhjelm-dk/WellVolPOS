@@ -5,7 +5,7 @@ made from, and tab ④ is the answer for one depth. They were the other way roun
 until 2026-08-11, which put the answer in front of the material that informs it.
 
 Behind ``st.fragment`` because the volume sweep re-splits every trial at every
-depth and bootstraps each step -- CLAUDE.md's rule is that dragging a slider must
+depth and bootstraps each step -- the rule here is that dragging a slider must
 not recompute everything. The sweeps are cached besides, so it is belt and braces.
 
 **Not built, and deliberately** (offered and declined, 2026-08-11): "use this
@@ -66,7 +66,7 @@ def _inverse_section(vsweep, ts, mefs):
     """B6, in its own fragment.
 
     The volume-to-prove slider must not re-run either sweep: at n=60 with a
-    bootstrap that is the most expensive thing on the page, and CLAUDE.md's rule
+    bootstrap that is the most expensive thing on the page, and the rule
     is that dragging a slider does not recompute everything. The sweeps are
     cached besides, so this is belt and braces.
     """

@@ -114,7 +114,7 @@ def assemble(
     ``pos`` and ``pos_source`` are passed in rather than re-derived, because the
     POS in force depends on the risking convention *and* on what the failure
     detector found, and the app already resolved that. Re-deriving it here would
-    be a second implementation of the branch CLAUDE.md's "POS provenance"
+    be a second implementation of the risking branch that `app.py`
     section exists to keep singular.
     """
     entry, exit_ = case.entry, case.exit
