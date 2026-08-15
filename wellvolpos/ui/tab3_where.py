@@ -54,7 +54,7 @@ from ..viz import (
     pfig_b12_banded_percentiles,
     row_zlim,
 )
-from .common import chart as _chart, split_caveat
+from .common import chart as _chart, figure_note, split_caveat
 from .context import Ctx
 from .numbering import ref as fig_ref
 from .loading import volume_sweep as _volume_sweep
@@ -132,7 +132,13 @@ def _inverse_section(vsweep, ts, mefs):
     # The worked sentence first, in the app's live numbers, because "how do I read
     # this" is the question B6 kept failing to answer (Lars, 2026-08-11).
     _worked = ""
+    _worked_short = ""
     if inv.achievable:
+        _worked_short = (
+            f"To prove **{target:,.0f} MMboe** the well must enter at "
+            f"**{inv.z_required:,.0f} m or deeper**, and P_well there is "
+            f"**{inv.p_well_at:.1%}**."
+        )
         _crest_p = float(vsweep.p_well[0]) if vsweep.p_well.size else float("nan")
         _worked = (
             f"**Reading it:** start at your target on the bottom axis — **{target:.0f} MMboe** — "
@@ -141,8 +147,9 @@ def _inverse_section(vsweep, ts, mefs):
             f"**{inv.p_well_at:.1%}**, against **{_crest_p:.1%}** at the shallowest location "
             f"the sweep covers.\n\n"
         )
-    st.caption(
-        _worked
+    figure_note(
+        (_worked_short or "Name a volume to prove; read off the shallowest entry that guarantees it."),
+        detail=_worked
         + "**The proven-volume relation, read backwards.** Marker colour is P_well at that depth — the "
         "cost side of the trade — because a second y-axis is not allowed and the trade is the "
         "point. The shaded band is the bootstrap interval on the proven mean, inverted through "
@@ -172,7 +179,7 @@ def _inverse_section(vsweep, ts, mefs):
         "resource held by one trial* and y is a *sampled contact* — 33.9–277.7 against "
         "2.2–482.1 MMboe here. So **where they cross means nothing**: that is not one family "
         "passing through another, it is two questions sharing borrowed axes. Read each against "
-        "its own definition and they are both useful; read one off the other and they are not."
+        "its own definition and they are both useful; read one off the other and they are not.",
     )
 
 
@@ -257,8 +264,11 @@ def _location_sweep_tab(ctx: Ctx):
         f"{fig_ref('{b9}')} (chance-weighted volume) and {fig_ref('{b8}')} "
         f"(commercial chance)."
     )
-    st.caption(
-        "**3.3 — how much would a well here *tell* you?** The expected shrinkage of the "
+    figure_note(
+        f"How much a well here narrows the answer. The best-informed depth is "
+        f"**{sweep.z[int(np.nanargmax(sweep.uncertainty_reduction))]:,.0f} m**, and it "
+        f"is rarely the best depth to drill.",
+        detail="**3.3 — how much would a well here *tell* you?** The expected shrinkage of the "
         "prospect's P10–P90 range once you know which side of the well the contact fell on. "
         "The trials split in two — deeper than the entry, or not — which is Haskett's "
         "*discrete learning*: one bit, no partial outcome, and the whole population splits "
@@ -293,11 +303,12 @@ def _location_sweep_tab(ctx: Ctx):
         "Haskett's choice of range is a convention rather than a result, so this is how "
         "much of the answer rests on it — and on both demo prospects the optimum moves "
         "only a few metres, which is the reassuring answer. If the two ever peak in "
-        "different places, the tails are doing the work and the recommendation is fragile."
+        "different places, the tails are doing the work and the recommendation is fragile.",
     )
     _chart(f_b11, key="b11", height=int(f_b11.layout.height))
-    st.caption(
-        "**3.4 — how much of your answer is the chance table?** Every thin grey curve is "
+    figure_note(
+        "Every curve is the same shape scaled by a different POS — so revising the chance table and moving the well are independent levers.",
+        detail="**3.4 — how much of your answer is the chance table?** Every thin grey curve is "
         "`P_well` against depth for a different `POS_prospect`, a decile at a time; the heavy "
         "one is the POS actually in force. Deciles rather than every percentile: neighbours "
         "would differ by a hundredth and the fan would read as a smear.\n\n"
@@ -306,7 +317,7 @@ def _location_sweep_tab(ctx: Ctx):
         "the second factor moves with depth — so revising the chance table and moving the well "
         "are *independent* levers. A reader who has seen this fan cannot believe that drilling "
         "deeper fixes a poor chance table, which is exactly the confusion the whole "
-        "`POS × r` separation exists to prevent."
+        "`POS × r` separation exists to prevent.",
     )
     st.caption(
         f"Haskett (2003) optimum: {sweep.reduction_optimum:.0f}% expected uncertainty reduction "
@@ -386,8 +397,9 @@ def _location_sweep_tab(ctx: Ctx):
     _chart(f_b1, key="b1")
     sup_disc = describe_support(vsweep.n_discovery, vsweep.z, name="discovery")
     sup_dry = describe_support(vsweep.n_dry, vsweep.z, name="dry-with-attic")
-    st.caption(
-        f"**{fig_ref('{b1}')} — what the well proves, what it leaves, and the seam between "
+    figure_note(
+        f"What this well would prove, what it would leave up-dip, and the volume right at it — each conditional on its own outcome.",
+        detail=f"**{fig_ref('{b1}')} — what the well proves, what it leaves, and the seam between "
         f"them.** Three volumes swept against entry depth at a fixed {vsweep.z_gap:.0f} m "
         f"entry-to-exit spacing, each with a bold mean and a dotted P90 / P50 / P10 in its "
         f"own colour."
@@ -402,13 +414,14 @@ def _location_sweep_tab(ctx: Ctx):
         "\n\n"
         f"Both conditional groups thin at opposite ends — the discovery group fails down-dip, "
         f"the dry-with-attic group up-dip where almost nothing is dry. {sup_disc.message()} "
-        f"{sup_dry.message()}"
+        f"{sup_dry.message()}",
     )
 
     st.divider()
     _chart(f_b2, key="b2")
-    st.caption(
-        f"**{fig_ref('{b2}')} — chance against regret.** `P_well` falls down-dip while the "
+    figure_note(
+        f"Chance falls down-dip while the up-dip volume you would regret grows. Where they cross is stated below.",
+        detail=f"**{fig_ref('{b2}')} — chance against regret.** `P_well` falls down-dip while the "
         f"chance a dry hole leaves something material up-dip rises, and the dotted rule marks "
         f"where those two particular curves meet. **It is not a risked comparison**: `P_well` "
         f"is unconditional and the regret curve is conditional on a dry *and* charged outcome, "
@@ -420,7 +433,7 @@ def _location_sweep_tab(ctx: Ctx):
         f"correctly counts as failing the test. That is what makes it comparable with the "
         f"proven curve beside it, which is conditional on a discovery too. The other reading "
         f"follows by division: `P(> MEFS | HC to exit) = P(> MEFS | discovery) ÷ "
-        f"P(HC to exit | discovery)`."
+        f"P(HC to exit | discovery)`.",
     )
 
     st.divider()
@@ -508,18 +521,20 @@ def _location_sweep_tab(ctx: Ctx):
     _f_b9 = pfig_b9_chance_weighted(vsweep, current_z=entry, zlim=zrow_sweep,
                                     height=TALL_PANEL_HEIGHT)
     _chart(_f_b9, key="b9")
-    st.caption(
-        f"**{fig_ref('{b9}')} — the targeting tool.** `P_well × mean volume`, swept: a falling curve times a "
+    figure_note(
+        f"P_well times mean volume. The peak is the most resource for the least risk, and it is neither the shallowest nor the deepest location.",
+        detail=f"**{fig_ref('{b9}')} — the targeting tool.** `P_well × mean volume`, swept: a falling curve times a "
         "rising one, so it peaks somewhere in between and that depth maximises the expectation. "
         "It is drawn for the proven volume and for the whole well-associated volume, which peak "
         "in different places — the gap between those two stars is the exit depth's doing.\n\n"
         "**An expected value describes no outcome that can happen.** The well finds something "
         "near the success-case mean or it finds nothing; it never finds the chance-weighted "
         f"number. Use {fig_ref('{b9}')} to *rank* locations and {fig_ref('{b1}')} or "
-        f"{fig_ref('{b7}')} to say how big the prize is."
+        f"{fig_ref('{b7}')} to say how big the prize is.",
     )
-    st.caption(
-        f"**{fig_ref('{b7}')}** is the "
+    figure_note(
+        "The trade-off frontier: moving down-dip buys volume with chance. Up and to the right is better, and unavailable.",
+        detail=f"**{fig_ref('{b7}')}** is the "
         "most direct statement of what this tool is about: moving the well down-dip **buys volume "
         "with chance**. Read it as an efficient frontier — up and to the right is better and "
         "unavailable — with the depth labels giving the rate of exchange in metres. Neither axis is "
@@ -531,7 +546,7 @@ def _location_sweep_tab(ctx: Ctx):
         "Their product `Pc(well) = P_well × Pmcfs(well)` is **unconditional**: the chance of a "
         "commercial discovery, full stop. A rising curve times a falling one usually peaks in "
         "between, and that starred peak is where the well goes on commercial grounds — `Pc(well)` "
-        "being the number Rose says to carry into an EMV."
+        "being the number Rose says to carry into an EMV.",
     )
 
     _inverse_section(vsweep, ts, mefs)
@@ -631,8 +646,9 @@ def _band_section(ctx: Ctx):
                    "and are not drawn.")
     peel = _peel_note(bp) if show_proven else ""
     ladder = ", ".join("P" + str(q) for q in bp.percentiles)
-    st.caption(
-        f"**{fig_ref('{b12}')} — the prospect cut by where the contact lands.** Schneider's "
+    figure_note(
+        "The prospect split by contact-depth band, on log-probit axes — a lognormal is a straight line here. Dotted is the part this well would prove.",
+        detail=f"**{fig_ref('{b12}')} — the prospect cut by where the contact lands.** Schneider's "
         "Figure 9 with the parameterisation changed: he draws one distribution per "
         "*productive-area increment*, this draws one per **contact-depth interval**. Area is a "
         "deterministic function of contact depth here, so the two band the same trials — but a "
@@ -660,7 +676,7 @@ def _band_section(ctx: Ctx):
         "beyond it, gated once on the thinnest series so that every band reports the same points."
         f"{dropped} The MEFS rule is a reference line: each band's crossing of it *is* "
         "`P(resource > MEFS | contact in that band)`, read straight off the probability axis. It "
-        "never truncates a distribution."
+        "never truncates a distribution.",
     )
 
 

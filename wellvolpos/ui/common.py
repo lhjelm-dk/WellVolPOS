@@ -195,3 +195,24 @@ def track_deltas(slot: str, fingerprint: str, well: tuple, values: dict,
         st.session_state[f"_delta_last_{slot}"] = out
         return out
     return st.session_state.get(f"_delta_last_{slot}", {})
+
+
+def figure_note(headline: str, detail: str = "", *,
+                label: str = "How to read this") -> None:
+    """One line under a figure, with the argument folded away behind it.
+
+    Tab (3) carried 2,082 words of caption under twelve figures -- around seventeen
+    minutes of reading to choose a depth, which meant it got skimmed, which meant the
+    one caption that would have changed the answer got skimmed too. The writing was
+    not the problem; the volume was.
+
+    So the caption becomes two tiers. ``headline`` is one or two sentences carrying a
+    live number and nothing else -- no restating the axis labels, no throat-clearing.
+    ``detail`` is what was there before, one click away for the reader who wants it.
+
+    Nothing is deleted by this. It moves.
+    """
+    st.caption(headline)
+    if detail:
+        with st.expander(label):
+            st.markdown(detail)
