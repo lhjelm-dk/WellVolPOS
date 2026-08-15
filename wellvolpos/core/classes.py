@@ -171,14 +171,15 @@ def class_summary(vc: VolumeClasses, groups: Groups, *,
     def stat(v: np.ndarray, mask: np.ndarray) -> dict[str, float]:
         x = v[mask]
         if x.size == 0:
-            return {k: float("nan") for k in ("n", "p90", "p50", "mean", "p10")}
-        return {
-            "n": float(x.size),
-            "p90": float(np.percentile(x, 10)),
-            "p50": float(np.percentile(x, 50)),
-            "mean": float(x.mean()),
-            "p10": float(np.percentile(x, 90)),
-        }
+            return {k: float("nan")
+                    for k in ("n", "p99", "p90", "p50", "mean", "p10", "p1")}
+        # One call, six outputs, petroleum orientation throughout: P99 is the low
+        # case and therefore the 1st percentile of the values. Deriving them
+        # separately is how two of them come to disagree.
+        p99, p90, p50, p10, p1 = (float(v) for v in
+                                  np.percentile(x, [1, 10, 50, 90, 99]))
+        return {"n": float(x.size), "p99": p99, "p90": p90, "p50": p50,
+                "mean": float(x.mean()), "p10": p10, "p1": p1}
 
     # **Two possible entries, and the difference is which event they are conditional
     # on** (Lars, 2026-08-14).

@@ -35,7 +35,8 @@ from ..viz import (
 from ..core import MEFS_RUNGS, c2_crossings, headline as _headline, mefs_readout
 from ..core.rose import AT_WELL_WINDOW_M, commercial_chance
 from ..viz.theme import reference_label
-from .common import C2_HEIGHT, chart as _chart, split_caveat
+from .common import (C2_HEIGHT, chart as _chart, kpi_ladder, split_caveat,
+                     track_deltas)
 from .context import Ctx
 from .numbering import ref as fig_ref
 
@@ -72,28 +73,50 @@ def render(ctx: Ctx) -> None:
     st.subheader(f"At {entry:,.0f}–{exit_:,.0f} m TVDSS")
     st.markdown(_head.sentence())
 
-    _h = st.columns(5)
-    _h[0].metric("P well", f"{_head.p_well:.1%}",
-                 help="The chance THIS well finds hydrocarbons. POS_prospect x "
-                      "r_location, decomposed below.")
-    _h[1].metric("Pc — commercial",
+    # **What the last move did** (Lars, 2026-08-15). The tool's subject is
+    # sensitivity to one depth and it re-rendered everything with no sign of what
+    # moved. The comparison is dropped whenever the file, the chance table or the
+    # threshold changes -- see ui.common.track_deltas.
+    _d = track_deltas(
+        "headline",
+        f"{ctx.dataset}|{chance.pos_prospect:.6f}|{mefs:.4f}|{ref.value}",
+        (entry, exit_),
+        {k: v for k, v in (("p_well", _head.p_well * 100.0),
+                           ("pc", (_head.pc_well or float("nan")) * 100.0),
+                           ("proven", _head.proven_mean or float("nan")),
+                           ("attic", _head.attic_mean or float("nan")))},
+        fmt="{:+.1f}",
+    )
+
+    # **P_well is not in this strip.** It is bold in the sentence above and it is the
+    # product of the decomposition a few lines below, where its delta is shown. Three
+    # copies on one tab is what the "P_well appears once" note already fixed.
+    _h = st.columns(4)
+    _h[0].metric("Pc — commercial",
                  "—" if _head.pc_well is None else f"{_head.pc_well:.1%}",
+                 delta=_d.get("pc"),
                  help="Rose's commercial chance: the chance of finding more than "
                       "MEFS. Always at or below P well.")
-    _h[2].metric("Proven mean",
+    _h[1].metric("Proven mean",
                  "—" if _head.proven_mean is None else f"{_head.proven_mean:,.1f}",
+                 delta=_d.get("proven"),
                  help="MMboe. Conditional on a discovery — the headline volume this "
                       "well would establish.")
-    _h[3].metric("Attic mean",
+    _h[2].metric("Attic mean",
                  "—" if _head.attic_mean is None else f"{_head.attic_mean:,.1f}",
+                 delta=_d.get("attic"),
                  help="MMboe. Conditional on a CHARGED DRY HOLE — what is left "
                       "up-dip if this well misses. A different outcome from the "
                       "three beside it.")
-    _h[4].metric("Reservoir penetrated", f"{_head.gap:,.0f} m",
+    _h[3].metric("Reservoir penetrated", f"{_head.gap:,.0f} m",
                  help="Entry to exit. Tab ① holds the sliders; tab ③ sweeps every "
                       "entry depth and shows what each one buys.")
     st.caption(
-        "**Two chances and two volumes, and they are not on one footing.** P well and "
+        ("**Deltas are against the well before the last move**, in points of chance "
+         "and MMboe. They clear when the trial file, the chance table or MEFS "
+         "changes — a difference measured across those is not a sensitivity.\n\n"
+         if _d else "")
+        + "**Two chances and two volumes, and they are not on one footing.** P well and "
         "Pc are unconditional — they already carry the chance of the outcome. The two "
         "volumes are success-case means, each conditional on a *different* event: "
         "proven on a discovery, attic on a charged dry hole. Multiplying a volume by "
@@ -116,7 +139,7 @@ def render(ctx: Ctx) -> None:
     ch[1].metric("× r location", f"{chance.r_location:.1%}",
                  help="P(contact deeper than the well | hydrocarbons present). The only "
                       "quantity the well's position controls.")
-    ch[2].metric("= P well", f"{chance.p_well:.1%}",
+    ch[2].metric("= P well", f"{chance.p_well:.1%}", delta=_d.get("p_well"),
                  help="The chance THIS well finds hydrocarbons. Never quote it as the "
                       "prospect's chance, and never quote the prospect's as this.")
     ch[3].metric("Reference contour", reference_label(ref).replace("-referenced", ""),
@@ -203,6 +226,21 @@ def render(ctx: Ctx) -> None:
                  "**It also sets the at-the-well curve on 3.5**, which used to keep the "
                  "2 m default no matter what was typed here.",
         )
+        # The well-associated volume in the **same shape as tab ②'s prospect row**,
+        # so the two can be read one above the other. That comparison -- what the
+        # prospect holds against what this well would find -- is the one the tool
+        # exists to make, and it was previously two different layouts two tabs apart.
+        st.markdown("**Well associated | discovery** — the accumulation this well "
+                    "would find, in the same shape as the prospect row on tab ②")
+        kpi_ladder(
+            chance_label="P well", chance=chance.p_well,
+            values=cs["discovery"],
+            chance_help="The chance THIS well finds hydrocarbons. Unconditional; the "
+                        "six beside it are conditional on it happening.",
+            value_help="MMboe, success case — conditional on a discovery.",
+        )
+        st.divider()
+
         _atw, _atw_n = at_the_well_volume(ts, entry, window_m=float(_atw_win))
         k = st.columns(4)
         k[0].metric("Proven mean — headline KPI", f"{cs['proven']['mean']:.2f}",

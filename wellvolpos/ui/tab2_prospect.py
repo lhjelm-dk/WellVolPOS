@@ -41,7 +41,7 @@ from .conventions import (
     PLAY_DEFAULTS,
     PLAY_HELP,
 )
-from .common import chart as _chart, element_chip, split_caveat
+from .common import chart as _chart, kpi_ladder, element_chip, split_caveat
 from .context import Ctx
 from .numbering import ref as fig_ref
 
@@ -159,12 +159,16 @@ def render(ctx: Ctx) -> None:
     _succ = res_all[res_all > 0.0]
     p99 = float(np.percentile(_succ, 1.0)) if _succ.size else float("nan")
     p1 = float(np.percentile(_succ, 99.0)) if _succ.size else float("nan")
-    c = st.columns(6)
-    for col, label, value in zip(
-        c, ("P99", "P90", "P50", "Pmean", "P10", "P1"),
-        (p99, s["p90"], s["p50"], s["mean"], s["p10"], p1),
-    ):
-        col.metric(label, f"{value:.2f}")
+    # One shape, shared with tab ④'s well-associated row, so the prospect and the
+    # well can be read one above the other -- see ui.common.kpi_ladder.
+    kpi_ladder(
+        chance_label="POS prospect", chance=chance.pos_prospect,
+        values={"p99": p99, "p90": s["p90"], "p50": s["p50"],
+                "mean": s["mean"], "p10": s["p10"], "p1": p1},
+        chance_help="The chance the PROSPECT holds hydrocarbons, before any well is "
+                    "placed. Unconditional; the six beside it are not.",
+        value_help="MMboe, success case — conditional on the prospect working.",
+    )
     _n_zero = int(np.count_nonzero(res_all <= 0.0))
     _f_zero = _n_zero / res_all.size if res_all.size else 0.0
     _risked = s["mean"] * chance.pos_prospect

@@ -125,3 +125,73 @@ def element_chip(key: str) -> str:
         f'font-size:0.82rem;font-weight:600;color:#1b1b1b;">'
         f'{ELEMENT_LABELS[key]}</div>'
     )
+
+
+# ------------------------------------------------------------------ KPI ladder
+#: The rungs, in reading order. ``Pmean`` sits between P50 and P10 because that is
+#: where a right-skewed distribution puts it, and it is labelled so it cannot be read
+#: as a percentile.
+LADDER = ("p99", "p90", "p50", "mean", "p10", "p1")
+LADDER_LABELS = {"p99": "P99", "p90": "P90", "p50": "P50",
+                 "mean": "Pmean", "p10": "P10", "p1": "P1"}
+
+
+def kpi_ladder(*, chance_label: str, chance: float, values: dict,
+               chance_help: str = "", value_help: str = "",
+               deltas: dict | None = None) -> None:
+    """One chance and one percentile ladder, in one shape, wherever it appears.
+
+    Lars, 2026-08-15, from the design review: tab ② and tab ④ reported comparable
+    quantities in different layouts, so the eye could not carry one across to the
+    other -- which is the comparison the whole tool exists to make. Now the prospect's
+    row and the well's row are the same row twice and can be read one above the other.
+
+    **Chance first, then the volumes**, because that is the order the argument runs in
+    and because it puts the one unconditional number where it cannot be mistaken for
+    one of the six conditional ones beside it.
+    """
+    cols = st.columns(len(LADDER) + 1)
+    cols[0].metric(chance_label, f"{chance:.1%}", help=chance_help or None,
+                   delta=(deltas or {}).get("chance"))
+    for col, key in zip(cols[1:], LADDER):
+        v = values.get(key, float("nan"))
+        col.metric(LADDER_LABELS[key], "—" if v != v else f"{v:,.2f}",
+                   help=value_help or None, delta=(deltas or {}).get(key))
+
+
+def track_deltas(slot: str, fingerprint: str, well: tuple, values: dict,
+                 fmt: str = "{:+.2f}") -> dict:
+    """What each number did when the well last moved.
+
+    The tool's whole subject is sensitivity to one depth, and moving that depth
+    re-rendered everything with no indication of what moved. This holds the values
+    from before the last change and returns the differences.
+
+    **The comparison is dropped when the fingerprint changes.** A delta measured
+    across a different trial file, a different chance table or a different threshold
+    is not a sensitivity, it is two unrelated numbers subtracted -- and it would look
+    exactly like a real one. ``fingerprint`` is whatever the caller decides makes a
+    comparison meaningful.
+
+    **It persists while the well is still.** Streamlit reruns on every widget touch,
+    so comparing against the immediately previous run would show zero for everything
+    the moment the user clicked anything else. The stored snapshot only advances when
+    the well actually moves, so the delta on screen answers "what did that move do"
+    until the next one.
+    """
+    prev = st.session_state.get(f"_delta_prev_{slot}")
+    if prev is None or prev.get("fp") != fingerprint:
+        st.session_state[f"_delta_prev_{slot}"] = {
+            "fp": fingerprint, "well": well, "vals": dict(values)}
+        st.session_state.pop(f"_delta_last_{slot}", None)
+        return {}
+    if prev.get("well") != well:
+        out = {k: fmt.format(values[k] - prev["vals"][k])
+               for k in values
+               if k in prev["vals"] and values[k] == values[k]
+               and prev["vals"][k] == prev["vals"][k]}
+        st.session_state[f"_delta_prev_{slot}"] = {
+            "fp": fingerprint, "well": well, "vals": dict(values)}
+        st.session_state[f"_delta_last_{slot}"] = out
+        return out
+    return st.session_state.get(f"_delta_last_{slot}", {})
