@@ -37,6 +37,8 @@ screenshot; a cover page and a `Case` sheet cannot be cropped out of a file.
 
 from __future__ import annotations
 
+import numpy as np
+
 import io
 import zipfile
 from dataclasses import dataclass, field
@@ -394,6 +396,15 @@ def _draw_export_figures(b: Bundle, *, dark: bool = False) -> dict[str, object]:
         figs["C2_exceedance"] = F.fig_c2_exceedance(
             b.ts, b.groups, b.vc, pos_prospect=b.pos, p_well=ch.p_well,
             mefs=c.mefs, pc_well=_cc.pc_well, dark=dark)[0]
+        # The wedge is schematic, but it is drawn to *this* prospect's recovered
+        # thickness and contact, so it belongs in the bundle rather than in the docs.
+        _thick = thickness_from_pay(b.ts, b.ad).thickness
+        _t50 = float(np.nanpercentile(_thick[np.isfinite(_thick) & (_thick > 0)], 50))             if np.isfinite(_thick).any() else 50.0
+        figs["C4_wedge"] = F.fig_c4_wedge(
+            thickness=_t50, z_contact=float(np.nanmedian(
+                b.ts.col("contact")[b.ts.col("resource") > 0])),
+            z_entry=c.entry, z_exit=c.exit,
+            apex=float(b.ad.apex_estimate()), dark=dark)[0]
         figs["C3_mefs_bars"] = F.fig_c3_mefs_bars(
             b.ts, b.groups, b.vc, pos_prospect=b.pos, p_well=ch.p_well,
             mefs=c.mefs, dark=dark)[0]

@@ -214,7 +214,45 @@ at the crest, thinning down-dip, zero where the top surface meets the contact. S
 area-averaged gross pay is always **less** than the reservoir thickness *and varies with the
 contact depth*. It is not a rock property, which is why a base-reservoir surface cannot be
 drawn by shifting A(z) down by pay.
+        """
+    )
+    # **The wedge, drawn** (Lars, 2026-08-15, design review). This geometry is what
+    # core/reservoir.py inverts and what the whole proven / unproven split rests on,
+    # and until now the reader was asked to accept it in prose. One home, here: the
+    # figure is a schematic, and tab ④'s split caption points at it rather than
+    # carrying a second copy that could drift.
+    if ad is not None:
+        # `thickness_from_pay` is imported at module level. Re-importing it here
+        # would make it a *local* name for the whole function and break the earlier
+        # use above -- which is exactly what happened first time.
+        import numpy as _np
 
+        from ..ui.common import chart as _chart
+        from ..viz import pfig_c4_wedge
+
+        _t = thickness_from_pay(ts, ad).thickness
+        _t = _t[_np.isfinite(_t) & (_t > 0)]
+        _succ = ts.col("contact")[ts.col("resource") > 0]
+        if _t.size and _succ.size:
+            _chart(
+                pfig_c4_wedge(
+                    thickness=float(_np.percentile(_t, 50)),
+                    z_contact=float(_np.median(_succ)),
+                    z_entry=entry, z_exit=exit_,
+                    apex=float(ad.apex_estimate()),
+                ),
+                key="c4",
+            )
+            st.caption(
+                "**Schematic — the dip and the width are drawn for legibility.** What "
+                "is real is the relationship, and the two numbers taken from these "
+                "trials: the recovered thickness and a median contact. The gap "
+                "between the two bars on the right is the whole point — pay averaged "
+                "over the charged area is less than the thickness, because the taper "
+                "is part of the average."
+            )
+    st.markdown(
+        """
 It can be recovered, though. The hydrocarbon-bearing gross rock volume is
         """
     )

@@ -1999,3 +1999,61 @@ def fig_c3_mefs_bars(
             transform=ax.transAxes, fontsize=7.5, color=p["text_secondary"])
     fig.tight_layout()
     return fig, ax
+
+
+def fig_c4_wedge(
+    *, thickness: float, z_contact: float, z_entry: float | None = None,
+    z_exit: float | None = None, apex: float | None = None, dark: bool = False,
+):
+    """C4, for the export path. Twin of ``pfig_c4_wedge``.
+
+    The geometry the proven / unproven split rests on, in one picture: a layer of
+    constant true vertical thickness, a flat contact, and therefore a charged interval
+    that stands at full thickness up-dip and pinches to zero where the top surface
+    meets the contact. See the plotly twin for why it is schematic.
+    """
+    p = palette(dark)
+    T = float(thickness)
+    zc = float(z_contact)
+    top_crest = float(apex) if apex is not None else zc - 3.0 * T
+    x = np.linspace(0.0, 1.0, 400)
+    z_top = top_crest + (zc - top_crest) * 1.35 * x
+    z_base = z_top + T
+    z_hc_base = np.minimum(z_base, zc)
+    charged = np.clip(z_hc_base - z_top, 0.0, None)
+    live = charged > 0
+
+    fig, ax = new_figure(figsize=(7.2, 4.4), dark=dark)
+    ax.fill_between(x, z_top, z_base, color=colour("muted", dark), alpha=0.18,
+                    lw=1.0, edgecolor=p["muted"], label="Reservoir layer")
+    ax.fill_between(x[live], z_top[live], z_hc_base[live],
+                    color=colour("well_associated", dark), alpha=0.55, lw=1.4,
+                    edgecolor=colour("well_associated", dark),
+                    label="Charged interval — the wedge")
+    ax.axhline(zc, color=colour("prospect", dark), ls="--", lw=1.2)
+    ax.text(0.01, zc, "contact", va="bottom", fontsize=8,
+            color=colour("prospect", dark))
+
+    mean_pay = float(charged[live].mean()) if live.any() else 0.0
+    x_bar = float(x[live].max()) if live.any() else 1.0
+    ax.plot([x_bar * 1.02] * 2, [zc, zc - T], color=colour("muted", dark), lw=4,
+            label=f"Reservoir thickness T = {T:,.0f} m")
+    ax.plot([x_bar * 1.02] * 2, [zc, zc - mean_pay], color=colour("tested", dark),
+            lw=4, ls=":", label=f"Area-averaged pay = {mean_pay:,.0f} m")
+
+    if z_entry is not None:
+        i = int(np.argmin(np.abs(z_top - float(z_entry))))
+        bottom = float(z_exit) if z_exit is not None else float(z_entry) + T
+        ax.plot([x[i], x[i]], [top_crest, bottom], color=p["well"], lw=2.5,
+                label="The well")
+
+    ax.set_xlim(-0.02, 1.12)
+    ax.set_xticks([])
+    ax.set_xlabel("Distance down dip (schematic)")
+    depth_axis(ax, (float(min(z_top.min(), zc - T)) - 0.1 * T,
+                    float(max(z_base.max(), zc)) + 0.1 * T))
+    ax.set_title("C4 · The wedge — why area-averaged pay is less than the "
+                 f"reservoir thickness ({T:,.0f} m)")
+    ax.legend(fontsize=7.5, loc="lower left", frameon=False)
+    fig.tight_layout()
+    return fig, ax

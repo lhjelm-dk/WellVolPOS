@@ -6,8 +6,13 @@ touches a distribution, so these tests pin the two things that keeps honest: the
 existing classes stay untruncated, and the new one's chance really is ``Pc``.
 """
 
+import matplotlib
 import numpy as np
 import pytest
+
+# Agg, as in every other test that draws: the default backend tries Tk and
+# fails on a machine with no display.
+matplotlib.use("Agg")
 
 from wellvolpos.core import (
     AreaDepth,
@@ -153,3 +158,63 @@ def test_an_unknown_share_scale_raises(reduced):
     sweep = run_sweep(reduced, POS, z_gap=50.0)
     with pytest.raises(ValueError, match="share_scale"):
         I.pfig_a2_outcome_tree(sweep, share_scale="probit")
+
+
+# ------------------------------------------------------------------- the wedge
+def test_the_wedge_stands_at_full_thickness_up_dip_and_pinches_to_zero():
+    """C4 draws the geometry ``core/reservoir.py`` inverts, and it has to be right.
+
+    A schematic can still be wrong. The two claims the figure makes -- full reservoir
+    thickness up-dip, zero where the top surface meets the contact -- are exactly the
+    ones the whole proven / unproven split rests on, so they are measured off the
+    drawn polygon rather than assumed from the code that drew it.
+    """
+    import numpy as np
+    import wellvolpos.viz.interactive as I
+
+    T, zc = 50.0, 2255.0
+    fig = I.pfig_c4_wedge(thickness=T, z_contact=zc, z_entry=2205.0, z_exit=2255.0,
+                          apex=2064.0)
+    wedge = next(t for t in fig.data if "wedge" in (t.name or ""))
+    thick = np.asarray(wedge.customdata, dtype=float)
+
+    assert np.nanmax(thick) == pytest.approx(T, abs=1e-6), "not full thickness up-dip"
+    assert np.nanmin(thick) >= 0.0
+    assert np.nanmin(thick) < 0.02 * T, "the wedge never pinches out"
+
+    # Area-averaged pay is strictly less than T, which is the figure's whole point.
+    bars = {t.name: t for t in fig.data if t.name and " = " in t.name}
+    pay = next(v for k, v in bars.items() if "Area-averaged" in k)
+    tee = next(v for k, v in bars.items() if "thickness" in k)
+    pay_m = abs(float(pay.y[0]) - float(pay.y[1]))
+    t_m = abs(float(tee.y[0]) - float(tee.y[1]))
+    assert t_m == pytest.approx(T, abs=1e-6)
+    assert 0.0 < pay_m < t_m, (pay_m, t_m)
+
+
+def test_the_wedge_obeys_the_depth_rule():
+    """Depth on y, increasing downward — it is a section, so the rule applies."""
+    import wellvolpos.viz.interactive as I
+
+    fig = I.pfig_c4_wedge(thickness=50.0, z_contact=2255.0, apex=2064.0)
+    lo, hi = fig.layout.yaxis.range
+    assert lo > hi, "depth must increase downward"
+    assert "TVDSS" in fig.layout.yaxis.title.text
+
+
+def test_the_wedge_has_an_export_twin_that_draws_the_same_thing():
+    import numpy as np
+    import wellvolpos.viz.figures as F
+    import wellvolpos.viz.interactive as I
+
+    kw = dict(thickness=50.0, z_contact=2255.0, z_entry=2205.0, z_exit=2255.0,
+              apex=2064.0)
+    _fig, ax = F.fig_c4_wedge(**kw)
+    labels = " | ".join(str(t.get_label()) for t in ax.lines + list(ax.collections))
+    assert "Area-averaged pay" in labels and "Reservoir thickness" in labels, labels
+    lo, hi = ax.get_ylim()
+    assert lo > hi
+    # Both backends report the same averaged pay, to the metre.
+    p_int = next(t for t in I.pfig_c4_wedge(**kw).data
+                 if t.name and "Area-averaged" in t.name)
+    assert f"{abs(float(p_int.y[0]) - float(p_int.y[1])):,.0f} m" in labels

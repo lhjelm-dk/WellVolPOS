@@ -3224,3 +3224,117 @@ def pfig_c3_mefs_bars(
     widest = max((len(c.short) for c in crossings), default=0)
     fig.update_layout(margin=dict(l=int(12 + 7.0 * widest)), showlegend=False)
     return fig
+
+
+# ------------------------------------------------------------------- C4
+def pfig_c4_wedge(
+    *, thickness: float, z_contact: float, z_entry: float | None = None,
+    z_exit: float | None = None, apex: float | None = None,
+    dark: bool = False, height: int | None = PANEL_HEIGHT,
+):
+    """C4 -- the wedge: why area-averaged pay is less than reservoir thickness.
+
+    Lars, 2026-08-15, design review: ``core/reservoir.py`` inverts this geometry,
+    validates it against GeoX to 0.01 m, and the whole proven / unproven split rests on
+    it -- and nothing drew it. The reader was asked to accept *"the charged interval
+    stands at full reservoir thickness up-dip and pinches out to zero at the contact"*
+    in prose.
+
+    **Schematic, not a data plot.** The dip, the horizontal extent and the crest are
+    drawn for legibility; what is real is the *relationship*, plus the two numbers that
+    come from the trials -- the recovered true vertical thickness ``T`` and the contact
+    depth. A section drawn to the closure's real dip would be a hairline at this aspect
+    ratio and would teach nothing.
+
+    The geometry, which is all of :mod:`wellvolpos.core.reservoir` in one picture:
+
+    * the reservoir is a layer of constant **true vertical** thickness ``T``, dipping;
+    * the contact is **flat**;
+    * so the charged interval is ``min(T, z_contact - z_top)`` at every map point --
+      full thickness up-dip, tapering once the top surface drops below the contact, and
+      zero where the top surface meets it.
+
+    Two consequences a reader can then see rather than take on trust:
+
+    1. **Area-averaged pay is always less than ``T``**, because the taper is part of the
+       average. The two are drawn as separate rules so the gap is visible.
+    2. **Volume sits further up-dip than a per-area rule allows** -- which is why the
+       apportionment moved from ``A(lkh)/A(contact)`` to this wedge on 2026-08-11, and
+       why that moved the proven mean by about six points of the accumulation.
+
+    Depth on y, inverted, as every section here: this is spatially congruent with the
+    subsurface, so the wedge sits where the wedge sits.
+    """
+    p = palette(dark)
+    T = float(thickness)
+    zc = float(z_contact)
+    top_crest = float(apex) if apex is not None else zc - 3.0 * T
+    # x is arbitrary distance along dip. The top surface runs linearly from the crest
+    # to well past the contact, so the pinch-out is inside the frame with room after it.
+    x = np.linspace(0.0, 1.0, 400)
+    z_top = top_crest + (zc - top_crest) * 1.35 * x
+    z_base = z_top + T
+    # The charged interval: full thickness until the base drops below the contact,
+    # then tapering, then nothing.
+    z_hc_base = np.minimum(z_base, zc)
+    charged = np.clip(z_hc_base - z_top, 0.0, None)
+
+    fig = go.Figure()
+    # The reservoir layer, as context behind the charged part.
+    fig.add_scatter(
+        x=np.concatenate([x, x[::-1]]),
+        y=np.concatenate([z_top, z_base[::-1]]),
+        fill="toself", fillcolor=rgba("muted", 0.18, dark), mode="lines",
+        line=dict(color=p["muted"], width=1.0), name="Reservoir layer",
+        hoverinfo="skip",
+    )
+    # The wedge itself.
+    live = charged > 0
+    fig.add_scatter(
+        x=np.concatenate([x[live], x[live][::-1]]),
+        y=np.concatenate([z_top[live], z_hc_base[live][::-1]]),
+        fill="toself", fillcolor=rgba("well_associated", 0.55, dark), mode="lines",
+        line=dict(color=colour("well_associated", dark), width=1.4),
+        name="Charged interval — the wedge",
+        hovertemplate="charged thickness %{customdata:.1f} m<extra></extra>",
+        customdata=np.concatenate([charged[live], charged[live][::-1]]),
+    )
+    _hline(fig, zc, colour("prospect", dark), "dash", "contact")
+
+    # **Area-averaged pay against true thickness.** The whole point of the figure, so
+    # it is drawn rather than asserted: the mean charged thickness over the charged
+    # extent, against T.
+    mean_pay = float(charged[live].mean()) if live.any() else 0.0
+    x_bar = float(x[live].max()) if live.any() else 1.0
+    for value, name, role, dash in ((T, "Reservoir thickness T", "muted", "solid"),
+                                    (mean_pay, "Area-averaged pay", "tested", "dot")):
+        fig.add_scatter(
+            x=[x_bar * 1.02, x_bar * 1.02], y=[zc, zc - value], mode="lines",
+            line=dict(color=colour(role, dark), width=4 if dash == "solid" else 4,
+                      dash=dash),
+            name=f"{name} = {value:,.0f} m",
+            hovertemplate=f"{name} {value:,.1f} m<extra></extra>",
+        )
+
+    if z_entry is not None:
+        # The well, drawn where it actually cuts the layer rather than at the edge.
+        i = int(np.argmin(np.abs(z_top - float(z_entry))))
+        bottom = float(z_exit) if z_exit is not None else float(z_entry) + T
+        fig.add_scatter(
+            x=[x[i], x[i]], y=[top_crest, bottom], mode="lines",
+            line=dict(color=p["well"], width=3),
+            name="The well", hovertemplate="the well<extra></extra>",
+        )
+
+    fig.update_layout(
+        title=("C4 · The wedge — why area-averaged pay is less than the reservoir "
+               f"thickness ({T:,.0f} m)"
+               "<br><sub>schematic: the dip and the width are drawn for legibility, "
+               "the relationship is not</sub>"),
+        xaxis_title="Distance down dip (schematic)",
+    )
+    fig.update_xaxes(showticklabels=False, range=[-0.02, 1.12])
+    apply_plotly(fig, dark, height)
+    depth_axis_plotly(fig, (float(min(z_top.min(), zc - T)) - 0.1 * T,
+                            float(max(z_base.max(), zc)) + 0.1 * T))
+    return fig
