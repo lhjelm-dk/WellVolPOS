@@ -318,6 +318,16 @@ still does, on every figure and in the exported artefacts.
     )
 
     st.divider()
+    st.markdown("### Two sequential colour ramps, and what each one means")
+    st.markdown(
+        "**Blues counts trials. Inferno shows chance.** 2.2's grid and any density "
+        "shading run light-to-dark in one blue hue; 3.11's markers run inferno. They "
+        "encode different *kinds* of thing and nothing said so before now. The concept "
+        "palette is separate from both again: it names *which volume*, never how much "
+        "or how likely."
+    )
+
+    st.divider()
     st.markdown("### Two different minimum volumes")
     st.warning(
         "**MCFS / MEFS** — minimum commercial (Rose) or economic (this app's input) field "
@@ -370,7 +380,7 @@ ladder and the commercial-chance strip above it are the same arithmetic read two
     )
     st.markdown(
         """
-The app currently gives both the same colour, which is a known simplification.
+**Only one of them is ever drawn.** MEFS is a line on five figures and carries the palette's red. The assessment minimum is a *mapping* — it reports the contact depth, area and volume percentile a minimum column height corresponds to, and filters nothing — so it has no colour to collide with. If it is ever plotted it should take a line style rather than an eighth hue: the palette is already at the limit of what stays separable under colour-vision deficiency.
 
 **MEFS is drawn as a reference line and never applied to the distributions.** That is a
 decision, not an oversight: per Longley (2026), a MEFS cut *raises* the unrisked mean while

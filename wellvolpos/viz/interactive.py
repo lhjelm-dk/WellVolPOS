@@ -69,6 +69,7 @@ from .figures import (
     exceedance_marks,
 )
 from .theme import (
+    crosshair,
     FAN_POS_LEVELS,
     BAND_PANEL_HEIGHT,
     VOLUME_SCALES,
@@ -895,6 +896,7 @@ def pfig_a5_exceedance(
     fig.update_xaxes(rangemode="tozero")
     fig.update_yaxes(range=[0, 105])
     apply_plotly(fig, dark, height)
+    crosshair(fig, dark)
     return fig
 
 
@@ -2567,6 +2569,7 @@ def pfig_b12_banded_percentiles(
         )
     apply_plotly(fig, dark, height)
     probability_axis_plotly(fig, probability_scale)
+    crosshair(fig, dark)
     return fig
 
 
@@ -3060,6 +3063,7 @@ def pfig_c2_exceedance(
         tickmode="array", tickvals=ticks, ticktext=[str(t) for t in ticks],
     )
     apply_plotly(fig, dark, height)
+    crosshair(fig, dark)
     return fig
 
 # --------------------------------------------------------------- colour key

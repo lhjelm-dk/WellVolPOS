@@ -203,3 +203,63 @@ def test_the_pale_element_tints_are_never_used_as_the_only_channel():
     )
     assert worst_tint < 15.0, "tints now pass -- update the comment, not the test"
     assert worst_solid >= 15.0, f"the saturated element colours fell to dE {worst_solid:.1f}"
+
+
+def test_the_type_scale_makes_a_hierarchy():
+    """Title, subtitle and body must be three distinct sizes.
+
+    The title was 14 against a 12 body -- two points is not a hierarchy -- and several
+    titles carry a ``<sub>`` subtitle that was rendering at the title's own size.
+    """
+    from wellvolpos.viz.theme import FONT_SIZES
+
+    assert FONT_SIZES["title"] > FONT_SIZES["body"] + 3
+    assert FONT_SIZES["subtitle"] < FONT_SIZES["body"]
+    assert FONT_SIZES["axis_title"] >= FONT_SIZES["tick"]
+
+
+def test_both_backends_ask_for_the_same_typeface():
+    """An export set in a different face from the app is the same defect as an export
+    that disagrees about the data — the export path is how this work reaches people."""
+    import matplotlib as mpl
+
+    from wellvolpos.viz.theme import FONT_STACK, apply
+
+    apply(False)
+    first_mpl = mpl.rcParams["font.sans-serif"][0]
+    assert FONT_STACK.split(",")[0].strip() == first_mpl
+
+    # DejaVu leads deliberately: Segoe UI has no PROPORTIONAL TO glyph, which A1's
+    # caption uses, so putting it first drew a box in the exported PDF. Glyph coverage
+    # beats typeface parity.
+    assert first_mpl == "DejaVu Sans"
+
+
+def test_the_probability_figures_carry_a_crosshair(reduced):
+    """Design plan §6.4. On an exceedance curve, reading a probability off a volume is
+    *the* interaction, and there were no spikelines."""
+    import wellvolpos.viz.interactive as I
+    from wellvolpos.core import AreaDepth, group_trials, split_trials
+
+    ad = AreaDepth.from_trials(reduced.col("contact"), reduced.col("area"))
+    groups = group_trials(reduced, 3500.0, 3550.0)
+    vc = split_trials(reduced, ad, groups, 3500.0, 3550.0)
+
+    for fig in (I.pfig_a5_exceedance(reduced, groups, vc, mefs=14.0,
+                                     pos_prospect=0.76, p_well=0.46),
+                I.pfig_c2_exceedance(reduced, groups, vc, pos_prospect=0.76,
+                                     p_well=0.46, mefs=14.0)):
+        assert fig.layout.xaxis.showspikes and fig.layout.yaxis.showspikes
+        assert fig.layout.xaxis.spikemode == "across"
+
+
+def test_red_means_mefs_and_only_mefs():
+    """The design review read ``minimum`` as covering the assessment minimum too, and a
+    new hue was cut for it — then measured: the assessment minimum is never drawn.
+
+    It is a numbers-only mapping, so there is nothing to collide with, and an eighth
+    categorical hue would have cost separation in a palette already at the CVD limit.
+    """
+    from wellvolpos.viz.theme import LIGHT
+
+    assert "assessment_min" not in LIGHT

@@ -67,7 +67,14 @@ LIGHT = {
     "grid": "#e6e5e1",
     "prospect": "#16294a",         # dark navy    -- prospect resource potential
     "tested": "#7d2f5f",           # deep mauve   -- proven between entry and exit
-    "minimum": "#e04b2f",          # red          -- a threshold volume
+    # Red is **MEFS / MCFS and nothing else**. The design review of 2026-08-15 read
+    # this role as covering the *assessment minimum* too, and a new colour was cut for
+    # it -- then measured: the assessment minimum is never drawn on any figure. It is a
+    # numbers-only mapping (minimum column height -> contact depth, area, percentile),
+    # so there is nothing to collide with, and adding an eighth categorical hue to a
+    # palette that is already at the CVD limit would have cost separation for nothing.
+    # If it is ever plotted, give it a style rather than a hue.
+    "minimum": "#e04b2f",          # red          -- MEFS / MCFS, the economic threshold
     "well_associated": "#b3a02f",  # olive        -- the discovery case
     "up_dip": "#4cb8e0",           # light blue   -- attic / up-dip / regret
     "below_lkh": "#cf9a4e",         # tan          -- well associated, not tested
@@ -257,8 +264,16 @@ def apply(dark: bool = False) -> dict[str, str]:
             "figure.facecolor": p["surface"],
             "axes.facecolor": p["surface"],
             "savefig.facecolor": p["surface"],
-            "font.size": 8.5,
-            "font.family": "DejaVu Sans",
+            # Scaled from FONT_SIZES so the two backends stay in step. matplotlib
+            # figures are drawn small and scaled up, hence the factor.
+            "font.size": FONT_SIZES["body"] * 0.70,
+            "axes.titlesize": FONT_SIZES["title"] * 0.70,
+            "axes.labelsize": FONT_SIZES["axis_title"] * 0.70,
+            "xtick.labelsize": FONT_SIZES["tick"] * 0.70,
+            "ytick.labelsize": FONT_SIZES["tick"] * 0.70,
+            "legend.fontsize": FONT_SIZES["legend"] * 0.70,
+            "font.family": "sans-serif",
+            "font.sans-serif": ["DejaVu Sans", "Segoe UI", "Helvetica", "Arial"],
             "axes.edgecolor": p["grid"],
             "axes.labelcolor": p["text_secondary"],
             "axes.titlesize": 9.5,
@@ -456,8 +471,8 @@ def apply_plotly(fig, dark: bool = False, height: int | None = PANEL_HEIGHT):
         template="plotly_dark" if dark else "plotly_white",
         paper_bgcolor=p["surface"],
         plot_bgcolor=p["surface"],
-        font=dict(family="DejaVu Sans, Arial, sans-serif", size=12, color=p["text"]),
-        title=dict(font=dict(size=14, color=p["text"])),
+        font=dict(family=FONT_STACK, size=FONT_SIZES["body"], color=p["text"]),
+        title=dict(font=dict(size=FONT_SIZES["title"], color=p["text"])),
         # autoexpand=False is load-bearing, not tidiness. With it on, plotly
         # grows the margins to make room for a legend or colour bar placed
         # outside the axes -- so one panel in a row acquiring a legend shrinks
@@ -568,6 +583,58 @@ def reference_label(reference) -> str:
 #: is *about* the overlap and five series at 0.45 hide each other. Adjustable in the
 #: app; this is only where it starts.
 OVERLAP_OPACITY = 0.30
+
+#: The type scale, shared by both backends so an exported figure is set like the one
+#: on screen. The title was 14 against a 12 body -- two points is not a hierarchy, and
+#: several titles now carry a ``<sub>`` subtitle that was rendering at the same size as
+#: the title itself (Lars, 2026-08-15, design review).
+#:
+#: **One stack for both backends, DejaVu first -- and that is a compromise, not a
+#: solution.** matplotlib asked for DejaVu Sans; plotly asked for
+#: ``DejaVu Sans, Arial, sans-serif`` and in a browser almost always landed on Arial,
+#: so a PNG in a report and the same figure on screen were set in different type.
+#:
+#: Putting Segoe UI first closed that gap and immediately broke the export: Segoe UI
+#: has no PROPORTIONAL TO glyph, which A1's caption uses, and matplotlib drew a box.
+#: **Glyph coverage beats typeface parity** -- a missing character in an exported PDF
+#: is worse than a slightly different sans on screen. So DejaVu leads, matplotlib uses
+#: it (it ships with matplotlib), and a browser without it falls through to Segoe UI.
+#:
+#: True parity needs a bundled webfont. Worth doing if the export path ever matters
+#: more than it does today; it is not worth a dependency yet.
+FONT_STACK = "DejaVu Sans, Segoe UI, Helvetica, Arial, sans-serif"
+FONT_SIZES = {
+    "title": 17,
+    "subtitle": 11,
+    "axis_title": 12,
+    "tick": 11,
+    "legend": 11,
+    "body": 12,
+    "annotation": 10,
+}
+
+#: Characters before a long figure title wraps. Without it plotly breaks a title
+#: wherever it happens to run out of room, which at a narrow viewport is mid-word.
+TITLE_WRAP = 78
+
+def crosshair(fig, dark: bool = False):
+    """Spikelines on both axes, for a figure whose axes are both readable quantities.
+
+    Design plan §6.4 asked for this and it was never built. On an exceedance curve,
+    reading a probability off a volume *is* the interaction, and ``hovermode="closest"``
+    without spikelines leaves the reader estimating against a gridline.
+
+    **Not on the depth panels.** There the shared depth range already lets a reader
+    carry a value across a row, and a spike on every one of ten panels is noise. This
+    is for 2.3, 4.2 and 3.12, where x is a volume and y is a probability.
+    """
+    p = palette(dark)
+    for axis in (fig.update_xaxes, fig.update_yaxes):
+        axis(showspikes=True, spikemode="across", spikesnap="cursor",
+             spikecolor=p["muted"], spikethickness=1, spikedash="dot")
+    fig.update_layout(hovermode="closest")
+    return fig
+
 
 #: The exceedance percentiles the probit grid is ruled at. Fixed, and deliberately
 #: *not* the ladder a given figure ends up drawing (see
