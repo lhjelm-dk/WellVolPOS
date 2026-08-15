@@ -2108,3 +2108,56 @@ def fig_c5_partitions(
                  f"{z_exit - z_entry:,.0f} m the well penetrates", fontsize=11)
     fig.tight_layout()
     return fig, axes[0]
+
+
+def fig_c6_outcome_tree(
+    groups, *, pos_prospect: float, p_well: float, pc_well: float | None = None,
+    volumes: dict | None = None, dark: bool = False,
+):
+    """C6, for the export path. Twin of ``pfig_c6_outcome_tree``.
+
+    Shares from ``Groups.risked_shares`` and nowhere else -- see the plotly twin for
+    why that matters on this figure in particular.
+    """
+    p = palette(dark)
+    s = groups.risked_shares(pos_prospect, p_well)
+    disc = float(p_well)
+    commercial = float(pc_well) if pc_well is not None else None
+    leaves = [
+        ("Chance failure — no hydrocarbons anywhere", s["chance_failure"], "muted"),
+        ("Dry hole, hydrocarbons up-dip", s["dry_with_attic"], "up_dip"),
+    ]
+    if commercial is None:
+        leaves.append(("Discovery", disc, "well_associated"))
+    else:
+        leaves.append(("Discovery, below MEFS", max(disc - commercial, 0.0), "tested"))
+        leaves.append(("Discovery, commercial", commercial, "commercial"))
+
+    fig, ax = new_figure(figsize=(8.4, 2.8), dark=dark)
+    left = 0.0
+    for value, role, label in ((1.0 - pos_prospect, "muted", f"no HC {1 - pos_prospect:.1%}"),
+                               (pos_prospect, "prospect", f"HC present {pos_prospect:.1%}")):
+        ax.barh("Prospect", value, left=left, color=colour(role, dark), alpha=0.5,
+                edgecolor=colour(role, dark), lw=1)
+        if value > 0.06:
+            ax.text(left + value / 2, 1, label, ha="center", va="center", fontsize=7.5,
+                    color=p["text"])
+        left += value
+
+    left = 0.0
+    for name, value, role in leaves:
+        ax.barh("This well", value, left=left, color=colour(role, dark), alpha=0.75,
+                edgecolor=colour(role, dark), lw=1, label=name)
+        if value > 0.06:
+            ax.text(left + value / 2, 0, f"{value:.1%}", ha="center", va="center",
+                    fontsize=7.5, color=p["text"])
+        left += value
+
+    ax.set_xlim(0, 1)
+    ax.set_xlabel("Share of outcomes")
+    ax.xaxis.set_major_formatter(lambda v, _pos: f"{v:.0%}")
+    ax.set_title("C6 · What happens if this well is drilled")
+    ax.legend(fontsize=7, loc="upper center", bbox_to_anchor=(0.5, -0.28),
+              ncol=2, frameon=False)
+    fig.tight_layout()
+    return fig, ax

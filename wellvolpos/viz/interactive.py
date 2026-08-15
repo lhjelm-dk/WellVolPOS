@@ -3421,3 +3421,88 @@ def pfig_c5_partitions(
     depth_axis_plotly(fig, (ad.shallowest, float(z_contact)))
     fig.update_yaxes(autorange="reversed", row=1, col=2)
     return fig
+
+
+# ------------------------------------------------------------------- C6
+def pfig_c6_outcome_tree(
+    groups, *, pos_prospect: float, p_well: float, pc_well: float | None = None,
+    volumes: dict | None = None, dark: bool = False,
+    height: int | None = PANEL_HEIGHT,
+):
+    """C6 -- what can happen when this well is drilled, once, as a tree.
+
+    Lars, 2026-08-15, design review: 3.1 is *called* an outcome tree and is a swept
+    stacked area. The three-way split a reader actually carries in their head -- chance
+    failure, dry with attic, discovery -- was never drawn once, statically, at the
+    chosen well.
+
+    **Every share comes from :meth:`Groups.risked_shares`.** This is the figure most
+    likely to reproduce the recurring bug in this project: an outcome tree that counts
+    trial masks reports ``POS_trials`` under a ``P_well`` label, and it looks completely
+    reasonable. A2 did exactly that until 2026, and B4 did the arithmetic equivalent.
+    Nothing here touches a mask; the shares are computed once, in ``core``, from the
+    POS actually in use.
+
+    ``pc_well`` splits the discovery branch again -- **commercial** against
+    **sub-commercial** -- which is where Rose's number finally has a home in the
+    picture rather than only in a metric. The four leaves partition to 1.0 by
+    construction, and the test checks it against ``core.chance.p_well`` rather than
+    against the figure's own sum.
+
+    Drawn as nested horizontal bars rather than as a node-and-edge diagram: the width
+    *is* the probability, so the leaves can be compared by eye, and a reader who wants
+    the number reads it off the label. No depth on either axis, so this joins A5, A6,
+    B4, B5, B7 and 3.12 in the depth-rule exemption.
+    """
+    p = palette(dark)
+    s = groups.risked_shares(pos_prospect, p_well)
+
+    disc = float(p_well)
+    commercial = float(pc_well) if pc_well is not None else None
+    leaves = [
+        ("Chance failure — no hydrocarbons anywhere", s["chance_failure"], "muted"),
+        ("Dry hole, hydrocarbons up-dip", s["dry_with_attic"], "up_dip"),
+    ]
+    if commercial is None:
+        leaves.append(("Discovery", disc, "well_associated"))
+    else:
+        leaves.append(("Discovery, below MEFS", max(disc - commercial, 0.0), "tested"))
+        leaves.append(("Discovery, commercial", commercial, "commercial"))
+
+    fig = go.Figure()
+    # Level 1: the prospect, split by POS. Level 2: the leaves. Two rows, so the
+    # nesting is visible without edges -- each leaf sits under the branch it came from.
+    fig.add_bar(
+        x=[1.0 - pos_prospect, pos_prospect], y=["Prospect", "Prospect"],
+        orientation="h", showlegend=False,
+        marker=dict(color=[rgba("muted", 0.45, dark),
+                           rgba("prospect", 0.55, dark)],
+                    line=dict(color=[p["muted"], colour("prospect", dark)], width=1)),
+        text=[f"no HC {1 - pos_prospect:.1%}", f"HC present {pos_prospect:.1%}"],
+        textposition="inside", insidetextanchor="middle",
+        hovertemplate="%{text}<extra></extra>",
+    )
+    for name, value, role in leaves:
+        note = ""
+        if volumes and name in volumes and volumes[name] == volumes[name]:
+            note = f" · {volumes[name]:,.1f} MMboe"
+        fig.add_bar(
+            x=[value], y=["This well"], orientation="h", name=name,
+            marker=dict(color=rgba(role, 0.75, dark),
+                        line=dict(color=colour(role, dark), width=1)),
+            text=[f"{value:.1%}"], textposition="inside", insidetextanchor="middle",
+            hovertemplate=f"{name}<br>%{{x:.1%}} of wells drilled here{note}<extra></extra>",
+        )
+
+    fig.update_layout(
+        barmode="stack",
+        title=("C6 · What happens if this well is drilled"
+               "<br><sub>every share risked onto the POS in use — the four leaves "
+               "partition to 100 %</sub>"),
+        xaxis_title="Share of outcomes",
+    )
+    fig.update_xaxes(range=[0, 1], tickformat=".0%")
+    fig.update_yaxes(automargin=True)
+    apply_plotly(fig, dark, height)
+    fig.update_layout(margin=dict(l=90))
+    return fig

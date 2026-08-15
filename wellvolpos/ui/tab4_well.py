@@ -32,6 +32,7 @@ from ..viz import (
     pfig_c2_exceedance,
     pfig_c3_mefs_bars,
     pfig_c5_partitions,
+    pfig_c6_outcome_tree,
     pfig_map_view,
 )
 from ..core import MEFS_RUNGS, c2_crossings, headline as _headline, mefs_readout
@@ -125,6 +126,14 @@ def render(ctx: Ctx) -> None:
         "proven on a discovery, attic on a charged dry hole. Multiplying a volume by "
         "a chance from this row gives an expectation, not a resource."
     )
+
+    # **The headline sentence as a picture.** Every share comes from
+    # Groups.risked_shares -- an outcome tree that counts trial masks reports
+    # POS_trials under a P_well label, which is what A2 did and what B4 did the
+    # arithmetic equivalent of.
+    _chart(pfig_c6_outcome_tree(
+        groups, pos_prospect=chance.pos_prospect, p_well=chance.p_well,
+        pc_well=None if _cc_head is None else _cc_head.pc_well), key="c6")
 
     st.divider()
     _split_caveat()

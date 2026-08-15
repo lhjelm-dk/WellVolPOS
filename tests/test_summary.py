@@ -188,3 +188,63 @@ def test_a_flat_optimum_prints_a_range_and_a_sharp_one_prints_a_depth(reduced):
     # A candidate with no plateau — the required depth — states one number.
     only = Candidate(key="required", label="x", depth=3520.0, value="v", figure="b6")
     assert only.describe_depth() == "3,520 m" and not only.is_flat
+
+
+# ------------------------------------------------------------- the outcome tree
+def test_the_outcome_tree_partitions_to_one_and_agrees_with_p_well(reduced):
+    """The sixth chance to reproduce this project's recurring bug, and the guard.
+
+    An outcome tree that counts trial masks reports ``POS_trials`` under a ``P_well``
+    label and looks entirely reasonable — A2 did exactly that, and B4 did the
+    arithmetic equivalent. So this cross-checks the drawn leaves against
+    ``core.chance.p_well``, never against the figure's own sum.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import wellvolpos.viz.interactive as I
+    from wellvolpos.core import p_well as p_well_fn
+    from wellvolpos.core.rose import commercial_chance
+
+    ad = AreaDepth.from_trials(reduced.col("contact"), reduced.col("area"))
+    g = group_trials(reduced, ENTRY, EXIT)
+    vc = split_trials(reduced, ad, g, ENTRY, EXIT)
+    ch = p_well_fn(reduced, ENTRY, POS)
+    cc = commercial_chance(reduced, g, vc.proven, ch.p_well, 14.0)
+
+    fig = I.pfig_c6_outcome_tree(g, pos_prospect=ch.pos_prospect,
+                                 p_well=ch.p_well, pc_well=cc.pc_well)
+    leaves = {t.name: float(t.x[0]) for t in fig.data if t.name}
+    assert len(leaves) == 4, leaves
+    assert sum(leaves.values()) == pytest.approx(1.0, abs=1e-12)
+
+    # The discovery branch is P_well — from ChanceResult, not from the mask.
+    discovery = sum(v for k, v in leaves.items() if k.startswith("Discovery"))
+    assert discovery == pytest.approx(ch.p_well, abs=1e-12)
+    # And it is *not* the trial file's own success rate, which is the number the bug
+    # would have produced. On this file those differ by more than 15 points.
+    pos_trials = float((reduced.col("resource") > 0).mean())
+    assert abs(discovery - pos_trials) > 0.15, (discovery, pos_trials)
+
+    # The commercial leaf is Rose's Pc, and the two discovery leaves split at it.
+    assert leaves["Discovery, commercial"] == pytest.approx(cc.pc_well, abs=1e-12)
+    assert leaves["Discovery, below MEFS"] == pytest.approx(
+        ch.p_well - cc.pc_well, abs=1e-12)
+
+    # Chance failure is 1 - POS, so a well cannot be luckier than its prospect.
+    assert leaves["Chance failure — no hydrocarbons anywhere"] == pytest.approx(
+        1.0 - ch.pos_prospect, abs=1e-12)
+
+
+def test_the_outcome_tree_works_without_a_threshold(reduced):
+    """No MEFS means no commercial split, and the tree still partitions to one."""
+    import wellvolpos.viz.interactive as I
+    from wellvolpos.core import p_well as p_well_fn
+
+    g = group_trials(reduced, ENTRY, EXIT)
+    ch = p_well_fn(reduced, ENTRY, POS)
+    fig = I.pfig_c6_outcome_tree(g, pos_prospect=ch.pos_prospect, p_well=ch.p_well)
+    leaves = {t.name: float(t.x[0]) for t in fig.data if t.name}
+    assert set(leaves) == {"Chance failure — no hydrocarbons anywhere",
+                           "Dry hole, hydrocarbons up-dip", "Discovery"}
+    assert sum(leaves.values()) == pytest.approx(1.0, abs=1e-12)
+    assert leaves["Discovery"] == pytest.approx(ch.p_well, abs=1e-12)

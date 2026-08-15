@@ -405,6 +405,9 @@ def _draw_export_figures(b: Bundle, *, dark: bool = False) -> dict[str, object]:
                 b.ts.col("contact")[b.ts.col("resource") > 0])),
             z_entry=c.entry, z_exit=c.exit,
             apex=float(b.ad.apex_estimate()), dark=dark)[0]
+        figs["C6_outcome_tree"] = F.fig_c6_outcome_tree(
+            b.groups, pos_prospect=b.pos, p_well=ch.p_well,
+            pc_well=_cc.pc_well, dark=dark)[0]
         figs["C5_partitions"] = F.fig_c5_partitions(
             b.ad, z_entry=c.entry, z_exit=c.exit,
             z_contact=float(np.nanmedian(
