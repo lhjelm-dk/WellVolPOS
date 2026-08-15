@@ -32,7 +32,7 @@ from ..viz import (
     pfig_c3_mefs_bars,
     pfig_map_view,
 )
-from ..core import MEFS_RUNGS, c2_crossings, mefs_readout
+from ..core import MEFS_RUNGS, c2_crossings, headline as _headline, mefs_readout
 from ..core.rose import AT_WELL_WINDOW_M, commercial_chance
 from ..viz.theme import reference_label
 from .common import C2_HEIGHT, chart as _chart, split_caveat
@@ -54,16 +54,52 @@ def render(ctx: Ctx) -> None:
     def _split_caveat() -> None:
         split_caveat(ctx)
 
-    # ------------------------------------------------------------ the well
-    # **The depths are stated once** (Lars, 2026-08-15). They were in a metric and
-    # again in the heading two lines below it, which invites the reader to check
-    # whether the two agree -- and they always will, because both read `ctx`.
+    # ------------------------------------------------------- the headline
+    # **The answer, before the working** (Lars, 2026-08-15, design review). The tool
+    # computed P_well, Pc, the proven mean and the attic mean and never put them in
+    # one place, so a reader had to assemble the conclusion from six figures.
+    #
+    # `core.summary` does the assembly. This block only formats -- a tab that
+    # computes is a tab that can disagree with the figure under it.
+    _cs_head = class_summary(vc, groups) if has_area else None
+    _cc_head = (commercial_chance(ts, groups, vc.proven, chance.p_well, mefs)
+                if has_area else None)
+    _head = _headline(entry=entry, exit_=exit_, chance=chance, groups=groups,
+                      class_stats=_cs_head, commercial=_cc_head,
+                      mefs=mefs if has_area else None)
+
     st.subheader(f"At {entry:,.0f}–{exit_:,.0f} m TVDSS")
+    st.markdown(_head.sentence())
+
+    _h = st.columns(5)
+    _h[0].metric("P well", f"{_head.p_well:.1%}",
+                 help="The chance THIS well finds hydrocarbons. POS_prospect x "
+                      "r_location, decomposed below.")
+    _h[1].metric("Pc — commercial",
+                 "—" if _head.pc_well is None else f"{_head.pc_well:.1%}",
+                 help="Rose's commercial chance: the chance of finding more than "
+                      "MEFS. Always at or below P well.")
+    _h[2].metric("Proven mean",
+                 "—" if _head.proven_mean is None else f"{_head.proven_mean:,.1f}",
+                 help="MMboe. Conditional on a discovery — the headline volume this "
+                      "well would establish.")
+    _h[3].metric("Attic mean",
+                 "—" if _head.attic_mean is None else f"{_head.attic_mean:,.1f}",
+                 help="MMboe. Conditional on a CHARGED DRY HOLE — what is left "
+                      "up-dip if this well misses. A different outcome from the "
+                      "three beside it.")
+    _h[4].metric("Reservoir penetrated", f"{_head.gap:,.0f} m",
+                 help="Entry to exit. Tab ① holds the sliders; tab ③ sweeps every "
+                      "entry depth and shows what each one buys.")
     st.caption(
-        f"**{exit_ - entry:,.0f} m of reservoir penetrated.** Tab ③ is where the depth "
-        f"is chosen — it sweeps every entry depth and shows what each one buys. This "
-        f"tab is the write-up at the depth you settled on; the sliders are on tab ①."
+        "**Two chances and two volumes, and they are not on one footing.** P well and "
+        "Pc are unconditional — they already carry the chance of the outcome. The two "
+        "volumes are success-case means, each conditional on a *different* event: "
+        "proven on a discovery, attic on a charged dry hole. Multiplying a volume by "
+        "a chance from this row gives an expectation, not a resource."
     )
+
+    st.divider()
     _split_caveat()
 
     # --------------------------------------------------------------- the chance
