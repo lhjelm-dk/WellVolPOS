@@ -38,8 +38,8 @@ from ..viz import (
 from ..core import MEFS_RUNGS, c2_crossings, headline as _headline, mefs_readout
 from ..core.rose import AT_WELL_WINDOW_M, commercial_chance
 from ..viz.theme import reference_label
-from .common import (C2_HEIGHT, chart as _chart, kpi_ladder, split_caveat,
-                     track_deltas, well_readout)
+from .common import (C2_HEIGHT, chart as _chart, figure_note, kpi_ladder,
+                     split_caveat, track_deltas, well_readout)
 from .context import Ctx
 from .numbering import ref as fig_ref
 
@@ -196,8 +196,10 @@ def render(ctx: Ctx) -> None:
                                "field size — the same threshold under two names. Set "
                                "in tab ①, drawn as a line, never applied to the "
                                "distributions.")
-        st.caption(
-            f"`Pc(well) = P_well × Pmcfs(well)` — **{chance.p_well:.4f} × "
+        figure_note(
+            f"P_well is the chance of *seeing* hydrocarbons; Pc the chance of seeing a "
+        f"**developable** accumulation. A location can score well on one and poorly on the other.",
+            detail=f"`Pc(well) = P_well × Pmcfs(well)` — **{chance.p_well:.4f} × "
             f"{_cc.p_mcfs_downdip:.4f} = {_cc.pc_well:.4f}**. Read the two apart: "
             f"**P_well {chance.p_well:.1%}** is the chance of *seeing hydrocarbons*, "
             f"**Pc {_cc.pc_well:.1%}** the chance of seeing a *developable* accumulation. "
@@ -207,7 +209,7 @@ def render(ctx: Ctx) -> None:
             f"alone the conditional chance is {_cc.p_mcfs_proven:.1%}, which would give "
             f"Pc = {chance.p_well * _cc.p_mcfs_proven:.1%}. Both are legitimate and they "
             f"answer different questions — what the accumulation holds, against what "
-            f"this well would establish. Neither may be quoted as the other."
+            f"this well would establish. Neither may be quoted as the other.",
         )
 
     if has_area:
@@ -273,8 +275,10 @@ def render(ctx: Ctx) -> None:
         if _atw_n:
             _span = gs["discovery"]["mean"] - cs["attic_dry_hole"]["mean"]
             _frac = ((_atw - cs["attic_dry_hole"]["mean"]) / _span) if _span else float("nan")
-            st.caption(
-                f"**The boundary case.** The accumulation you get if the hydrocarbon–water "
+            figure_note(
+                f"The accumulation if the contact lands *on* the well — neither a discovery "
+            f"nor a dry hole, from {_atw_n:,} trials within ±{_atw_win:g} m.",
+                detail=f"**The boundary case.** The accumulation you get if the hydrocarbon–water "
                 f"contact lands *on* the well: **{_atw:.2f} MMboe**, which sits **{_frac:.0%}** "
                 f"of the way from the attic mean ({cs['attic_dry_hole']['mean']:.2f}) to the "
                 f"discovery mean ({gs['discovery']['mean']:.2f}) — closer to the dry case than "
@@ -283,7 +287,7 @@ def render(ctx: Ctx) -> None:
                 f"that actually landed there, so it carries the model's own correlations. He is "
                 f"candid that the deterministic version *“is an oversimplification”*, because "
                 f"*“there remains a chance the updip volume will exceed MCFS”* — which is what "
-                f"{fig_ref('{b2}')}'s regret curve answers."
+                f"{fig_ref('{b2}')}'s regret curve answers.",
             )
 
         # --------------------------------------------------- every volume vs the line
@@ -316,8 +320,10 @@ def render(ctx: Ctx) -> None:
                     "Pmean": f"{_comm['mean']:,.2f}", "P10": f"{_comm['p10']:,.2f}",
                 }]), hide_index=True, width="stretch",
             )
-            st.caption(
-                f"**The distribution behind Pc.** Everything else on this tab is "
+            figure_note(
+                f"The distribution Pc belongs to. Its mean sits **above** the "
+                f"well-associated mean because cutting at a threshold raises what is left.",
+                detail=f"**The distribution behind Pc.** Everything else on this tab is "
                 f"conditional on an event Pc does not describe — this is the one it "
                 f"does. Its mean is **{_comm['mean']:,.1f} MMboe** against the "
                 f"well-associated **{cs['discovery']['mean']:,.1f}**, and that gap is "
@@ -325,7 +331,7 @@ def render(ctx: Ctx) -> None:
                 f"raises the mean of what is left while lowering the chance of getting "
                 f"it (Longley 2026). **The four classes above are not truncated** — "
                 f"this is an additional class conditional on a different event, which "
-                f"is why the app can show it without applying the cut anywhere else."
+                f"is why the app can show it without applying the cut anywhere else.",
             )
             st.divider()
 
@@ -342,8 +348,10 @@ def render(ctx: Ctx) -> None:
             _rows.append(_row)
         st.dataframe(pd.DataFrame(_rows), hide_index=True, width="stretch")
         _wa = _mr.by_key("discovery")
-        st.caption(
-            f"**✓ clears the line, ✗ does not.** The ticks bracket the answer and the "
+        figure_note(
+            f"✓ clears MEFS, ✗ does not. The ticks bracket the answer; the last column "
+            f"is the answer.",
+            detail=f"**✓ clears the line, ✗ does not.** The ticks bracket the answer and the "
             f"last column is the answer: on the well-associated volume the threshold "
             f"falls {_wa.bracket()}, and the chance of clearing it is "
             f"**{_wa.p_exceeds:.1%}** — which is the same {mefs:,.1f} MMboe read as a "
@@ -354,7 +362,7 @@ def render(ctx: Ctx) -> None:
             f"distribution is right-skewed, not because it is a rung.\n\n"
             f"**The line is never applied to the distributions.** Per Longley (2026) a "
             f"volume cut-off raises the unrisked mean while lowering commercial chance, "
-            f"and the two do not cancel — so MEFS is read against, never used to filter."
+            f"and the two do not cancel — so MEFS is read against, never used to filter.",
         )
 
         st.divider()
@@ -385,15 +393,17 @@ def render(ctx: Ctx) -> None:
                 z_contact=float(np.nanmedian(
                     ts.col("contact")[ts.col("resource") > 0])),
                 area_scale=area_scale), key="c5")
-            st.caption(
-                f"**Two cuts of one closure.** Rose splits at the well; this app splits at "
+            figure_note(
+                "Rose cuts at the well, this app at the interval the well penetrates. The "
+                "violet band is the slice they disagree about.",
+                detail=f"**Two cuts of one closure.** Rose splits at the well; this app splits at "
                 f"the interval the well actually penetrates, because a well proves what it "
                 f"drills through. So his updip ({_rp.updip_mean:.2f}) is our proven "
                 f"({cs['proven']['mean']:.2f}) *minus* the entry-to-exit slice, and his "
                 f"downdip ({_rp.downdip_mean:.2f}) is our unproven-below-LKH volume "
                 f"({cs['below_lkh_of_discovery']['mean']:.2f}) *plus* that same slice — "
                 f"{cs['proven']['mean'] - _rp.updip_mean:.2f} MMboe here. Both partitions sum "
-                f"to the well-associated volume; neither is the well-associated volume."
+                f"to the well-associated volume; neither is the well-associated volume.",
             )
 
         # ------------------------------------------------------ risked, and separate
@@ -415,13 +425,15 @@ def render(ctx: Ctx) -> None:
         e[2].metric("Expected proven",
                     f"{expected_volume(cs['proven']['mean'], chance.p_well):.2f}",
                     help=f"Proven mean × P well ({chance.p_well:.1%}).")
-        st.caption(
-            "A **risked mean**: each success-case mean above, times the chance of the outcome "
+        figure_note(
+            "Each success-case mean above, times the chance of the outcome it belongs "
+            "to. An expectation, not a volume anyone finds.",
+            detail="A **risked mean**: each success-case mean above, times the chance of the outcome "
             "it belongs to. These are the only volumes here that are *additive across "
             "prospects*, which is why a portfolio uses them — and they describe no outcome that "
             f"can happen: this well either finds something near {gs['discovery']['mean']:.1f} "
             "MMboe or it finds nothing. Quote them beside the chance and the size, never "
-            "instead of them."
+            "instead of them.",
         )
 
     st.divider()
@@ -434,12 +446,13 @@ def render(ctx: Ctx) -> None:
     # 2205.0 m was enough to invert a band's percentiles in 3.12.
     _ties, _tie_frac = boundary_ties(ts, entry)
     if _ties:
-        st.caption(
-            f"**On the knife edge:** {_ties:,} success trials ({_tie_frac:.1%}) have their "
+        figure_note(
+            f"{_ties:,} success trials ({_tie_frac:.1%}) sit within ±0.5 m of the entry — the boundary is a real population, not a rounding artefact.",
+            detail=f"**On the knife edge:** {_ties:,} success trials ({_tie_frac:.1%}) have their "
             f"contact within ±0.5 m of the reservoir entry. A discovery here is *contact "
             f"deeper than the entry*, strictly — a contact exactly on it means zero column "
             f"at the well and counts as dry. Move the entry a metre and these trials change "
-            f"sides, which is worth knowing before reading a small difference as a signal."
+            f"sides, which is worth knowing before reading a small difference as a signal.",
         )
     st.markdown(
         f"**Outcome tree**, over {ts.n_trials:,} trials — chance failure "
@@ -558,8 +571,10 @@ def render(ctx: Ctx) -> None:
             },
         )
         _counts_chance = chance_from_counts(int(stats[1][1]["n"]), ts.n_trials)
-        st.caption(
-            "**These percentiles are conditional — they assume the case happens.** P90 is exceeded "
+        figure_note(
+            "Conditional percentiles: each assumes its own case happens. Risking scales "
+            "the probability, never the volume.",
+            detail="**These percentiles are conditional — they assume the case happens.** P90 is exceeded "
             "90 % of the time *given* the case, P50 half the time, and so on; that is what the "
             "industry means by \"the P50\", and Schneider et al. (2023) determine this success-case "
             "distribution **before** any chance is applied. To get the *unconditional* (risked) "
@@ -570,7 +585,7 @@ def render(ctx: Ctx) -> None:
             "**P99 is the low case** and P1 the high case. And the **mean is not a percentile**: on "
             f"these right-skewed distributions it sits at P{stats[1][1]['mean_at']:.0f} of the "
             "well-associated case rather than at P50, so \"mean\" and \"middle\" are not "
-            "interchangeable words here."
+            "interchangeable words here.",
         )
         if abs(_counts_chance - chance.p_well) > 5e-4:
             st.info(
@@ -609,8 +624,9 @@ def render(ctx: Ctx) -> None:
                 p_well=chance.p_well, mefs=mefs, pc_well=_cc.pc_well,
                 show_conditional=_show_cond, show_unconditional=_show_uncond,
             ), key="c2", height=C2_HEIGHT)
-        st.caption(
-            "**4.1 and 4.2 — the concepts, twice.** 4.1 shows where each volume sits in the "
+        figure_note(
+            fig_ref("**{c1}** shows where each volume sits in the structure; **{c2}** shows the same volumes as exceedance curves, two per concept in one colour."),
+            detail="**4.1 and 4.2 — the concepts, twice.** 4.1 shows where each volume sits in the "
             "structure; 4.2 shows the same volumes as exceedance curves, **two per concept in "
             "one colour**. Read them as a pair: the first says *where*, the second says *how "
             "much and how likely*.\n\n"
@@ -636,7 +652,7 @@ def render(ctx: Ctx) -> None:
             f"than a separate series. They are not labelled here because several land within "
             f"a percentage point of each other and eight labels on one vertical line "
             f"overlap — {fig_ref('{c3}')} gives them an axis of their own, and the table "
-            f"under it gives the numbers."
+            f"under it gives the numbers.",
         )
 
         # ---------------------------------------------- the eight crossings, drawn
@@ -666,8 +682,10 @@ def render(ctx: Ctx) -> None:
             } for c in _cx]),
             hide_index=True, width="stretch",
         )
-        st.caption(
-            "**Unrisked is the solid curve's height at the line, risked is the dashed "
+        figure_note(
+            "Unrisked is the solid curve at the MEFS line, risked the dashed one. The "
+            "middle column is what separates them.",
+            detail="**Unrisked is the solid curve's height at the line, risked is the dashed "
             "one's** — and the middle column is exactly what separates them, because "
             "risking scales the *probability* and never the volume. So the risked "
             "column is the product of the two beside it, not a second pass over "
@@ -677,7 +695,7 @@ def render(ctx: Ctx) -> None:
             "not P_well. It is the volume you leave behind if this well is dry, so "
             "the event it is conditional on is the one where the well fails.\n\n"
             "The well-associated unrisked figure is Rose's `Pmcfs(well)` from the "
-            "chance block at the top of this tab; its risked twin is `Pc(well)`."
+            "chance block at the top of this tab; its risked twin is `Pc(well)`.",
         )
 
         st.divider()
@@ -783,13 +801,15 @@ def render(ctx: Ctx) -> None:
                     ad, apex=map_apex, z_entry=entry, z_exit=exit_,
                     interval=map_interval, well_azimuth_deg=float(map_azimuth),
                 ), key="mapview")
-        st.caption(
-            f"Concentric contours whose *areas* come from A(z), apex at the centre, deepest "
+        figure_note(
+            "Contours whose areas come from A(z), apex at the centre, and the three "
+                "areas the well divides the closure into.",
+            detail=f"Concentric contours whose *areas* come from A(z), apex at the centre, deepest "
             f"sampled contact ({ad.deepest:.0f} m) as the outer ring. The shaded area inside the "
             f"entry contour is what a dry hole would leave up-dip. **Every contour is dashed; the "
             f"one solid ring is the well's entry depth**, so line style says only 'is this the "
             f"well?'. Contours shallower than the shallowest sampled contact "
             f"({ad.shallowest:.0f} m) are drawn faint — the trials never reached the crest, so "
             f"their area is a taper to the apex, not a model output. "
-            f"**The shape is a cartoon**: circles of the right area, in the wrong outline."
+            f"**The shape is a cartoon**: circles of the right area, in the wrong outline.",
         )
