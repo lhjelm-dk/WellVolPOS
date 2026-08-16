@@ -369,6 +369,41 @@ still does, on every figure and in the exported artefacts.
     )
 
     st.divider()
+    st.markdown("### Choosing a location: five criteria, one frontier")
+    st.markdown(
+        """
+There is no location that is optimal *simpliciter*. 3.8 is the honest object — the
+trade-off frontier — and every single-number criterion is a different scalarisation of
+it. Disagreement between them is information, not noise.
+
+| Criterion | Maximises | Whose question |
+|---|---|---|
+| **Chance** | `P_well` | Always the shallowest supported depth, so it is a boundary rather than a recommendation. |
+| **Expectation** | `P_well × mean volume` | The portfolio's. Additive across prospects, and **risk-neutral**. |
+| **Commercial chance** | `Pc = P_well × P(>MEFS \| discovery)` | Rose's, and the number an EMV calculation takes. |
+| **Certainty equivalent** | risk-adjusted volume | A risk-averse party's. Never deeper than the expectation peak. |
+| **Information** | uncertainty reduction (3.3) | Haskett's, and it is about *appraisal* — see the caveat there. |
+
+**A hurdle is not a criterion.** "90 % confident it is commercial" is a *constraint*:
+the feasible set is a half-line, and the answer is the best odds inside it. Three
+readings, and only two are attainable:
+
+- **Unconditional `Pc ≥ 0.90`** — impossible unless `POS_prospect ≥ 0.90`, since
+  `Pc ≤ P_well ≤ POS`. If a mandate is written this way, say so.
+- **`P(commercial | discovery) ≥ 0.90`** — the slider on tab ③.
+- **P90 proven ≥ MEFS**, i.e. even a poor discovery clears the bar — the inverse on
+  tab ③ with the statistic set to P90 and the target set to MEFS. The two usually land
+  within a few metres of each other, because both are asking the low tail to clear.
+
+**Risk tolerance here is in MMboe, and that is a real limitation.** It is properly a
+monetary quantity — about the loss a balance sheet can absorb — and no well cost appears
+anywhere in this tool. It ranks locations correctly under a fixed well cost, which is
+the case a single prospect is usually in. Do not carry a certainty equivalent in MMboe
+into an economic model as though it were an expected value.
+        """
+    )
+
+    st.divider()
     st.markdown("### Two sequential colour ramps, and what each one means")
     st.markdown(
         "**Blues counts trials. Inferno shows chance.** 2.2's grid and any density "

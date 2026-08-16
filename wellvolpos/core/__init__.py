@@ -14,6 +14,15 @@ from .dependence import (
     DeviationCheck,
     check_deviation,
 )
+from .utility import (
+    DEFAULT_CONFIDENCE,
+    DEFAULT_RISK_FRACTION,
+    ConstrainedResult,
+    RiskAdjusted,
+    ce_curve,
+    certainty_equivalent,
+    constrained_best,
+)
 from .summary import (Candidate, Headline, PLATEAU_TOL, candidate_depths,
                       headline, plateau_span)
 from .mefs import (
@@ -111,6 +120,8 @@ __all__ = [
     "Crossing", "c2_cases", "c2_crossings",
     "Headline", "headline", "Candidate", "candidate_depths",
     "PLATEAU_TOL", "plateau_span",
+    "DEFAULT_CONFIDENCE", "DEFAULT_RISK_FRACTION", "ConstrainedResult",
+    "RiskAdjusted", "ce_curve", "certainty_equivalent", "constrained_best",
     "BAND_MODES", "BAND_MODE_LABELS", "BAND_PERCENTILES", "DEFAULT_N_BANDS",
     "BandedPercentiles", "DepthBand", "banded_percentiles", "supported_percentiles",
     "AreaDepth", "group_trials", "group_summary", "boundary_ties", "split_trials", "class_summary",

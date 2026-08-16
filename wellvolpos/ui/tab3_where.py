@@ -21,7 +21,11 @@ import pandas as pd
 import streamlit as st
 
 from ..core import (
+    DEFAULT_CONFIDENCE,
+    DEFAULT_RISK_FRACTION,
     candidate_depths,
+    ce_curve,
+    constrained_best,
     thickness_from_pay,
     BAND_MODES,
     BAND_MODE_LABELS,
@@ -483,7 +487,44 @@ def _location_sweep_tab(ctx: Ctx):
     # and declined on 2026-08-11 so the tab informs rather than decides, and that
     # still holds -- there is no control here, only a table and the figure each row
     # came from.
-    _cands = candidate_depths(vsweep)
+    # **Two criteria the expectation cannot express** (Lars, 2026-08-16).
+    #
+    # The hurdle answers the way a mandate is usually written -- "the best odds I can
+    # get, subject to being confident it is commercial if it works" -- which is a
+    # *constraint*, not an objective, and behaves differently: chance falls down-dip
+    # while conditional commerciality rises, so the feasible set is a half-line and its
+    # shallow end is the answer.
+    #
+    # The risk tolerance replaces the risk-neutral expectation with a certainty
+    # equivalent. Its unit is MMboe, which is a real limitation stated in
+    # core/utility.py: risk tolerance is properly monetary and no well cost appears
+    # anywhere in this tool.
+    _u1, _u2 = st.columns(2)
+    with _u1:
+        _conf = st.slider(
+            "Commercial confidence to insist on", 0.50, 0.99,
+            float(DEFAULT_CONFIDENCE), 0.01, format="%.0f%%",
+            key="w_confidence",
+            help="P(a discovery clears MEFS). The panel reports the shallowest depth "
+                 "from which it stays at or above this all the way down, and the best "
+                 "P_well available under that constraint.",
+        )
+    _succ = ts.col("resource")[ts.col("resource") > 0]
+    _mean_succ = float(_succ.mean()) if _succ.size else 1.0
+    with _u2:
+        _rho_frac = st.slider(
+            "Risk tolerance, as a multiple of the success-case mean", 0.10, 4.0,
+            float(DEFAULT_RISK_FRACTION), 0.05, key="w_rho",
+            help=f"Exponential utility. Smaller is more risk-averse; large is "
+                 f"risk-neutral, where the certainty equivalent converges on the "
+                 f"expectation. One mean here is {_mean_succ:,.0f} MMboe.",
+        )
+    _rho = max(_mean_succ * float(_rho_frac), 1e-6)
+    _constrained = (constrained_best(vsweep, confidence=float(_conf))
+                    if vsweep.p_discovery_exceeds_mefs is not None else None)
+    _ce = ce_curve(ts, vsweep, rho=_rho)
+
+    _cands = candidate_depths(vsweep, constrained=_constrained, risk_adjusted=_ce)
     if _cands:
         st.markdown("**Candidate depths** — the three optima this tab finds")
         st.dataframe(
@@ -501,6 +542,8 @@ def _location_sweep_tab(ctx: Ctx):
         # flat above the shallowest contact -- there every success trial is a
         # discovery, so r_location is 1 and nothing changes until the entry passes it.
         # The span is every depth within 2 % of the best.
+        if _constrained is not None:
+            st.caption(_constrained.message())
         _flat = [c for c in _cands if c.is_flat]
         _widest = max(_cands, key=lambda c: (c.plateau[1] - c.plateau[0])
                       if c.plateau else 0.0)
@@ -541,7 +584,7 @@ def _location_sweep_tab(ctx: Ctx):
     _chart(_f_b8, key="b8")
     # A quarter taller (Lars, 2026-08-14): two starred peaks and a grey percentile
     # family share one pair of axes, and at row height the peaks are hard to place.
-    _f_b9 = pfig_b9_chance_weighted(vsweep, current_z=entry, zlim=zrow_sweep,
+    _f_b9 = pfig_b9_chance_weighted(vsweep, current_z=entry, ce=_ce, zlim=zrow_sweep,
                                     height=TALL_PANEL_HEIGHT)
     _chart(_f_b9, key="b9")
     figure_note(

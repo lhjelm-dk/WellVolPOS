@@ -2085,7 +2085,7 @@ def pfig_a8_contact_distribution(
 
 # ------------------------------------------------------------------- B9
 def pfig_b9_chance_weighted(
-    vsweep: VolumeSweep, *, current_z: float | None = None,
+    vsweep: VolumeSweep, *, current_z: float | None = None, ce=None,
     zlim: tuple[float, float] | None = None, show_depth_labels: bool = True,
     min_support: int = MIN_SUPPORT, dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
@@ -2176,6 +2176,37 @@ def pfig_b9_chance_weighted(
             hovertemplate=(f"proven {label} x P_well"
                            "<br>%{x:.2f} MMboe at " + DEPTH_HOVER + "<extra></extra>"),
         )
+
+    # **The risk-adjusted twin** (Lars, 2026-08-16). Everything else on this figure
+    # is risk-neutral: an expectation treats a 10 % chance of 500 MMboe as worth
+    # exactly a 50 % chance of 100, which no exploration company believes. The
+    # certainty equivalent is the same distribution under exponential utility, so the
+    # two curves are statistics of one thing rather than two different quantities.
+    #
+    # Where they *diverge* is the reading: the gap widens down-dip because that is
+    # where the low-chance / high-volume tail lives, and that tail is exactly what a
+    # risk-averse party discounts. On prospect C the discount runs 34 % at the crest
+    # to 61 % at the deep end.
+    if ce is not None and np.any(np.isfinite(ce.ce)):
+        fig.add_scatter(
+            x=ce.ce, y=ce.z, mode="lines",
+            name=f"Certainty equivalent (rho {ce.rho:,.0f} MMboe)",
+            line=dict(color=colour("commercial", dark), width=2.4, dash="dash"),
+            hovertemplate=("certainty equivalent<br>%{x:.2f} MMboe at "
+                           + DEPTH_HOVER + "<extra></extra>"),
+        )
+        if ce.best is not None:
+            fig.add_scatter(
+                x=[float(ce.ce[ce.best])], y=[float(ce.z[ce.best])],
+                mode="markers+text", marker=dict(symbol="star", size=13,
+                                                 color=colour("commercial", dark)),
+                text=[f"  {ce.ce[ce.best]:.1f} MMboe risk-adjusted"],
+                textposition="middle right", showlegend=False,
+                textfont=dict(size=9, color=colour("commercial", dark)),
+                hovertemplate=("best risk-adjusted location<br>"
+                               f"{ce.ce[ce.best]:.2f} MMboe at "
+                               f"{ce.z[ce.best]:.0f} m TVDSS<extra></extra>"),
+            )
 
     best_note = []
     for name, mean, role in series:

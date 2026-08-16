@@ -190,6 +190,7 @@ def plateau_span(values, z, i: int, tol: float = PLATEAU_TOL):
 
 
 def candidate_depths(vsweep, *, min_support: int = 30,
+                     constrained=None, risk_adjusted=None,
                      required_depth: float | None = None,
                      required_target: float | None = None,
                      required_statistic: str = "mean") -> tuple[Candidate, ...]:
@@ -255,6 +256,32 @@ def candidate_depths(vsweep, *, min_support: int = 30,
                 note="A rising conditional times a falling P_well, so this one has an "
                      "interior maximum. Rose's number for an EMV calculation.",
             ))
+
+    # **Two optima the expectation cannot express** -- see core/utility.py. Both are
+    # passed in rather than computed here: one needs a confidence the user chose and
+    # the other a risk tolerance, and neither is a property of the sweep alone.
+    if constrained is not None and constrained.feasible:
+        out.append(Candidate(
+            key="constrained",
+            label=f"Best odds at {constrained.confidence:.0%} commercial confidence",
+            depth=constrained.depth,
+            value=f"P_well {constrained.p_well_at:.1%}", figure="b8",
+            note="The shallowest depth from which a discovery stays that likely to "
+                 "clear MEFS. A constraint, not an optimum -- the best chance "
+                 "available once the hurdle is met.",
+        ))
+    if risk_adjusted is not None and risk_adjusted.best is not None:
+        out.append(Candidate(
+            key="risk_adjusted", label="Best risk-adjusted volume",
+            depth=risk_adjusted.best_depth,
+            value=f"{risk_adjusted.ce[risk_adjusted.best]:,.1f} MMboe certain-equivalent",
+            figure="b9", plateau=plateau_span(risk_adjusted.ce, risk_adjusted.z,
+                                              risk_adjusted.best),
+            note=f"Exponential utility at a risk tolerance of "
+                 f"{risk_adjusted.rho:,.0f} MMboe. Risk aversion penalises the "
+                 f"low-chance, high-volume tail, so this never sits deeper than the "
+                 f"expectation peak.",
+        ))
 
     if required_depth is not None and np.isfinite(required_depth):
         out.append(Candidate(

@@ -1518,7 +1518,7 @@ def fig_a8_contact_distribution(
 
 
 def fig_b9_chance_weighted(
-    vsweep: VolumeSweep, *, current_z: float | None = None,
+    vsweep: VolumeSweep, *, ce=None, current_z: float | None = None,
     zlim: tuple[float, float] | None = None, min_support: int = MIN_SUPPORT,
     dark: bool = False,
 ):
@@ -1560,6 +1560,10 @@ def fig_b9_chance_weighted(
         if np.isfinite(weighted).sum() >= 2:
             ax.plot(weighted, z, color=p["muted"], lw=0.9, ls=ls,
                     label=f"Proven {label} × P_well")
+
+    if ce is not None and np.any(np.isfinite(ce.ce)):
+        ax.plot(ce.ce, ce.z, color=colour("commercial", dark), lw=2.0, ls="--",
+                label=f"Certainty equivalent (rho {ce.rho:,.0f})")
 
     for name, mean, role in series:
         weighted = pw * mean
