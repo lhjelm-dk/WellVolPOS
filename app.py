@@ -112,13 +112,19 @@ DATA = Path(__file__).parent / "data"
 #
 # Built by filtering on existence rather than listed flat: a clone has A only, this
 # machine has both, and neither should need a different app.py.
+# **The "(default)" marker is computed, not typed.** Which file leads depends on which
+# ones exist, so a hardcoded label goes stale the moment the list is filtered -- and a
+# label reading "(default)" on the second entry is worse than none.
+_DEMO_ORDER = (
+    ("Prospect B — reduced (7 columns)", DATA / "demo_prospectB_reduced.csv"),
+    ("Prospect B — full export, 43 columns", DATA / "demo_prospectB_full.csv"),
+    ("Prospect A — reduced (7 columns)", DATA / "demo_prospectA_reduced.csv"),
+    ("Prospect A — full GeoX export (60 columns)", DATA / "demo_prospectA_full.csv"),
+)
+_present = [(label, path) for label, path in _DEMO_ORDER if path.exists()]
 DEMOS = {
-    label: path for label, path in (
-        ("Prospect A — reduced (7 columns, default)", DATA / "demo_prospectA_reduced.csv"),
-        ("Prospect A — full GeoX export (60 columns)", DATA / "demo_prospectA_full.csv"),
-        ("Prospect B — full export, 43 columns", DATA / "demo_prospectB_full.csv"),
-        ("Prospect B — reduced (7 columns)", DATA / "demo_prospectB_reduced.csv"),
-    ) if path.exists()
+    (f"{label}, default" if i == 0 else label): path
+    for i, (label, path) in enumerate(_present)
 }
 
 # Stable keys for the risking convention. The app branches on these; the text
