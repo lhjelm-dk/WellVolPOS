@@ -412,6 +412,10 @@ def _draw_export_figures(b: Bundle, *, dark: bool = False) -> dict[str, object]:
                 b.ts.col("contact")[b.ts.col("resource") > 0])),
             z_entry=c.entry, z_exit=c.exit,
             apex=float(b.ad.apex_estimate()), dark=dark)[0]
+        if b.vsweep is not None and b.vsweep.p_discovery_exceeds_mefs is not None:
+            from ..core.utility import hurdle_curve
+            figs["B14_hurdle_cost"] = F.fig_b14_hurdle_cost(
+                hurdle_curve(b.vsweep), dark=dark)[0]
         figs["C6_outcome_tree"] = F.fig_c6_outcome_tree(
             b.groups, pos_prospect=b.pos, p_well=ch.p_well,
             pc_well=_cc.pc_well, dark=dark)[0]

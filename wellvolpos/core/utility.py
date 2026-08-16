@@ -187,3 +187,48 @@ def constrained_best(vsweep, *, confidence: float = DEFAULT_CONFIDENCE,
         p_well_at=float(pw[i]), p_commercial_at=float(pm[i]),
         pc_at=float(pw[i] * pm[i]),
     )
+
+
+#: The hurdles 3.13 sweeps. Stops at 99 %: a curve that runs to 100 % spends its last
+#: third on a region where the constraint is met only by the deepest supported step,
+#: which says more about where the sweep ends than about the prospect.
+HURDLE_LEVELS = np.round(np.arange(0.50, 0.9901, 0.01), 4)
+
+
+@dataclass(frozen=True)
+class HurdleCurve:
+    """What each level of commercial confidence costs, swept.
+
+    The table on tab ③ answers this at one confidence. Sweeping it is what shows the
+    shape of the trade -- and one feature of that shape is genuinely counterintuitive
+    and worth drawing rather than asserting: **``Pc`` falls as the hurdle tightens.**
+    Demanding more confidence pushes the well deeper, deeper costs chance faster than
+    it buys commerciality, and the product goes down. A reader who believes "more
+    confident" means "better" is reading the table wrong, and the curve says so.
+    """
+
+    confidence: np.ndarray
+    depth: np.ndarray
+    p_well: np.ndarray
+    pc: np.ndarray
+
+    @property
+    def feasible(self) -> np.ndarray:
+        return np.isfinite(self.depth)
+
+
+def hurdle_curve(vsweep, *, levels=None, min_support: int = 30) -> HurdleCurve:
+    """Sweep the commerciality hurdle, and report what each level costs.
+
+    Each point is one :func:`constrained_best` call, so the curve and the panel cannot
+    disagree about any single confidence -- the panel is a point on this curve.
+    """
+    q = np.asarray(HURDLE_LEVELS if levels is None else levels, dtype=float)
+    depth = np.full(q.size, np.nan)
+    pw = np.full(q.size, np.nan)
+    pc = np.full(q.size, np.nan)
+    for i, level in enumerate(q):
+        r = constrained_best(vsweep, confidence=float(level), min_support=min_support)
+        if r.feasible:
+            depth[i], pw[i], pc[i] = r.depth, r.p_well_at, r.pc_at
+    return HurdleCurve(confidence=q, depth=depth, p_well=pw, pc=pc)

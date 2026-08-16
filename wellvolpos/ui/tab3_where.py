@@ -22,6 +22,7 @@ import streamlit as st
 
 from ..core import (
     DEFAULT_CONFIDENCE,
+    hurdle_curve,
     DEFAULT_RISK_FRACTION,
     candidate_depths,
     ce_curve,
@@ -56,6 +57,7 @@ from ..viz import (
     pfig_b9_chance_weighted,
     pfig_b11_pos_sensitivity,
     pfig_b12_banded_percentiles,
+    pfig_b14_hurdle_cost,
     row_zlim,
 )
 from .common import (chart as _chart, figure_note, split_caveat,
@@ -548,6 +550,36 @@ def _location_sweep_tab(ctx: Ctx):
         # The span is every depth within 2 % of the best.
         if _constrained is not None:
             st.caption(_constrained.message())
+            # **The hurdle swept, not the depth.** The row above is one point on this
+            # curve; the curve earns a figure because Pc *falls* as the hurdle
+            # tightens, which reads as a contradiction in a table and is obvious here.
+            _hurdle = hurdle_curve(vsweep)
+            if _hurdle.feasible.any():
+                _chart(pfig_b14_hurdle_cost(_hurdle, current=float(_conf) / 100.0),
+                       key="b14")
+                _i = int(np.nanargmax(_hurdle.pc))
+                figure_note(
+                    f"Insisting on more confidence costs chance faster than it buys "
+                    f"commerciality — so **Pc peaks at a "
+                    f"{_hurdle.confidence[_i]:.0%} hurdle** and falls either side.",
+                    detail=(
+                        "**A constraint is not an objective.** Both curves fall to the "
+                        "right: demanding more confidence pushes the well deeper, and "
+                        "deeper costs `P_well` faster than it buys conditional "
+                        "commerciality. The product — `Pc`, the number Rose says to "
+                        "carry into an EMV — therefore falls as the hurdle tightens."
+                        "\n\n"
+                        "That is not an argument against setting a hurdle. It is an "
+                        "argument for knowing what one costs, which is what the "
+                        "vertical distance between the two curves shows at any x. "
+                        "Labels on the upper curve are the entry depth each hurdle "
+                        "requires, so the figure names the well as well as the price."
+                        "\n\n"
+                        "**Both axes are probabilities** and neither is a depth, so "
+                        "this figure is exempt from the depth rule for the same "
+                        "reason " + fig_ref("{b7}") + " is."
+                    ),
+                )
         _flat = [c for c in _cands if c.is_flat]
         _widest = max(_cands, key=lambda c: (c.plateau[1] - c.plateau[0])
                       if c.plateau else 0.0)

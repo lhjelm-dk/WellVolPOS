@@ -2202,3 +2202,41 @@ def fig_c5_partitions(
     return fig, axes[0]
 
 
+
+
+def fig_b14_hurdle_cost(hurdle, *, current: float | None = None, label_every: int = 7,
+                        dark: bool = False):
+    """B14, for the export path. Twin of ``pfig_b14_hurdle_cost``.
+
+    Sweeps the requirement rather than the depth. See the plotly twin for why the
+    falling ``Pc`` curve is the point.
+    """
+    p = palette(dark)
+    ok = hurdle.feasible
+    x = np.asarray(hurdle.confidence, dtype=float) * 100.0
+
+    fig, ax = new_figure(figsize=(7.2, 4.4), dark=dark)
+    for values, name, role, ls, lw in (
+        (hurdle.p_well, "P_well available under the hurdle", "well_associated", "-", 2.2),
+        (hurdle.pc, "Pc — commercial chance there", "minimum", "--", 2.2),
+    ):
+        v = np.asarray(values, dtype=float) * 100.0
+        ax.plot(x[ok], v[ok], color=colour(role, dark), lw=lw, ls=ls, label=name)
+
+    pwv = np.asarray(hurdle.p_well, dtype=float) * 100.0
+    for i in range(0, x.size, max(1, label_every)):
+        if ok[i]:
+            ax.annotate(f"{hurdle.depth[i]:,.0f}", (x[i], pwv[i]),
+                        textcoords="offset points", xytext=(0, 6), ha="center",
+                        fontsize=6.5, color=p["text_secondary"])
+
+    if current is not None:
+        ax.axvline(float(current) * 100.0, color=p["well"], ls=":", lw=1.2)
+
+    ax.set_ylim(bottom=0)
+    ax.set_xlabel("Confidence insisted on — P(discovery clears MEFS) (%)")
+    ax.set_ylabel("Probability (%)")
+    ax.set_title("B14 · What the commerciality hurdle costs")
+    ax.legend(fontsize=7.5, frameon=False, loc="upper right")
+    fig.tight_layout()
+    return fig, ax

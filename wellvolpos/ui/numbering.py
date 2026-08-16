@@ -54,6 +54,7 @@ FIGURE_NUMBERS = {
     "b9": "3.10",
     "b6": "3.11",
     "b12": "3.12",
+    "b14": "3.13",
     # ④ At this well
     "c6": "4.1",
     "c5": "4.2",
@@ -77,7 +78,7 @@ LEGACY_CODE = {
     "a1": "A1", "a2": "A2", "a3": "A3", "a4": "A4", "a5": "A5", "a6": "A6",
     "a8": "A8", "a9": "A9", "b0": "B0", "b1": "B1", "b2": "B2", "b3": "B3",
     "b4": "B4", "b5": "B5", "b6": "B6", "b7": "B7", "b8": "B8", "b9": "B9",
-    "b11": "B11", "b12": "B12", "b13": "B13",
+    "b11": "B11", "b12": "B12", "b13": "B13", "b14": "B14",
     "c1": "C1", "c2": "C2", "c3": "C3", "c4": "C4", "c5": "C5", "c6": "C6",
 }
 
@@ -196,6 +197,12 @@ FIGURE_GUIDE = {
             "lognormal is a straight line. Solid is the whole resource in the band, dotted is "
             "what this well would prove in it — so where the dotted curve peels away from the "
             "solid one is where going deeper stops buying proven volume."),
+    "b14": ("what the commerciality hurdle costs",
+            "Sweeps the *requirement* rather than the depth: x is the confidence you "
+            "insist on, y is what it buys. The counterintuitive part is that Pc falls "
+            "as the hurdle tightens — more confidence pushes the well deeper, and "
+            "deeper costs chance faster than it buys commerciality. Labels on the "
+            "upper curve are the entry depth each hurdle requires."),
     "c6": ("what happens if this well is drilled",
            "The four outcomes as one bar: chance failure, dry with attic, and a discovery "
            "split at MEFS into sub-commercial and commercial. Every share is risked onto "

@@ -22,6 +22,9 @@ from .utility import (
     ce_curve,
     certainty_equivalent,
     constrained_best,
+    HURDLE_LEVELS,
+    HurdleCurve,
+    hurdle_curve,
 )
 from .summary import (Candidate, Headline, PLATEAU_TOL, candidate_depths,
                       headline, plateau_span)
@@ -122,6 +125,7 @@ __all__ = [
     "PLATEAU_TOL", "plateau_span",
     "DEFAULT_CONFIDENCE", "DEFAULT_RISK_FRACTION", "ConstrainedResult",
     "RiskAdjusted", "ce_curve", "certainty_equivalent", "constrained_best",
+    "HURDLE_LEVELS", "HurdleCurve", "hurdle_curve",
     "BAND_MODES", "BAND_MODE_LABELS", "BAND_PERCENTILES", "DEFAULT_N_BANDS",
     "BandedPercentiles", "DepthBand", "banded_percentiles", "supported_percentiles",
     "AreaDepth", "group_trials", "group_summary", "boundary_ties", "split_trials", "class_summary",

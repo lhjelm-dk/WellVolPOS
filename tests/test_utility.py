@@ -131,3 +131,55 @@ def test_the_constraint_needs_a_threshold_and_a_sane_confidence(reduced):
     with pytest.raises(ValueError, match="confidence"):
         constrained_best(run_volume_sweep(reduced, ad, POS, z_gap=50.0, mefs=MEFS, n=15),
                          confidence=1.5)
+
+
+# ---------------------------------------------------------------- the hurdle curve
+def test_the_hurdle_curve_is_the_panel_swept(sweep):
+    """Every point is one ``constrained_best`` call, so 3.13 and the row above it
+    cannot disagree about any single confidence — the row is a point on the curve."""
+    from wellvolpos.core import hurdle_curve
+
+    h = hurdle_curve(sweep)
+    for q in (0.60, 0.80, 0.90):
+        i = int(np.argmin(np.abs(h.confidence - q)))
+        if not h.feasible[i]:
+            continue
+        r = constrained_best(sweep, confidence=float(h.confidence[i]))
+        assert r.feasible
+        assert h.depth[i] == pytest.approx(r.depth, abs=1e-9)
+        assert h.p_well[i] == pytest.approx(r.p_well_at, abs=1e-9)
+        assert h.pc[i] == pytest.approx(r.pc_at, abs=1e-9)
+
+
+def test_a_tighter_hurdle_costs_chance_and_never_buys_it_back(sweep):
+    """The shape 3.13 exists to draw: both curves fall to the right.
+
+    ``P_well`` falling is obvious. ``Pc`` falling is not — it is the product of a
+    falling chance and a rising conditional, and a reader who expects "more confident"
+    to mean "better" has read the constraint as an objective.
+    """
+    from wellvolpos.core import hurdle_curve
+
+    h = hurdle_curve(sweep)
+    ok = h.feasible
+    assert ok.sum() > 5, "too few feasible hurdles to say anything"
+
+    pw, pc = h.p_well[ok], h.pc[ok]
+    assert np.all(np.diff(pw) <= 1e-9), "P_well must not rise as the hurdle tightens"
+    # Pc is allowed to plateau but must end below where it started, and must never
+    # exceed P_well anywhere -- it is that times a probability.
+    assert pc[-1] < pc[0] - 1e-9, "Pc should fall as the hurdle tightens"
+    assert np.all(pc <= pw + 1e-9)
+
+
+def test_an_impossible_hurdle_leaves_a_gap_rather_than_a_guess(reduced):
+    """Where the constraint cannot be met the curve is not drawn, rather than pinned
+    to the deepest supported step -- which would read as an achievable answer."""
+    from wellvolpos.core import hurdle_curve, run_volume_sweep
+
+    ad = AreaDepth.from_trials(reduced.col("contact"), reduced.col("area"))
+    # A threshold far above anything the prospect holds: nothing can clear it.
+    vs = run_volume_sweep(reduced, ad, POS, z_gap=50.0, mefs=1e6, n=20)
+    h = hurdle_curve(vs)
+    assert not h.feasible.any()
+    assert np.all(np.isnan(h.depth))

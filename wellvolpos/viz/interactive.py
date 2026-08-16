@@ -3615,3 +3615,75 @@ def pfig_c5_partitions(
 
 
 # ------------------------------------------------------------------- C6
+
+
+# ------------------------------------------------------------------- B14
+def pfig_b14_hurdle_cost(
+    hurdle, *, current: float | None = None, label_every: int = 7,
+    dark: bool = False, height: int | None = PANEL_HEIGHT,
+):
+    """B14 -- what a commerciality hurdle costs, swept over the hurdle itself.
+
+    Every other figure on tab ③ sweeps *depth*. This one sweeps the **requirement**:
+    x is the confidence you insist on, y is what you get for it.
+
+    The panel above reports one point on this curve. Drawing the whole thing is worth a
+    figure because of one feature that reads as a contradiction in a table:
+
+    **``Pc`` falls as the hurdle tightens.** More confidence pushes the well deeper,
+    deeper costs ``P_well`` faster than it buys commerciality, and the product goes
+    down -- 21.9 % at a 50 % hurdle to 11.9 % at 99 % on prospect C. A reader who takes
+    "more confident" to mean "better" is reading the constraint as an objective, which
+    is precisely the mistake this figure exists to prevent.
+
+    **Both axes are probabilities**, so the two curves are directly comparable and the
+    reading is unambiguous: at any x, the vertical gap between them is the conditional
+    commerciality that hurdle buys. Depth is not on an axis -- it appears as labels
+    along the ``P_well`` curve, the same device 3.8 uses -- so B14 joins A5, A6, B4,
+    B5, B7 and 3.12 in the depth-rule exemption.
+    """
+    p = palette(dark)
+    ok = hurdle.feasible
+    x = np.asarray(hurdle.confidence, dtype=float) * 100.0
+
+    fig = go.Figure()
+    for values, name, role, dash, width in (
+        (hurdle.p_well, "P_well available under the hurdle", "well_associated", "solid", 2.6),
+        (hurdle.pc, "Pc — commercial chance there", "minimum", "dash", 2.6),
+    ):
+        v = np.asarray(values, dtype=float) * 100.0
+        fig.add_scatter(
+            x=x[ok], y=v[ok], mode="lines", name=name,
+            line=dict(color=colour(role, dark), width=width, dash=dash),
+            customdata=hurdle.depth[ok],
+            hovertemplate=(name + "<br>%{y:.1f}% at a %{x:.0f}% hurdle"
+                           "<br>entering at %{customdata:,.0f} m TVDSS<extra></extra>"),
+        )
+
+    # Depth along the P_well curve: the hurdle is the question, but the *answer* a
+    # reader acts on is a depth, and without it this figure names none.
+    pwv = np.asarray(hurdle.p_well, dtype=float) * 100.0
+    for i in range(0, x.size, max(1, label_every)):
+        if not ok[i]:
+            continue
+        fig.add_annotation(
+            x=float(x[i]), y=float(pwv[i]), text=f"{hurdle.depth[i]:,.0f}",
+            showarrow=False, xshift=0, yshift=11,
+            font=dict(size=8, color=p["text_secondary"]),
+        )
+
+    if current is not None:
+        _vline(fig, float(current) * 100.0, p["well"], "dot",
+               f"insisting on {float(current):.0%}")
+
+    fig.update_layout(
+        title=("B14 · What the commerciality hurdle costs"
+               "<br><sub>x is the confidence demanded, not a depth · labels on the "
+               "upper curve are the entry it requires</sub>"),
+        xaxis_title="Confidence insisted on — P(discovery clears MEFS) (%)",
+        yaxis_title="Probability (%)",
+    )
+    fig.update_yaxes(rangemode="tozero")
+    apply_plotly(fig, dark, height)
+    crosshair(fig, dark)
+    return fig
