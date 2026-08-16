@@ -15,8 +15,7 @@ trajectory — a reservoir entry depth and a reservoir exit depth — and answer
 5. Which **risk elements** carry the location penalty?
 
 It does not replace GeoX — it re-cuts GeoX's output against a well. It does not
-build the contact distribution; that is the [HCWC Builder](../HCWC%20builder)'s
-job. It does not do economics.
+build the contact distribution; that is a separate project's job. It does not do economics.
 
 ---
 
@@ -30,7 +29,7 @@ The short version:
 ```bash
 python -m venv .venv && .venv/Scripts/Activate.ps1   # Windows
 pip install -r requirements.txt
-pytest                 # the specification — 372 passed
+pytest                 # the specification — 551 passed
 streamlit run app.py   # opens on the bundled demo data
 ```
 
@@ -71,7 +70,7 @@ roughly 40 % too low.
 |---|---|---|
 | 0 | Repo, theme, GeoX adapter, failure detector, QC + risking panel, demo selector, parity suite | **done** |
 | 1 | Reference grouping engine, figures A3/A4/A5, B3, depth sweep | **done** |
-| 2 | `A(z)`, proven/possible classes, figures A1/A2/A6, B0/B1/B2, live section | **done** |
+| 2 | `A(z)`, the per-trial volume classes, figures A1/A2/A6, B0/B1/B2, live section | **done** |
 | 3 | Chance table, reference contours, allocation schemes, B4/B5, threshold mapping | **done** |
 | 4 | Inverse tool, optimum finders, bootstrap bands | **done** |
 | — | The teaching layer: map view, concepts figure, reservoir-thickness inversion, Rose's three quantities, theory & guide tab | **done** |
@@ -95,6 +94,20 @@ deliberately **not** in this repository: its provenance is unconfirmed, and
 publishing subsurface data whose origin nobody has established is not a risk
 worth taking for a demo file. `app.py` builds its demo list from the files that
 are present, so a clone runs on prospect A alone with nothing to configure.
+
+The two forms are the same 10 000 realisations exported twice, which makes them
+a good pair for exercising the importer. One trap worth knowing: their
+`TrialNumber` columns hold the same identifiers attached to *different rows*, so
+joining two GeoX exports on `TrialNumber` silently scrambles them. Nothing here
+does; `tests/test_adapters.py` asserts it.
+
+`io/synthetic.py` generates two more files, for the branches one real prospect
+cannot exercise: a **correlated area / net-pay** file, which makes the per-trial
+split's uniform-pay guard speak, and a **success-case-only** file with no chance
+failures, which forces the risking branch onto the chance table. Both emit
+GeoX-shaped CSV and are read back through the real adapter. Their closure is a
+cone, so `A(z)` is known exactly — the one thing real data cannot offer, and what
+let a sensitivity in the reservoir-thickness inversion be found.
 
 To try it on your own data, choose **Upload your own…** in tab ①. Nothing is
 written to disk — an upload is read as bytes and passed straight to the adapter.
@@ -134,7 +147,7 @@ wellvolpos/
   report/case.py             save and reload a session: settings only, never results
   report/export.py           one bundle, four formats
   report/guide.py            the theory & guide tab
-data/                        two demo trial files (fictional)
+data/                        the prospect A demo, in both export forms
 docs/                        the design plan and the figure sheets
 tests/                       the specification
 ```
@@ -152,12 +165,13 @@ default buried in the code:
   default, and what the source workbook does) or P90 area (Rose). On this
   dataset the Rose convention is a flat 1.11× uplift at every depth plus a cap
   up-dip of the P90-area contour.
-- **Risk-element allocation** — none (report `r` separately), equal cube-root
-  equal cube root, or all-to-closure (Rose). All three give the *same* `P_well`;
+- **Risk-element allocation** — none (report `r` separately), equal cube root,
+  or all-to-closure (Rose). All three give the *same* `P_well`;
   only the attribution differs.
 - **Assessment minimum** — a minimum column height below the apex, with the
   equivalent area and volume percentile displayed beside it.
-- **Engine** — reference grouping, or the proven/possible decomposition. Both
+- **Engine** — reference grouping, or the per-trial proven / unproven-below-LKH
+  decomposition. Both
   are shown; neither is labelled "correct".
 
 ## What comes out
@@ -190,28 +204,6 @@ marker. `tests/test_axes.py`.
 **The source workbook is the specification.** `tests/test_excel_parity.py` locks
 fifteen values read from it, so the port cannot silently drift from the tool that
 is already trusted. It was written before any other code.
-
----
-
-## Data
-
-`data/` contains two demo trial files. **The data are fictional** and safe to
-publish. They are the same 10 000 realisations exported twice — once as the
-7-column paste, once as the full 60-column GeoX export — which makes them a good
-pair for exercising the importer.
-
-One trap worth knowing: their `TrialNumber` columns hold the same identifiers
-attached to *different rows*. Joining two GeoX exports on `TrialNumber` will
-silently scramble them. Nothing here does; `tests/test_adapters.py` asserts it.
-
-`io/synthetic.py` generates two more, for the branches one real prospect cannot
-exercise: a **correlated area / net-pay** file, which makes the per-trial split's
-uniform-pay guard speak, and a **success-case-only** file with no chance failures,
-which forces the risking branch onto the chance table. Both emit GeoX-shaped CSV
-and are read back through the real adapter, so they exercise the importer too.
-Their closure is a cone, which means `A(z)` is known exactly — the one thing the
-real data cannot offer, and what let a sensitivity in the reservoir-thickness
-inversion be found and documented.
 
 ---
 
