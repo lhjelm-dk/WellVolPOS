@@ -2229,7 +2229,7 @@ def pfig_b9_chance_weighted(
                 fig.add_scatter(
                     x=[float(np.nanmax(weighted))] * 2, y=list(_sp), mode="lines",
                     line=dict(color=colour(role, dark), width=6), opacity=0.30,
-                    showlegend=False,
+                    name=f"{name} — within 2 % of best",
                     hovertemplate=(f"within 2 % of the best anywhere from "
                                    f"{_sp[0]:,.0f} to {_sp[1]:,.0f} m<extra></extra>"),
                 )
@@ -2829,13 +2829,26 @@ def pfig_b8_commercial_chance(
         best = int(np.nanargmax(pc))
         _span = plateau_span(pc, z, best)
         if _span is not None and _span[1] - _span[0] > 1.0:
+            # A shape cannot enter the legend, so it is labelled where it sits. The
+            # thick line inside it carries the legend entry; this is the same band
+            # extended across the plot so the depth range is readable against the
+            # other curves rather than only against the Pc one.
             fig.add_hrect(y0=_span[0], y1=_span[1],
                           fillcolor=rgba("minimum", 0.10, dark), line_width=0,
-                          layer="below")
+                          layer="below",
+                          annotation_text="best Pc, anywhere in this band",
+                          annotation_position="top left",
+                          annotation_font=dict(size=9,
+                                               color=colour("minimum", dark)))
+            # **Named in the legend** (Lars, 2026-08-16: "what is the light red thick
+            # line and rectangle?"). A shaded region with no entry is a reader guessing,
+            # and on a figure whose whole subject is a trade-off the wrong guess is
+            # that it means uncertainty.
             fig.add_scatter(
                 x=[float(np.nanmax(pc))] * 2, y=list(_span), mode="lines",
-                line=dict(color=colour("minimum", dark), width=6),
-                opacity=0.35, showlegend=False,
+                line=dict(color=colour("minimum", dark), width=6), opacity=0.35,
+                name=(f"Within 2 % of the best Pc — {_span[0]:,.0f}–{_span[1]:,.0f} m"),
+                legendgroup="plateau",
                 hovertemplate=(f"within 2 % of the best Pc anywhere from "
                                f"{_span[0]:,.0f} to {_span[1]:,.0f} m<extra></extra>"),
             )

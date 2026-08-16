@@ -501,9 +501,13 @@ def _location_sweep_tab(ctx: Ctx):
     # anywhere in this tool.
     _u1, _u2 = st.columns(2)
     with _u1:
+        # **Integer per cent, not a fraction.** `format="%.0f%%"` on a 0.50-0.99 float
+        # renders every value as 0 % or 1 %, because it formats the raw number -- the
+        # slider worked and the panel below it read 71 % while the control said 1 %.
+        # A label that contradicts the number it sets is worse than no label.
         _conf = st.slider(
-            "Commercial confidence to insist on", 0.50, 0.99,
-            float(DEFAULT_CONFIDENCE), 0.01, format="%.0f%%",
+            "Commercial confidence to insist on", 50, 99,
+            int(round(DEFAULT_CONFIDENCE * 100)), 1, format="%d%%",
             key="w_confidence",
             help="P(a discovery clears MEFS). The panel reports the shallowest depth "
                  "from which it stays at or above this all the way down, and the best "
@@ -520,7 +524,7 @@ def _location_sweep_tab(ctx: Ctx):
                  f"expectation. One mean here is {_mean_succ:,.0f} MMboe.",
         )
     _rho = max(_mean_succ * float(_rho_frac), 1e-6)
-    _constrained = (constrained_best(vsweep, confidence=float(_conf))
+    _constrained = (constrained_best(vsweep, confidence=float(_conf) / 100.0)
                     if vsweep.p_discovery_exceeds_mefs is not None else None)
     _ce = ce_curve(ts, vsweep, rho=_rho)
 

@@ -37,6 +37,7 @@ from ..core.chance import (
 )
 from ..core.chance import waterfall_steps as chance_waterfall_steps
 from ..core.mefs import c2_cases, c2_crossings
+from ..core.summary import plateau_span
 from ..core.classes import (
     READING_LABELS,
     VolumeClasses,
@@ -1459,6 +1460,16 @@ def fig_b8_commercial_chance(
 
     if np.any(np.isfinite(pc)):
         best = int(np.nanargmax(pc))
+        # The plateau band -- see the plotly twin. Named, because a shaded region with
+        # no legend entry is a reader guessing, and the wrong guess on a trade-off
+        # figure is that it means uncertainty.
+        _span = plateau_span(pc, z, best)
+        if _span is not None and _span[1] - _span[0] > 1.0:
+            ax.axhspan(_span[0], _span[1], color=colour("minimum", dark), alpha=0.10,
+                       lw=0, zorder=0)
+            ax.plot([float(np.nanmax(pc))] * 2, list(_span),
+                    color=colour("minimum", dark), lw=5, alpha=0.35,
+                    label=f"Within 2 % of the best Pc — {_span[0]:,.0f}–{_span[1]:,.0f} m")
         ax.plot([pc[best]], [z[best]], marker="*", ms=12, color=colour("minimum", dark), zorder=5)
         ax.annotate(f"  best {pc[best]:.1f}% at {z[best]:.0f} m", (pc[best], z[best]),
                     fontsize=7.5, color=colour("minimum", dark), va="center")
@@ -1571,6 +1582,11 @@ def fig_b9_chance_weighted(
         ax.plot(weighted, z, color=colour(role, dark), lw=2.2, label=name)
         if np.any(np.isfinite(weighted)):
             i = int(np.nanargmax(weighted))
+            _sp = plateau_span(weighted, z, i)
+            if _sp is not None and _sp[1] - _sp[0] > 1.0:
+                ax.plot([float(np.nanmax(weighted))] * 2, list(_sp),
+                        color=colour(role, dark), lw=5, alpha=0.30,
+                        label=f"{name} — within 2 % of best")
             ax.plot([weighted[i]], [z[i]], marker="*", ms=12,
                     color=colour(role, dark), zorder=5)
             ax.annotate(f"  {weighted[i]:.1f} at {z[i]:.0f} m", (weighted[i], z[i]),
