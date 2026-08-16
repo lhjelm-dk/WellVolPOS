@@ -29,7 +29,7 @@ The short version:
 ```bash
 python -m venv .venv && .venv/Scripts/Activate.ps1   # Windows
 pip install -r requirements.txt
-pytest                 # the specification — 551 passed
+pytest                 # the specification; it prints its own count
 streamlit run app.py   # opens on the bundled demo data
 ```
 
@@ -77,9 +77,9 @@ roughly 40 % too low.
 | 5 | Export, case save/load, synthetic generators, docs | **done** |
 | — | Design pass: headline and candidate depths, three-tier captions, tab grouping, the wedge and outcome-tree figures, commercial volume class, type scale and crosshair | **done** |
 
-Six tabs, all live, and **551 tests**. Every interactive figure has a matplotlib
-twin for the export path, and a test compares the two modules so a new figure
-cannot skip it.
+Six tabs, all live. Every interactive figure has a matplotlib twin for the
+export path, and a test compares the two modules so a new figure cannot skip
+it — the same check catches a twin that never reaches the export bundle.
 
 ---
 
@@ -144,6 +144,7 @@ wellvolpos/
   core/mefs.py               every volume read against the MEFS / MCFS line
   core/dependence.py         what the exit moves, and whether the spacing is a vertical well
   core/bands.py              the prospect cut by contact-depth band
+  core/utility.py            certainty equivalent, and the commerciality hurdle
   core/chance.py             r_location, reference contours, risk allocation
   core/reservoir.py          reservoir thickness, back-calculated from pay
   core/rose.py               No Regrets, Pmcfs(well), Pc(well) — the poster's definitions
