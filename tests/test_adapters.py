@@ -120,3 +120,63 @@ def test_every_stub_satisfies_the_adapter_protocol():
 
     for adapter in STUB_ADAPTERS:
         assert isinstance(adapter, TrialAdapter), adapter.name
+
+
+# ------------------------------------------------------- the anonymised demo
+def test_the_published_demo_is_a_rigid_translation_of_its_source():
+    """Prospect C is prospect B with every depth shifted by one constant.
+
+    The claim that makes it publishable *and* useful is that shifting a structure does
+    not change what the tool says about it — column heights are differences, A(z) is
+    the same curve moved, and r_location counts contacts either side of a depth that
+    moved with them. That is asserted here rather than believed, because an
+    anonymisation that quietly changed an answer would be worse than none: the demo
+    would teach numbers the source data does not support.
+
+    Skipped where prospect B is absent — it is deliberately not in the repository, so
+    this runs on the author's machine and in any clone that has both.
+    """
+    from pathlib import Path
+
+    import pytest
+
+    from wellvolpos.core import (AreaDepth, class_summary, group_trials, p_well,
+                                 split_trials)
+    from wellvolpos.io.adapters import read_trials
+    from wellvolpos.io.anonymise import depth_columns
+
+    data = Path(__file__).resolve().parents[1] / "data"
+    src, pub = data / "demo_prospectB_reduced.csv", data / "demo_prospectC_reduced.csv"
+    if not src.exists():
+        pytest.skip("prospect B is not in this checkout — it is gitignored by design")
+
+    import pandas as pd
+
+    a, b = pd.read_csv(src), pd.read_csv(pub)
+    cols = depth_columns(a)
+    assert cols, "no depth column — the anonymisation would have been a no-op"
+
+    # One offset, the same for every depth column and every row.
+    offsets = {c: (b[c] - a[c]).round(6).unique() for c in cols}
+    for c, uniq in offsets.items():
+        assert len(uniq) == 1, f"{c} was not shifted rigidly: {uniq[:5]}"
+    off = float(next(iter(offsets.values()))[0])
+    assert abs(off) > 100.0, "an offset this small does not anonymise a location"
+
+    # Nothing else moved.
+    other = [c for c in a.columns if c not in cols]
+    pd.testing.assert_frame_equal(a[other], b[other])
+
+    # And the tool says the same thing about both, at wells moved by that offset.
+    def answers(path, entry):
+        ts = read_trials(path)
+        ad = AreaDepth.from_trials(ts.col("contact"), ts.col("area"))
+        g = group_trials(ts, entry, entry + 50.0)
+        vc = split_trials(ts, ad, g, entry, entry + 50.0)
+        cs = class_summary(vc, g)
+        ch = p_well(ts, entry, 0.432)
+        return (ch.r_location, ch.p_well, cs["proven"]["mean"],
+                cs["attic_dry_hole"]["mean"], cs["discovery"]["mean"])
+
+    for x, y in zip(answers(src, 2205.0), answers(pub, 2205.0 + off)):
+        assert x == pytest.approx(y, abs=1e-9)

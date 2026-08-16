@@ -89,11 +89,21 @@ cannot skip it.
 and the full 60-column form, so both the everyday case and the duplicate-header
 trap stay exercised. It is what the parity suite is locked to.
 
-A second demo (prospect B) exists in the author's working copy and is
-deliberately **not** in this repository: its provenance is unconfirmed, and
-publishing subsurface data whose origin nobody has established is not a risk
-worth taking for a demo file. `app.py` builds its demo list from the files that
-are present, so a clone runs on prospect A alone with nothing to configure.
+**Prospect C**, the default, is a second closure — larger, and **success-case
+only**, with no chance failures at all, so it exercises the risking branch no
+other file reaches: POS comes from the chance table and the footer says so.
+
+It is a real export with **every depth shifted by one constant**, so the file
+names no location. That is a rigid translation, so it changes nothing the tool
+says: column heights are differences, `A(z)` is the same curve moved, and
+`r_location` counts contacts either side of a depth that moved with them.
+`wellvolpos/io/anonymise.py` does it and a test asserts the invariance rather
+than assuming it — an anonymisation that quietly changed an answer would teach
+numbers the source data does not support.
+
+It anonymises *where*, not *how much*: the volume distribution is the original's.
+`app.py` builds its demo list from the files present, so nothing needs
+configuring either way.
 
 The two forms are the same 10 000 realisations exported twice, which makes them
 a good pair for exercising the importer. One trap worth knowing: their
@@ -147,7 +157,8 @@ wellvolpos/
   report/case.py             save and reload a session: settings only, never results
   report/export.py           one bundle, four formats
   report/guide.py            the theory & guide tab
-data/                        the prospect A demo, in both export forms
+data/                        the demo trial files, A in both export forms
+  io/anonymise.py            shift a real export's depths so it can be published
 docs/                        the design plan and the figure sheets
 tests/                       the specification
 ```

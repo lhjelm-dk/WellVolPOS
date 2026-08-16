@@ -116,6 +116,12 @@ DATA = Path(__file__).parent / "data"
 # ones exist, so a hardcoded label goes stale the moment the list is filtered -- and a
 # label reading "(default)" on the second entry is worse than none.
 _DEMO_ORDER = (
+    # **Prospect C is prospect B, moved.** Every depth shifted by one constant so the
+    # file names no location, and nothing else touched -- see io/anonymise.py. The
+    # translation is rigid, so r_location, P_well and every volume are identical at a
+    # well moved by the same offset; a test asserts that rather than trusting it.
+    # C ships; B stays in the working folder.
+    ("Prospect C — reduced (7 columns)", DATA / "demo_prospectC_reduced.csv"),
     ("Prospect B — reduced (7 columns)", DATA / "demo_prospectB_reduced.csv"),
     ("Prospect B — full export, 43 columns", DATA / "demo_prospectB_full.csv"),
     ("Prospect A — reduced (7 columns)", DATA / "demo_prospectA_reduced.csv"),
