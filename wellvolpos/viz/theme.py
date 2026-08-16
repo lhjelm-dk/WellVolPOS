@@ -584,6 +584,12 @@ def reference_label(reference) -> str:
 #: app; this is only where it starts.
 OVERLAP_OPACITY = 0.30
 
+#: Bars on 4.7, doubled from 40 on 2026-08-16 (Lars). With five overlapping
+#: series the figure is about where one series' mass sits relative to another,
+#: and 40 bins over a range running to ~480 MMboe is a 12 MMboe bar -- wide
+#: enough to hide the shoulder where two classes part company.
+OVERLAP_BINS = 80
+
 #: The type scale, shared by both backends so an exported figure is set like the one
 #: on screen. The title was 14 against a 12 body -- two points is not a hierarchy, and
 #: several titles now carry a ``<sub>`` subtitle that was rendering at the same size as

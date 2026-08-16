@@ -176,11 +176,15 @@ FIGURE_GUIDE = {
     "b8": ("commercial chance vs location",
            "A rising conditional times a falling `P_well` gives an interior maximum, and that "
            "starred peak is where the well goes commercially."),
-    "b9": ("chance-weighted resource vs location",
+    "b9": ("chance-weighted resource, and its risk-adjusted twin",
            "`P_well × the mean`, swept — where the expectation peaks. An expected value "
            "describes no outcome that can happen: the well either finds something near the "
            "success-case mean or it finds nothing. Right for ranking locations, wrong to "
-           "quote as a volume."),
+           "quote as a volume. "
+           "**The dashed green curve is the same distribution risk-adjusted** — "
+           "exponential utility at the risk tolerance set above the panel. An "
+           "expectation is risk-neutral; this is not, and the gap between them widens "
+           "down-dip, because that is where the low-chance, high-volume tail lives."),
     "b6": ("the inverse",
            "Given a volume to prove, where must the well go and what does it cost? Answers a "
            "**guarantee** — the shallowest depth from which the statistic stays at or above "

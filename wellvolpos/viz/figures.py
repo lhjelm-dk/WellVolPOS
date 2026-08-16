@@ -78,6 +78,7 @@ from .theme import (
     palette,
     reference_label,
     OVERLAP_OPACITY,
+    OVERLAP_BINS,
 )
 
 __all__ = [
@@ -583,7 +584,7 @@ def fig_a5_exceedance(
 
 def fig_a6_overlap(
     vc: VolumeClasses, groups: Groups, *, ts: TrialSet | None = None,
-    mefs: float | None = None, dark: bool = False, bins: int = 40,
+    mefs: float | None = None, dark: bool = False, bins: int = OVERLAP_BINS,
     normalise: str = "density", show_exceedance: bool = False,
     opacity: float = OVERLAP_OPACITY,
 ):

@@ -557,8 +557,15 @@ def _location_sweep_tab(ctx: Ctx):
                if _flat else "")
             + "Best chance is the shallowest supported depth by construction — "
             "P_well only falls down-dip — so read that row as the top of the sweep "
-            "rather than as advice. The other two optimise different things: one the "
-            "volume a portfolio adds up, the other the chance of clearing MEFS. "
+            "rather than as advice.\n\n"
+            "**The rest optimise different things, and one of them is not an optimum "
+            "at all.** Chance-weighted volume is what a portfolio adds up and is "
+            "*risk-neutral*; the risk-adjusted row is the same distribution under "
+            "exponential utility, and can never sit deeper. Commercial chance is "
+            "Rose's Pc. The confidence row is a **constraint**, not a criterion — the "
+            "best odds available once the hurdle is met — which is why it can sit "
+            "deeper than every optimum above it and still be the right answer to the "
+            "question it was asked.\n\n"
             "Nothing here changes the well; the depth is set on tab ①."
         )
         st.divider()
@@ -588,7 +595,9 @@ def _location_sweep_tab(ctx: Ctx):
                                     height=TALL_PANEL_HEIGHT)
     _chart(_f_b9, key="b9")
     figure_note(
-        f"P_well times mean volume. The peak is the most resource for the least risk, and it is neither the shallowest nor the deepest location.",
+        f"P_well times mean volume, and beside it the same distribution "
+        f"risk-adjusted. Where the two part company is what risk aversion costs a "
+        f"deep location.",
         detail=f"**{fig_ref('{b9}')} — the targeting tool.** `P_well × mean volume`, swept: a falling curve times a "
         "rising one, so it peaks somewhere in between and that depth maximises the expectation. "
         "It is drawn for the proven volume and for the whole well-associated volume, which peak "
