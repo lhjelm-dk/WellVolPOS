@@ -653,3 +653,34 @@ def test_the_possible_volume_decomposes_into_a_chance_and_a_size(reduced, area_d
     partial = ok & (vs.p_well_exits_in_hc < 0.99)
     assert partial.any()
     assert np.all(vs.below_lkh_mean_if_any[partial] > vs.below_lkh_mean[partial])
+
+
+def test_the_inverse_sentence_names_the_statistic_it_inverted(reduced, area_depth):
+    """It said "on the mean" whatever was asked for, while quoting the right depth.
+
+    The seventh instance of this project's recurring bug — a label asserting what the
+    computation denies — and in the worst place for it, because the worked sentence is
+    the part a reader lifts into a proposal. On prospect C it read "103 MMboe on the
+    mean needs entry at 1,636 m" when 1,636 m is the *P90* answer and the mean's is
+    1,574 m: two different wells under one sentence.
+    """
+    from wellvolpos.core import TARGET_STATISTICS, invert_volume_target, run_volume_sweep
+    from wellvolpos.core.sweep import TARGET_STATISTIC_LABELS
+
+    vs = run_volume_sweep(reduced, area_depth, 0.7605, n=25, mefs=14.0)
+    depths, seen = {}, []
+    for stat in TARGET_STATISTICS:
+        inv = invert_volume_target(vs, 14.0, ts=reduced, statistic=stat)
+        assert inv.statistic == stat
+        msg = inv.message()
+        assert TARGET_STATISTIC_LABELS[stat] in msg, (stat, msg)
+        seen.append(msg)
+        if inv.z_required is not None:
+            depths[stat] = inv.z_required
+
+    # Every sentence is distinguishable, and the statistics really do disagree about
+    # the depth — otherwise this test would pass on a build that ignored the argument.
+    assert len(set(seen)) == len(seen)
+    assert len(set(depths.values())) > 1, depths
+    # P90 asks the most of the well, P10 the least.
+    assert depths["p90"] >= depths["p50"] >= depths["p10"]

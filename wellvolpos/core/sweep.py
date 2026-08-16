@@ -619,11 +619,23 @@ class InverseResult:
     # because "anywhere on the structure does this" is a different answer from
     # "you must get down to 3500 m".
     binds: bool = True
+    #: Which proven-volume statistic was inverted. Carried so :meth:`message` can name
+    #: it: the sentence said "on the mean" whatever was asked for, while the depth it
+    #: quoted was correct -- 1,636 m for P90 against 1,574 m for the mean on prospect C.
+    #: A label asserting what the computation denies is this project's recurring bug,
+    #: and a *worked sentence* is the worst place for it, because it is the part a
+    #: reader quotes.
+    statistic: str = "mean"
+
+    @property
+    def _stat_label(self) -> str:
+        return TARGET_STATISTIC_LABELS.get(self.statistic, self.statistic)
 
     def message(self) -> str:
         if not self.achievable:
             return (
-                f"No location on this structure proves {self.target:.2f} MMboe on the mean — "
+                f"No location on this structure proves {self.target:.2f} MMboe on the "
+                f"{self._stat_label} — "
                 f"the deepest well-supported entry does not reach it."
             )
         if not self.binds:
@@ -635,7 +647,7 @@ class InverseResult:
         if self.z_lo is not None and self.z_hi is not None and np.isfinite([self.z_lo, self.z_hi]).all():
             band = f" (band {self.z_lo:.0f}–{self.z_hi:.0f} m)"
         return (
-            f"Proving {self.target:.2f} MMboe on the mean needs entry at "
+            f"Proving {self.target:.2f} MMboe on the {self._stat_label} needs entry at "
             f"{self.z_required:.0f} m TVDSS{band}, where P_well is {self.p_well_at:.1%}."
         )
 
@@ -765,7 +777,8 @@ def invert_volume_target(
     curve = _supported_proven(vsweep, min_support, statistic)
     z_req = _required_depth(vsweep.z, curve, float(target))
     if z_req is None:
-        return InverseResult(target=float(target), achievable=False, z_required=None, p_well_at=None)
+        return InverseResult(target=float(target), achievable=False, z_required=None,
+                             p_well_at=None, statistic=statistic)
 
     if ts is not None:
         p_at = _p_well(
@@ -794,7 +807,7 @@ def invert_volume_target(
     binds = z_req > float(vsweep.z[np.isfinite(curve)][0]) + 1e-9 if np.isfinite(curve).any() else True
     return InverseResult(
         target=float(target), achievable=True, z_required=z_req, p_well_at=float(p_at),
-        z_lo=z_lo, z_hi=z_hi, n_discovery_at=n_at, binds=binds,
+        z_lo=z_lo, z_hi=z_hi, n_discovery_at=n_at, binds=binds, statistic=statistic,
     )
 
 
