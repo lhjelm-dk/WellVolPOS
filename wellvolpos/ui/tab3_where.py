@@ -251,17 +251,17 @@ def _location_sweep_tab(ctx: Ctx):
              "share from 1 % to 110 %, which is the only way to read the small ones — "
              "cumulative bands cannot stack on a log axis.",
     )
-    f_a2 = pfig_a2_outcome_tree(sweep, current_z=entry, zlim=zrow_sweep,
+    f_a2 = pfig_a2_outcome_tree(sweep, current_z=entry, current_exit=exit_, zlim=zrow_sweep,
                                 share_scale=_a2_scale)
     f_a3 = pfig_a3_chance_decomposition(
-        sweep, pos_prospect=pos, pos_trials=pos_trials, current_z=entry, zlim=zrow_sweep)
-    f_b3 = pfig_b3_uncertainty_reduction(sweep, current_z=entry, zlim=zrow_sweep,
+        sweep, pos_prospect=pos, pos_trials=pos_trials, current_z=entry, current_exit=exit_, zlim=zrow_sweep)
+    f_b3 = pfig_b3_uncertainty_reduction(sweep, current_z=entry, current_exit=exit_, zlim=zrow_sweep,
                                          height=TALL_PANEL_HEIGHT)
     # **The sensitivity fan** (Lars, 2026-08-12), from the workbook's charts 8 and 22.
     # It sits beside 3.2 because it is the same quantity with the chance table swept
     # instead of fixed: 3.2 answers "what is P_well here", this answers "how much of
     # that is the chance table rather than the geometry".
-    f_b11 = pfig_b11_pos_sensitivity(sweep, pos_prospect=pos, current_z=entry,
+    f_b11 = pfig_b11_pos_sensitivity(sweep, pos_prospect=pos, current_z=entry, current_exit=exit_,
                                      zlim=zrow_sweep)
     # b11 is NOT levelled with them: it is drawn full width below the row, not as a
     # fourth panel in it, so borrowing the row's height only padded it.
@@ -368,11 +368,11 @@ def _location_sweep_tab(ctx: Ctx):
     # remain are what this row was for: what the well proves, and what it risks.
     # **One per line** (Lars, 2026-08-14). Three depth panels in a row left each of
     # them a third of the width, and all three carry percentile families now.
-    f_b2 = pfig_b2_chance_vs_regret(vsweep, current_z=entry, zlim=zrow_sweep,
+    f_b2 = pfig_b2_chance_vs_regret(vsweep, current_z=entry, current_exit=exit_, zlim=zrow_sweep,
                                     height=TALL_PANEL_HEIGHT)
-    f_b1 = pfig_b1_volume_split(vsweep, current_z=entry, zlim=zrow_sweep,
+    f_b1 = pfig_b1_volume_split(vsweep, current_z=entry, current_exit=exit_, zlim=zrow_sweep,
                                 height=TALL_PANEL_HEIGHT)
-    f_b13 = pfig_b13_below_exit(vsweep, current_z=entry, zlim=zrow_sweep,
+    f_b13 = pfig_b13_below_exit(vsweep, current_z=entry, current_exit=exit_, zlim=zrow_sweep,
                                 height=TALL_PANEL_HEIGHT)
     _chart(f_b1, key="b1")
     sup_disc = describe_support(vsweep.n_discovery, vsweep.z, name="discovery")
@@ -622,12 +622,12 @@ def _location_sweep_tab(ctx: Ctx):
         _chart(_f_b7, key="b7")
     # 3.9 is full width (Lars, 2026-08-14). It carries three curves and a starred
     # interior maximum, and half a row was not enough to see where that peak sits.
-    _f_b8 = pfig_b8_commercial_chance(vsweep, current_z=entry, zlim=zrow_sweep,
+    _f_b8 = pfig_b8_commercial_chance(vsweep, current_z=entry, current_exit=exit_, zlim=zrow_sweep,
                                       height=TALL_PANEL_HEIGHT)
     _chart(_f_b8, key="b8")
     # A quarter taller (Lars, 2026-08-14): two starred peaks and a grey percentile
     # family share one pair of axes, and at row height the peaks are hard to place.
-    _f_b9 = pfig_b9_chance_weighted(vsweep, current_z=entry, ce=_ce, zlim=zrow_sweep,
+    _f_b9 = pfig_b9_chance_weighted(vsweep, current_z=entry, current_exit=exit_, ce=_ce, zlim=zrow_sweep,
                                     height=TALL_PANEL_HEIGHT)
     _chart(_f_b9, key="b9")
     figure_note(

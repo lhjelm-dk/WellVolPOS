@@ -141,17 +141,25 @@ def deviation_caption(slot, well: Well, thickness) -> None:
     # the user typed against one the trials supply. Saying which numbers, and in which
     # direction, is what makes it checkable rather than pronounced.
     reading = {
-        "vertical": "a **vertical** well",
-        "deviated": "a **deviated** well, drilled down-dip inside the layer",
-        "partial": "a well **stopped inside** the reservoir — TD'd early or cased off",
-        "unknown": "no verdict",
+        "vertical": "a vertical well",
+        "deviated": "a deviated well, drilled down-dip inside the layer",
+        "partial": "a well stopped inside the reservoir — TD'd early, or cased off",
+        "unknown": "nothing, without a recovered thickness",
     }[chk.verdict]
+    against = {"vertical": "the same as", "deviated": "more than",
+               "partial": "less than", "unknown": "not comparable with"}[chk.verdict]
+    consequence = {
+        "vertical": "",
+        "deviated": " A vertical well cannot see that much column; the volumes are "
+                    "computed as though you had drilled the deviated one.",
+        "partial": " Everything below the exit is counted as unproven, which is right "
+                   "— check that an early TD is what you meant.",
+        "unknown": "",
+    }[chk.verdict]
+    # One sentence, not two: `chk.message()` says the same thing again in its own
+    # words, and printing both left the caption repeating itself.
     slot.caption(
-        f"{icon} **The input suggests {reading}**, because the "
-        f"{well.gap:,.0f} m of section you set is "
-        + ("the same as" if chk.verdict == "vertical"
-           else "more than" if chk.verdict == "deviated"
-           else "less than" if chk.verdict == "partial" else "not comparable with")
-        + f" the {chk.thickness_p50:,.0f} m reservoir thickness recovered from the "
-          f"trials. {chk.message()}"
+        f"{icon} **The input suggests {reading}** — the {well.gap:,.0f} m of section "
+        f"you set is {against} the {chk.thickness_p50:,.0f} m reservoir thickness "
+        f"recovered from the trials.{consequence}"
     )

@@ -145,6 +145,38 @@ def row_zlim(*ranges: tuple[float, float] | None, pad_frac: float = 0.0) -> tupl
     lo, hi = min(los), max(his)
     pad = pad_frac * (hi - lo)
     return lo - pad, hi + pad
+def well_lines(fig, entry, exit_=None, dark: bool = False, *, label: bool = True):
+    """The well's entry and exit, on any figure with depth on y.
+
+    Lars, 2026-08-18: every swept figure marked the **entry** and none marked the
+    exit, so the interval the well actually penetrates -- the thing that decides what
+    is proven and what is left unproven below LKH -- was invisible on the figures that
+    turn on it.
+
+    Nine figures drew that entry line nine ways: three different colours, two dash
+    patterns and a label on two of them. One helper, so a reader learns the mark once
+    and it means the same thing everywhere.
+
+    **Entry dashed, exit dotted, both in the well violet.** The exit is omitted when
+    it coincides with the entry, and its label is dropped where the two are close
+    enough to overprint -- a second label a few pixels under the first is worse than
+    none.
+    """
+    p = palette(dark)
+    if entry is None:
+        return fig
+    _hline(fig, float(entry), p["well"], "dash", "well entry" if label else None)
+    if exit_ is not None and float(exit_) - float(entry) > 1e-9:
+        crowded = False
+        rng = fig.layout.yaxis.range
+        if rng and all(v is not None for v in rng):
+            span = abs(float(rng[0]) - float(rng[1]))
+            crowded = span > 0 and (float(exit_) - float(entry)) / span < 0.035
+        _hline(fig, float(exit_), p["well"], "dot",
+               "well exit" if (label and not crowded) else None)
+    return fig
+
+
 
 
 def _hline(fig, y: float, colour_: str, dash: str = "dash", label: str | None = None):
@@ -511,7 +543,7 @@ def pfig_map_view(
 
 # ------------------------------------------------------------------- A2
 def pfig_a2_outcome_tree(
-    sweep: Sweep, *, current_z: float | None = None, zlim: tuple[float, float] | None = None,
+    sweep: Sweep, *, current_z: float | None = None, current_exit: float | None = None, zlim: tuple[float, float] | None = None,
     show_depth_labels: bool = True, share_scale: str = "linear", dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
     """A2 -- the four outcomes vs entry depth, as stacked bands summing to 100 %.
@@ -596,7 +628,7 @@ def pfig_a2_outcome_tree(
         ),
     )
     if current_z is not None:
-        _hline(fig, current_z, p["text"], "dash")
+        well_lines(fig, current_z, current_exit, dark)
 
     fig.update_layout(
         title=(f"A2 · Outcome tree vs location "
@@ -630,7 +662,7 @@ def pfig_a2_outcome_tree(
 # ------------------------------------------------------------------- A3
 def pfig_a3_chance_decomposition(
     sweep: Sweep, *, pos_prospect: float | None = None, pos_trials: float | None = None,
-    current_z: float | None = None, zlim: tuple[float, float] | None = None,
+    current_z: float | None = None, current_exit: float | None = None, zlim: tuple[float, float] | None = None,
     show_depth_labels: bool = True, dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
     """A3 -- P_well and r_location vs entry depth, POS as a rule.
@@ -656,7 +688,7 @@ def pfig_a3_chance_decomposition(
     if pos_trials is not None and (pos_prospect is None or abs(pos_trials - pos_prospect) > 1e-9):
         _vline(fig, pos_trials * 100.0, p["muted"], "dashdot", f"POS trials {pos_trials:.3f}")
     if current_z is not None:
-        _hline(fig, current_z, p["text_secondary"], "dash")
+        well_lines(fig, current_z, current_exit, dark)
 
     fig.update_layout(
         title=f"A3 · Chance decomposition vs location ({reference_label(sweep.reference)})",
@@ -1184,7 +1216,7 @@ def pfig_b0_section(
 
 # ------------------------------------------------------------------- B1
 def pfig_b1_volume_split(
-    vsweep: VolumeSweep, *, current_z: float | None = None,
+    vsweep: VolumeSweep, *, current_z: float | None = None, current_exit: float | None = None,
     min_support: int = MIN_SUPPORT, zlim: tuple[float, float] | None = None,
     show_depth_labels: bool = True, dark: bool = False,
     height: int | None = PANEL_HEIGHT,
@@ -1255,7 +1287,7 @@ def pfig_b1_volume_split(
     if vsweep.mefs is not None:
         _vline(fig, vsweep.mefs, colour("minimum", dark), "dot", "MEFS")
     if current_z is not None:
-        _hline(fig, current_z, p["well"], "dash", "this well")
+        well_lines(fig, current_z, current_exit, dark)
 
     fig.update_layout(
         title=("B1 · Volume split vs location "
@@ -1273,7 +1305,7 @@ def pfig_b1_volume_split(
 
 
 def pfig_b13_below_exit(
-    vsweep: VolumeSweep, *, current_z: float | None = None,
+    vsweep: VolumeSweep, *, current_z: float | None = None, current_exit: float | None = None,
     min_support: int = MIN_SUPPORT, zlim: tuple[float, float] | None = None,
     show_depth_labels: bool = True, dark: bool = False,
     height: int | None = PANEL_HEIGHT,
@@ -1330,7 +1362,7 @@ def pfig_b13_below_exit(
     if vsweep.mefs is not None:
         _vline(fig, vsweep.mefs, colour("minimum", dark), "dot", "MEFS")
     if current_z is not None:
-        _hline(fig, current_z, p["well"], "dash", "this well")
+        well_lines(fig, current_z, current_exit, dark)
 
     fig.update_layout(
         title=("B13 · Unproven below LKH — the volume under the well "
@@ -1348,7 +1380,7 @@ def pfig_b13_below_exit(
 
 # ------------------------------------------------------------------- B2
 def pfig_b2_chance_vs_regret(
-    vsweep: VolumeSweep, *, current_z: float | None = None, zlim: tuple[float, float] | None = None,
+    vsweep: VolumeSweep, *, current_z: float | None = None, current_exit: float | None = None, zlim: tuple[float, float] | None = None,
     show_depth_labels: bool = True, min_support: int = MIN_SUPPORT,
     dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
@@ -1415,7 +1447,7 @@ def pfig_b2_chance_vs_regret(
         _hline(fig, crossing, p["text"], "dot",
                f"P<sub>well</sub> = P(attic > MEFS | dry & charged) at {crossing:.0f} m")
     if current_z is not None:
-        _hline(fig, current_z, p["text_secondary"], "dash")
+        well_lines(fig, current_z, current_exit, dark)
 
     fig.update_layout(
         title=(
@@ -1435,7 +1467,7 @@ def pfig_b2_chance_vs_regret(
 
 # ------------------------------------------------------------------- B3
 def pfig_b3_uncertainty_reduction(
-    sweep: Sweep, *, current_z: float | None = None, show_all_trials: bool = True,
+    sweep: Sweep, *, current_z: float | None = None, current_exit: float | None = None, show_all_trials: bool = True,
     show_ranges: bool = True,
     zlim: tuple[float, float] | None = None, show_depth_labels: bool = True,
     dark: bool = False, height: int | None = PANEL_HEIGHT,
@@ -1540,7 +1572,7 @@ def pfig_b3_uncertainty_reduction(
         hovertemplate="optimum %{x:.1f}% at " + DEPTH_HOVER + "<extra></extra>",
     )
     if current_z is not None:
-        _hline(fig, current_z, p["text_secondary"], "dash")
+        well_lines(fig, current_z, current_exit, dark)
 
     top = float(np.nanmax(sweep.uncertainty_reduction)) if np.isfinite(sweep.uncertainty_reduction).any() else 5.0
     fig.update_layout(
@@ -2087,7 +2119,7 @@ def pfig_a8_contact_distribution(
 
 # ------------------------------------------------------------------- B9
 def pfig_b9_chance_weighted(
-    vsweep: VolumeSweep, *, current_z: float | None = None, ce=None,
+    vsweep: VolumeSweep, *, current_z: float | None = None, current_exit: float | None = None, ce=None,
     zlim: tuple[float, float] | None = None, show_depth_labels: bool = True,
     min_support: int = MIN_SUPPORT, dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
@@ -2248,7 +2280,7 @@ def pfig_b9_chance_weighted(
             )
             best_note.append(z[i])
     if current_z is not None:
-        _hline(fig, current_z, p["text"], "dash")
+        well_lines(fig, current_z, current_exit, dark)
 
     fig.update_layout(
         title=("B9 · Chance-weighted resource vs location (expected, not a volume "
@@ -2391,7 +2423,7 @@ def _reservoir_section(fig, ad, ts, *, z_entry, z_exit, dark, area_scale="area",
 
 
 def pfig_b11_pos_sensitivity(
-    sweep: Sweep, *, pos_prospect: float, current_z: float | None = None,
+    sweep: Sweep, *, pos_prospect: float, current_z: float | None = None, current_exit: float | None = None,
     levels: tuple[float, ...] = FAN_POS_LEVELS,
     zlim: tuple[float, float] | None = None, show_depth_labels: bool = True,
     dark: bool = False, height: int | None = PANEL_HEIGHT,
@@ -2447,7 +2479,7 @@ def pfig_b11_pos_sensitivity(
         hovertemplate=("P<sub>well</sub> %{x:.1f}% at " + DEPTH_HOVER + "<extra></extra>"),
     )
     if current_z is not None:
-        _hline(fig, current_z, p["well"], "dash", "this well")
+        well_lines(fig, current_z, current_exit, dark)
 
     fig.update_layout(
         title=("B11 · P<sub>well</sub> sensitivity to POS_prospect "
@@ -2766,7 +2798,7 @@ def pfig_b7_frontier(
 
 # ------------------------------------------------------------------- B8
 def pfig_b8_commercial_chance(
-    vsweep: VolumeSweep, *, current_z: float | None = None,
+    vsweep: VolumeSweep, *, current_z: float | None = None, current_exit: float | None = None,
     zlim: tuple[float, float] | None = None, show_depth_labels: bool = True,
     min_support: int = MIN_SUPPORT, dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
@@ -2866,7 +2898,7 @@ def pfig_b8_commercial_chance(
                           f"{z[best]:.0f} m TVDSS<extra></extra>",
         )
     if current_z is not None:
-        _hline(fig, current_z, p["text"], "dash")
+        well_lines(fig, current_z, current_exit, dark)
 
     fig.update_layout(
         title=f"B8 · Commercial chance vs location (MEFS {vsweep.mefs:.1f} MMboe)",
