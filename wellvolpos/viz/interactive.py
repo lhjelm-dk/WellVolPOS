@@ -1818,33 +1818,54 @@ def pfig_b5_allocation_dumbbell(
     zero weight.
     """
     p = palette(dark)
-    c = colour("p_well", dark)
     schemes = list(SHIPPED_SCHEMES)
     fig = make_subplots(
         rows=1, cols=len(schemes), shared_yaxes=True, horizontal_spacing=0.04,
         subplot_titles=[SCHEME_LABELS.get(s, s) for s in schemes],
     )
     names = [ELEMENT_LABELS[e] for e in ELEMENTS]
-    el_colours = [element_colour(e, dark) for e in ELEMENTS]
 
     for i, scheme in enumerate(schemes, start=1):
         revised, _ = allocate(elements, r, scheme)
         base = [float(elements.get(e, 1.0)) for e in ELEMENTS]
         rev = [revised[e] for e in ELEMENTS]
-        for name, b, rv in zip(names, base, rev):
+        # **One colour per element, all the way across tab ⑤** (Lars, 2026-08-18).
+        # The element colours were computed here and never used -- every dumbbell was
+        # drawn in the single P_well violet, so the only thing telling charge from
+        # retention was its row position, and the reader had to count rows to line
+        # this figure up with the table above it and with 5.1. The matplotlib twin
+        # already coloured its tick labels; this is the half that was missing.
+        #
+        # Colour is *redundant* here rather than load-bearing -- every row is
+        # labelled -- which is what makes it safe to use four saturated hues that
+        # are not the volume palette's.
+        for name, el, b, rv in zip(names, ELEMENTS, base, rev):
+            ec = element_colour(el, dark)
             fig.add_scatter(x=[b, rv], y=[name, name], mode="lines",
-                            line=dict(color=c, width=2), showlegend=False,
+                            line=dict(color=ec, width=2), showlegend=False,
                             hoverinfo="skip", row=1, col=i)
-        fig.add_scatter(
-            x=base, y=names, mode="markers", name="Baseline", showlegend=i == 1,
-            marker=dict(size=9, color=p["surface"], line=dict(color=p["muted"], width=1.5)),
-            hovertemplate="baseline %{y} %{x:.3f}<extra></extra>", row=1, col=i,
-        )
-        fig.add_scatter(
-            x=rev, y=names, mode="markers", name="At the well", showlegend=i == 1,
-            marker=dict(size=9, color=c),
-            hovertemplate="at the well %{y} %{x:.3f}<extra></extra>", row=1, col=i,
-        )
+            fig.add_scatter(
+                x=[b], y=[name], mode="markers", showlegend=False,
+                marker=dict(size=9, color=p["surface"],
+                            line=dict(color=ec, width=1.8)),
+                hovertemplate="baseline %{y} %{x:.3f}<extra></extra>", row=1, col=i,
+            )
+            fig.add_scatter(
+                x=[rv], y=[name], mode="markers", showlegend=False,
+                marker=dict(size=9, color=ec),
+                hovertemplate="at the well %{y} %{x:.3f}<extra></extra>",
+                row=1, col=i,
+            )
+        if i == 1:
+            # Legend proxies in neutral grey: the legend distinguishes *baseline*
+            # from *at the well*, which is a matter of fill and not of hue, and a
+            # legend swatch in one element's colour would say otherwise.
+            for label, marker in (
+                    ("Baseline", dict(size=9, color=p["surface"],
+                                      line=dict(color=p["muted"], width=1.8))),
+                    ("At the well", dict(size=9, color=p["muted"]))):
+                fig.add_scatter(x=[None], y=[names[0]], mode="markers", name=label,
+                                marker=marker, hoverinfo="skip", row=1, col=1)
         if pos_prospect is not None:
             fig.add_vline(x=pos_prospect * r, line=dict(color=p["muted"], width=1, dash="dot"),
                           row=1, col=i)

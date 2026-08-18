@@ -14,6 +14,7 @@ from ..core import (
     risk_summary,
 )
 from ..viz import (
+    element_colour,
     pfig_b4_chance_waterfall,
     pfig_b5_allocation_dumbbell,
 )
@@ -183,8 +184,24 @@ def render(ctx: Ctx) -> None:
     )
     _summary = risk_summary(elements, chance.r_location, scheme=scheme,
                             play_elements=play_elements)
+
+    # **The element colours run across the whole tab** (Lars, 2026-08-18). The same
+    # four hues tint the name cell here, draw the steps on 5.1 and the dumbbells on
+    # 5.2, so the three can be read against each other without counting rows.
+    #
+    # Keyed off ``element_keys()``, never off the displayed label: "Closure" is the
+    # wording for ``trap`` and rewording user copy must not be able to change what
+    # gets coloured. The pale tints are the sanctioned use -- a fill behind a written
+    # label, where the name carries the meaning and the colour only groups.
+    _rows = pd.DataFrame(_summary.as_records())
+    _keys = _summary.element_keys()
+
+    def _tint(col):
+        return [f"background-color: {element_colour(k, tint=True)}" if k else ""
+                for k in _keys]
+
     st.dataframe(
-        pd.DataFrame(_summary.as_records()),
+        _rows.style.apply(_tint, subset=["Chance element"]),
         hide_index=True, width="stretch",
         column_config={
             c: st.column_config.NumberColumn(format="percent") for c in SUMMARY_COLUMNS
@@ -196,6 +213,23 @@ def render(ctx: Ctx) -> None:
             )
         },
     )
+    # **Both POS values, side by side and never multiplied into one** (Lars,
+    # 2026-08-18). They were in the table and in the prose but not where the eye
+    # lands, and these two numbers are the tool's whole argument: one is a property
+    # of the prospect, the other of this well in it.
+    _m1, _m2, _m3 = st.columns(3)
+    _m1.metric("Prospect POS", f"{_summary.prospect_pos:.1%}",
+               help="Play x the four elements. What the prospect is worth before "
+                    "anyone picks a location.")
+    _m2.metric("r_location", f"{chance.r_location:.1%}",
+               help="P(contact deeper than the well | hydrocarbons present). The "
+                    "only quantity the well's position controls.")
+    _m3.metric("P_well", f"{_summary.well_pos:.1%}",
+               delta=f"{_summary.well_pos - _summary.prospect_pos:+.1%} vs prospect",
+               delta_color="off",
+               help="POS_prospect x r_location. The chance THIS well finds "
+                    "hydrocarbons, which is what a drilling decision uses.")
+
     rc1, rc2 = st.columns([2, 3])
     with rc1:
         st.dataframe(
@@ -219,9 +253,17 @@ def render(ctx: Ctx) -> None:
             f"**Allocation is a convention, not a fact.** All three shipped schemes give the same "
             f"P_well; only the split across elements differs, which is what {fig_ref('{b5}')} below "
             f"shows. This "
-            f"table uses **{SCHEME_LABELS.get(scheme, scheme)}**, set in the sidebar.\n\n"
-            f"The *Play* column is 1.00 throughout: this tool assesses **one prospect segment** "
-            f"from one trial file (decision 10) and models no play level above it."
+            f"table uses **{SCHEME_LABELS.get(scheme, scheme)}**, set in tab ①.\n\n"
+            # **Computed, not asserted.** This paragraph used to state flatly that the
+            # Play column reads 1.00 throughout. That stopped being true the day the
+            # play chance became an input, and the sentence sat above a column
+            # showing something else -- the same failure as a number in a caption
+            # that came from a different file (Lars, 2026-08-18).
+            + (f"The *Play* column reads **{_summary.play_chance:.2f}**, entered on "
+               f"tab ②. It multiplies POS_prospect, so it multiplies P_well."
+               if abs(_summary.play_chance - 1.0) > 1e-9 else
+               "The *Play* column is 1.00 throughout, so nothing above the prospect "
+               "is being risked. Enter a play chance on tab ② if there is one.")
         )
     for w in _summary.warnings:
         st.warning(w)

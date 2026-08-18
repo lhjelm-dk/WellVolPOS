@@ -83,6 +83,7 @@ from .theme import (
     apply,
     apply_plotly,
     colour,
+    element_colour,
     depth_axis,
     depth_axis_plotly,
     palette,
@@ -91,7 +92,7 @@ from .theme import (
 
 __all__ = [
     "OVERLAP_OPACITY",
-    "apply", "palette", "colour", "depth_axis",
+    "apply", "palette", "colour", "element_colour", "depth_axis",
     "apply_plotly", "depth_axis_plotly", "PANEL_HEIGHT", "level_row", "row_zlim", "AREA_SCALES",
     # matplotlib / export
     "fig_a1_area_depth", "fig_a2_outcome_tree", "fig_a3_chance_decomposition",

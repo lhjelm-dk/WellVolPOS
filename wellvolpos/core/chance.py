@@ -356,8 +356,17 @@ class RiskSummary:
     play_elements: dict[str, float] = field(default_factory=dict)
 
     def as_records(self) -> list[dict[str, object]]:
-        """The element rows, ready for a dataframe."""
-        return [dict(r) for r in self.rows]
+        """The element rows, ready for a dataframe. Private fields dropped."""
+        return [{k: v for k, v in r.items() if not k.startswith("_")}
+                for r in self.rows]
+
+    def element_keys(self) -> tuple[str | None, ...]:
+        """The stable element key per row, ``None`` for the location-factor row.
+
+        Parallel to :meth:`as_records`, so a caller can colour row *i* without
+        matching the label in it.
+        """
+        return tuple(r.get("_key") for r in self.rows)
 
     def result_records(self) -> list[dict[str, object]]:
         """The four result lines under the table, in the order they are read."""
@@ -424,6 +433,11 @@ def risk_summary(
         # element's play)".
         at_play = play_elements.get(name, play_scalar if not play_elements else 1.0)
         rows.append({
+            # **The stable key travels beside the label**, prefixed so
+            # :meth:`as_records` can drop it. A caller that wants the element's
+            # colour must not have to match the displayed wording -- that is the
+            # rule the whole ``trap``/"Closure" rename rests on.
+            "_key": name,
             "Chance element": ELEMENT_LABELS.get(name, name.capitalize()),
             SUMMARY_COLUMNS[0]: float(at_play),
             SUMMARY_COLUMNS[1]: given_play,
