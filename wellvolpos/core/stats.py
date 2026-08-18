@@ -95,6 +95,43 @@ def bootstrap_proportion_ci(
     )
 
 
+def wilson_interval(k: int, n: int, *, confidence: float = 0.90) -> tuple[float, float]:
+    """Wilson score interval for ``k`` successes in ``n`` trials.
+
+    **Why Wilson and not the textbook normal interval** (Lars, 2026-08-14, asking
+    whether uncertainty in exceeding MCFS should be carried): the normal approximation
+    ``p +- z sqrt(p(1-p)/n)`` fails exactly where this quantity is read hardest. At the
+    deep end of a sweep the discovery group is small and the commercial share is near
+    zero or near one, and the normal interval then runs **outside [0, 1]** and reports
+    a chance below zero. Wilson cannot: it is the set of ``p`` a score test does not
+    reject, so it is bounded by construction and stays sensible at ``k = 0`` and
+    ``k = n``.
+
+    **This is sampling error only.** It says how much of the spread comes from having
+    run 10 000 trials rather than infinitely many. It says nothing about whether the
+    input distributions are right, which is the larger uncertainty and one no interval
+    computed from those distributions can reach.
+
+    ``n = 0`` gives ``(nan, nan)`` rather than raising: a depth with no trials behind
+    it is a normal state of a swept curve, and the thinning already drops it.
+    """
+    n = int(n)
+    if n <= 0:
+        return (float("nan"), float("nan"))
+    k = float(np.clip(k, 0, n))
+    if not 0.0 < confidence < 1.0:
+        raise ValueError(f"confidence must be in (0, 1); got {confidence!r}")
+    # Two-sided z. scipy is already a dependency, and its ppf beats a table.
+    from scipy.stats import norm
+
+    z = float(norm.ppf(0.5 + confidence / 2.0))
+    p = k / n
+    denom = 1.0 + z * z / n
+    centre = (p + z * z / (2 * n)) / denom
+    half = z * np.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / denom
+    return (float(max(0.0, centre - half)), float(min(1.0, centre + half)))
+
+
 def support_mask(counts: np.ndarray, min_support: int = MIN_SUPPORT) -> np.ndarray:
     """True where a step rests on at least ``min_support`` trials."""
     return np.asarray(counts) >= int(min_support)

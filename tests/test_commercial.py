@@ -369,3 +369,73 @@ def test_the_commercial_mean_exceeds_the_well_associated_mean(reduced, groups, a
     commercial = disc & (res > mefs)
     assert commercial.sum() > 10
     assert res[commercial].mean() > res[disc].mean()
+
+
+# ------------------------------------------------- sampling error on Pc (2026-08-18)
+# Lars asked whether uncertainty in exceeding MCFS should be carried. It should. Pc is
+# a proportion of a finite sample, so it has sampling error, and it is the number an
+# EMV takes — which makes it the one worth knowing the precision of.
+
+
+def test_pc_reduces_to_one_binomial_proportion(reduced, groups, area_depth):
+    """The identity the interval rests on, asserted rather than assumed.
+
+    ``Pc = P_well x Pmcfs = POS x (n_disc/n_succ) x (n_comm/n_disc)``, and the discovery
+    count cancels — so Pc is POS times a *single* proportion. Building the interval from
+    two intervals and multiplying them would be harder and wrong, since the two factors
+    come from overlapping trials and are not independent.
+    """
+    from wellvolpos.core import split_trials
+    from wellvolpos.core.chance import p_well as p_well_fn
+    from wellvolpos.core.rose import commercial_chance
+
+    vc = split_trials(reduced, area_depth, groups, ENTRY, EXIT)
+    ch = p_well_fn(reduced, ENTRY, pos_prospect=0.7605)
+    cc = commercial_chance(reduced, groups, vc.proven, ch.p_well, 14.0)
+
+    assert cc.n_success > 0 and 0 < cc.n_commercial < cc.n_success
+    assert cc.pos_prospect == pytest.approx(0.7605, rel=1e-9)
+    assert cc.pos_prospect * cc.n_commercial / cc.n_success == pytest.approx(
+        cc.pc_well, rel=1e-12)
+
+
+def test_the_pc_interval_brackets_pc_and_tightens_with_confidence(reduced, groups,
+                                                                  area_depth):
+    from wellvolpos.core import split_trials
+    from wellvolpos.core.chance import p_well as p_well_fn
+    from wellvolpos.core.rose import commercial_chance
+
+    vc = split_trials(reduced, area_depth, groups, ENTRY, EXIT)
+    ch = p_well_fn(reduced, ENTRY, pos_prospect=0.7605)
+    cc = commercial_chance(reduced, groups, vc.proven, ch.p_well, 14.0)
+
+    lo90, hi90 = cc.pc_interval(0.90)
+    lo95, hi95 = cc.pc_interval(0.95)
+    assert lo90 < cc.pc_well < hi90
+    assert lo95 <= lo90 and hi95 >= hi90, "a wider confidence must give a wider interval"
+    # 10 000 trials is a lot: the interval is narrow, and saying so is the point.
+    assert (hi90 - lo90) < 0.05
+
+
+def test_wilson_stays_inside_zero_and_one_where_the_normal_interval_would_not():
+    """The reason for choosing Wilson, made concrete.
+
+    At the deep end of a sweep the discovery group is small and the commercial share is
+    near zero. The textbook ``p +- z sqrt(p(1-p)/n)`` then returns a negative chance,
+    and at ``k = 0`` it returns a zero-width interval — claiming certainty from no
+    evidence at all. Wilson does neither.
+    """
+    from wellvolpos.core.stats import wilson_interval
+
+    for k, n in ((0, 30), (1, 30), (30, 30), (29, 30), (0, 1)):
+        lo, hi = wilson_interval(k, n)
+        assert 0.0 <= lo <= hi <= 1.0, (k, n, lo, hi)
+        assert hi > lo, f"{k}/{n} claimed certainty"
+
+    # No trials is a normal state of a swept curve, not an error.
+    lo, hi = wilson_interval(0, 0)
+    assert np.isnan(lo) and np.isnan(hi)
+
+    # And it still brackets the estimate in the ordinary case.
+    lo, hi = wilson_interval(2918, 7605)
+    assert lo < 2918 / 7605 < hi

@@ -136,6 +136,39 @@ class CommercialChance:
     p_mcfs_proven: float
     pc_well: float
     n_discovery: int
+    #: How many *success* trials are both a discovery here and above the threshold,
+    #: and how many success trials there are. See :meth:`pc_interval`.
+    n_commercial: int = 0
+    n_success: int = 0
+    #: The POS in force, so ``pc_interval`` can scale the proportion back up.
+    pos_prospect: float = 1.0
+
+    def pc_interval(self, confidence: float = 0.90) -> tuple[float, float]:
+        """Sampling interval on ``pc_well``, from the **one** proportion it reduces to.
+
+        The identity that makes this simple, and it is exact rather than an
+        approximation::
+
+            Pc = P_well x Pmcfs
+               = POS x (n_discovery / n_success) x (n_commercial / n_discovery)
+               = POS x (n_commercial / n_success)
+
+        ``n_discovery`` cancels. So ``Pc`` is ``POS_prospect`` times a *single*
+        binomial proportion -- the share of success trials that are both a discovery
+        at this depth and above the threshold -- and one Wilson interval on that
+        proportion, scaled by ``POS``, is the interval on ``Pc``. Building it from two
+        intervals and multiplying them would be both harder and wrong, since the two
+        factors are computed from overlapping trials and are not independent.
+
+        **``POS_prospect`` is not in the interval**, deliberately. It comes from the
+        chance table, which is a judgement rather than a sample, so it has no sampling
+        error to report -- and the fan on 3.4 is where its uncertainty already lives.
+        """
+        from .stats import wilson_interval
+
+        lo, hi = wilson_interval(self.n_commercial, self.n_success,
+                                 confidence=confidence)
+        return (float(self.pos_prospect) * lo, float(self.pos_prospect) * hi)
 
     def message(self) -> str:
         return (
@@ -154,14 +187,27 @@ def commercial_chance(
     res = ts.col("resource")
     disc = groups.discovery
     n = int(disc.sum())
+    # The counts behind ``pc_interval``. Taken here rather than in the property so the
+    # dataclass stays a value object -- and taken from the *same masks* the chances
+    # are, because a count that selects differently from the chance beside it is how
+    # an identity that is nearly true gets quoted as true.
+    success = np.asarray(res, dtype=float) > 0.0
+    n_success = int(success.sum())
+    n_commercial = int((np.asarray(disc, dtype=bool) & (np.asarray(res, dtype=float) > mcfs)).sum())
+    # POS recovered from ``p_well`` and the sampled r_location, so the caller does not
+    # have to pass a number it has already implied. Where there are no success trials
+    # there is nothing to scale.
+    r = (n / n_success) if n_success else float("nan")
+    pos = (float(p_well) / r) if r else float("nan")
     if n == 0:
         return CommercialChance(float(mcfs), float(p_well), float("nan"), float("nan"),
-                                float("nan"), 0)
+                                float("nan"), 0, 0, n_success, 1.0)
     p_downdip = float((res[disc] > mcfs).mean())
     p_proven = float((np.asarray(proven)[disc] > mcfs).mean())
     return CommercialChance(
         mcfs=float(mcfs), p_well=float(p_well), p_mcfs_downdip=p_downdip,
         p_mcfs_proven=p_proven, pc_well=float(p_well) * p_downdip, n_discovery=n,
+        n_commercial=n_commercial, n_success=n_success, pos_prospect=pos,
     )
 
 

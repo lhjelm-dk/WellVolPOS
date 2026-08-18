@@ -187,10 +187,15 @@ def render(ctx: Ctx) -> None:
                           help="Given a discovery, the chance the WELL-ASSOCIATED "
                                "volume exceeds MEFS. Conditional on the discovery, so "
                                "it is not a chance of anything on its own.")
+        # **Pc carries its sampling interval** (Lars, 2026-08-14, asking whether
+        # uncertainty in exceeding MCFS should be incorporated). It is the number an
+        # EMV takes, so it is the one worth knowing the precision of.
+        _pc_lo, _pc_hi = _cc.pc_interval(0.90)
         cc_cols[2].metric("= Pc(well)", f"{_cc.pc_well:.1%}",
                           help="Rose's commercial chance at this location: the "
                                "unconditional chance of a commercial discovery. This "
                                "is the number an EMV calculation takes.")
+        cc_cols[2].caption(f"90 % CI {_pc_lo:.1%} – {_pc_hi:.1%}")
         cc_cols[3].metric("MEFS / MCFS", f"{mefs:,.1f} MMboe",
                           help="Minimum economic (this app) or commercial (Rose) "
                                "field size — the same threshold under two names. Set "
@@ -209,7 +214,23 @@ def render(ctx: Ctx) -> None:
             f"alone the conditional chance is {_cc.p_mcfs_proven:.1%}, which would give "
             f"Pc = {chance.p_well * _cc.p_mcfs_proven:.1%}. Both are legitimate and they "
             f"answer different questions — what the accumulation holds, against what "
-            f"this well would establish. Neither may be quoted as the other.",
+            f"this well would establish. Neither may be quoted as the other.\n\n"
+            f"**The interval under Pc is sampling error, and only that.** `Pc` reduces "
+            f"to one binomial proportion — the identity is exact, because the discovery "
+            f"count cancels:\n\n"
+            f"`Pc = P_well × Pmcfs = POS × (n_disc / n_succ) × (n_comm / n_disc) = "
+            f"POS × (n_comm / n_succ)`\n\n"
+            f"so here **{_cc.n_commercial:,} of {_cc.n_success:,}** success trials are "
+            f"both a discovery at this depth and above MEFS, and one Wilson interval on "
+            f"that share — scaled by POS — is the interval on Pc. Wilson rather than the "
+            f"textbook normal interval because the normal one runs outside 0–100 % "
+            f"exactly where this is read hardest: at the deep end, where the discovery "
+            f"group is small and the share is near zero.\n\n"
+            f"**POS_prospect is deliberately outside it.** It comes from the chance "
+            f"table, which is a judgement rather than a sample, so it has no sampling "
+            f"error to report — its uncertainty is what {fig_ref('{b11}')} draws. And no "
+            f"interval computed from these trials can reach the larger question of "
+            f"whether the input distributions are right.",
         )
 
     if has_area:
