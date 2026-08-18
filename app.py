@@ -89,6 +89,7 @@ from wellvolpos.ui.conventions import CHANCE_DEFAULTS, PLAY_DEFAULTS
 from wellvolpos.ui.loading import load as _load
 from wellvolpos.core.rose import AT_WELL_WINDOW_M
 from wellvolpos.ui.well import deviation_caption, read_well, well_editor
+from wellvolpos.ui.tabstyle import apply_metric_size as _shrink_metrics
 from wellvolpos.ui.tabstyle import inject as _inject_tab_style
 from wellvolpos.viz import (
     AREA_SCALES,
@@ -206,6 +207,9 @@ tabs = st.tabs(
     ]
 )
 _inject_tab_style()
+# Metric values one size down: the default is a headline size, right for one
+# number and wrong for a strip of eight (Lars, 2026-08-18).
+_shrink_metrics()
 
 with tabs[0]:
     st.subheader("Trial data")
@@ -396,7 +400,7 @@ with tabs[0]:
     st.caption("Units are fixed: MMboe, m, km².")
 
     st.divider()
-    st.subheader("The trials themselves")
+    st.subheader("Trial preview")
     n_preview = st.number_input(
         "Rows to show", min_value=1, max_value=int(ts.n_trials), value=min(20, int(ts.n_trials)),
         step=10,

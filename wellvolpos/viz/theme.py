@@ -582,7 +582,7 @@ def reference_label(reference) -> str:
 #: Default histogram fill on 4.5. Lower than the 0.45 it was, because that figure
 #: is *about* the overlap and five series at 0.45 hide each other. Adjustable in the
 #: app; this is only where it starts.
-OVERLAP_OPACITY = 0.30
+OVERLAP_OPACITY = 0.20
 
 #: Bars on 4.7, doubled from 40 on 2026-08-16 (Lars). With five overlapping
 #: series the figure is about where one series' mass sits relative to another,

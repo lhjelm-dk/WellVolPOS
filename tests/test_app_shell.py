@@ -257,7 +257,7 @@ def test_the_guide_opens_with_what_this_tool_assumes(fresh):
     """
     assert not fresh.exception
     body = _all_text(fresh)
-    i = body.find("What this tool assumes that others do not")
+    i = body.find("What this tool assumes")
     assert i >= 0, "the assumptions section is missing"
 
     # It leads: nothing else in tab ⑥ comes before it.

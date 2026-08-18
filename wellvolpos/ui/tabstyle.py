@@ -82,3 +82,18 @@ def inject() -> None:
             f' {{ background-color: {fill} !important; }}'
         )
     st.markdown("<style>" + "\n".join(rules) + "</style>", unsafe_allow_html=True)
+
+
+#: Metric values, one size down. The default is a headline size, which is right for one
+#: number and wrong for a strip of eight -- and every strip in this app is a strip.
+METRIC_CSS = """
+<style>
+  [data-testid="stMetricValue"] { font-size: 1.35rem; line-height: 1.25; }
+  [data-testid="stMetricLabel"] p { font-size: 0.80rem; }
+</style>
+"""
+
+
+def apply_metric_size() -> None:
+    """Shrink metric values. Call once, beside the tab tint."""
+    st.markdown(METRIC_CSS, unsafe_allow_html=True)

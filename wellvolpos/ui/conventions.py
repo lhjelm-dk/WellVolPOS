@@ -33,7 +33,11 @@ CONVENTION_PROVENANCE = {
 #: POS_prospect 1.0 and hid the whole conditional/unconditional distinction on the
 #: default demo -- every risked curve coincided with its conditional twin. These
 #: multiply to 0.432, so the app opens with a POS worth reasoning about.
-CHANCE_DEFAULTS = {"charge": 0.90, "trap": 1.00, "reservoir": 0.60, "retention": 0.80}
+# Lars, 2026-08-18: closure 1.00 -> 0.90 and reservoir 0.60 -> 0.70. A closure
+# chance of exactly 1.00 is a claim nobody makes about a real prospect, and it
+# also hid the play/prospect distinction on the default demo by making one factor
+# inert.
+CHANCE_DEFAULTS = {"charge": 0.90, "trap": 0.90, "reservoir": 0.70, "retention": 0.80}
 
 #: Play-level defaults. 1.00 throughout, because a segment assessed on its own has
 #: no play risk above it -- the user opts in by lowering one.

@@ -148,7 +148,7 @@ def render(ctx: Ctx) -> None:
     st.caption(f"**Effective POS_prospect: {pos:.4f}**, from {pos_source}.")
 
     st.divider()
-    st.subheader("Prospect — the un-cut model")
+    st.subheader("Prospect — defined from the trials")
     res_all = ts.col("resource")
     s = group_summary(ts, groups)["prospect_success"]
     # **One kind of mean on this tab** (Lars, 2026-08-12). This strip used to be taken

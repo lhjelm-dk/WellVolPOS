@@ -1425,7 +1425,8 @@ def pfig_b2_chance_vs_regret(
         ),
         xaxis_title="Probability (%)",
     )
-    fig.update_xaxes(range=[0, 100])
+    # -1 to 101 so a curve pinned at 0 % or 100 % is not cut in half by the frame.
+    fig.update_xaxes(range=[-1, 101])
     apply_plotly(fig, dark, height)
     depth_axis_plotly(fig, zlim or (float(vsweep.z.min()), float(vsweep.z.max())),
                       show_ticklabels=show_depth_labels)

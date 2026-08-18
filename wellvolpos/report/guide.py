@@ -36,7 +36,7 @@ def render(*, ts, ad, groups, vc, chance, mefs, entry, exit_, pos_source):
     # would change how they read a number -- were spread through long passages further
     # down. Inverted: the local assumptions lead, each with its number attached, and
     # the vocabulary that half the industry genuinely disputes stays. The rest went.
-    st.markdown("### What this tool assumes that others do not")
+    st.markdown("### What this tool assumes")
     st.caption(
         "Six things worth knowing before quoting anything out of this app. None is "
         "hidden elsewhere in the tab; this is where they live."
