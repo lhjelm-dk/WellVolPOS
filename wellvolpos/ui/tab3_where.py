@@ -239,14 +239,17 @@ def _location_sweep_tab(ctx: Ctx):
     # takes the largest margin and height across the row; see theme.level_row.
     # **A log share axis** (Lars, 2026-08-15). On a linear axis an outcome worth 2 %
     # of trials is a sliver beside the 60 % band next to it, and how fast the small
-    # shares grow down-dip is most of what this figure is for. Log gives up the
-    # stacking -- cumulative bands are addition, which a log scale does not preserve
-    # -- so the figure switches to each outcome's own share and the subtitle says so.
+    # shares grow down-dip is most of what this figure is for.
+    #
+    # It stacks on both scales. It briefly did not, on the reasoning that stacking is
+    # addition and a log scale does not preserve addition -- true, and beside the
+    # point, since a band spans the *interval* between two cumulative boundaries and
+    # an interval is well defined on any axis. See the figure's own note.
     _a2_scale = st.radio(
         "3.1 share axis", ["linear", "log"], horizontal=True, key="w_a2_scale",
-        help="Linear stacks the four outcomes to 100 %. Log draws each outcome's own "
-             "share from 1 % to 110 %, which is the only way to read the small ones — "
-             "cumulative bands cannot stack on a log axis.",
+        help="Both stack the four outcomes to 100 %. Log runs 1 % to 110 %, which is "
+             "the only way to read the small shares — at the cost that a band's "
+             "width on screen is then no longer its share, so read the boundaries.",
     )
     f_a2 = pfig_a2_outcome_tree(sweep, current_z=entry, current_exit=exit_, zlim=zrow_sweep,
                                 share_scale=_a2_scale)

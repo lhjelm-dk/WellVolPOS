@@ -617,59 +617,44 @@ def pfig_a2_outcome_tree(
         raise ValueError(f"unknown share_scale {share_scale!r}; expected 'linear' or 'log'")
 
     fig = go.Figure()
-    if share_scale == "log":
-        # **Log means unstacked, and that is not a workaround.** These bands are
-        # *cumulative* shares -- each one starts where the last ended -- and stacking
-        # is addition, which a log axis does not preserve. So on a log axis the same
-        # four outcomes are drawn as their own shares rather than as a running total.
-        #
-        # It is worth having because the shares that matter are often the small ones:
-        # on a linear axis an outcome worth 2 % of trials is a sliver against the
-        # 60 % band beside it, and the whole question at the deep end is how fast the
-        # small ones grow. 1 % is the floor, as on 3.8 -- a log axis has no zero.
-        shares = [
-            (np.full_like(z, sweep.share_chance_failure), "Chance failure", "muted"),
-            (sweep.share_dry_with_attic, "Dry, with attic", "attic"),
-            (sweep.share_contact_seen, "Discovery, contact seen", "tested"),
-            (sweep.share_hc_to_exit, "Discovery, HC to exit", "below_lkh"),
-        ]
-        # **Filled to the axis floor, so the two readings look like one figure**
-        # (Lars, 2026-08-18). Four thin lines against four solid bands read as
-        # different plots of different things, and the toggle is meant to change the
-        # *scale*, not the subject. The fill is lighter than the linear one -- these
-        # bodies overlap where the stacked bands did not, so a heavy alpha would
-        # produce colours that are in the palette by accident.
-        for values, name, role in shares:
-            share = np.asarray(values, dtype=float) * 100.0
-            floor = np.full_like(share, 1.0)
-            fig.add_scatter(
-                x=np.concatenate([floor, np.maximum(share, 1.0)[::-1]]),
-                y=np.concatenate([z, z[::-1]]),
-                fill="toself", fillcolor=rgba(role, 0.18, dark), mode="lines",
-                line=dict(width=0), showlegend=False, hoverinfo="skip",
-            )
-            fig.add_scatter(
-                x=share, y=z, mode="lines",
-                line=dict(color=colour(role, dark), width=2.4), name=name,
-                hovertemplate=name + "<br>%{x:.2f}% of trials at " + DEPTH_HOVER
-                              + "<extra></extra>",
-            )
-    else:
-        for lower, upper, name, role in bands:
-            # Closed polygon rather than fill='tonextx': explicit, and immune to
-            # trace ordering.
-            fig.add_scatter(
-                x=np.concatenate([lower, upper[::-1]]),
-                y=np.concatenate([z, z[::-1]]),
-                fill="toself", fillcolor=rgba(role, 0.55, dark), mode="lines",
-                line=dict(color=colour(role, dark), width=1.0), name=name,
-                hoverinfo="skip",
-            )
+
+    # **The log reading stacks too, and the claim that it could not was wrong**
+    # (corrected 2026-08-18, after Lars: *"the log plot does not look like it
+    # cumulates the curves"*). It did not, and it should have.
+    #
+    # The earlier reasoning was that stacking is addition and a log scale does not
+    # preserve addition. True, and beside the point: a band spans the interval
+    # between two *cumulative boundaries*, and an interval is perfectly well defined
+    # on a log axis. What a log scale destroys is only that a band's **width on
+    # screen equals its share** -- so the boundaries are read, not the widths, and
+    # the subtitle says so.
+    #
+    # Drawing each outcome's own share instead was defensible in isolation and was
+    # the wrong answer *here*, because the control is labelled as a change of scale.
+    # A reader who toggles an axis and gets a different quantity has been told the
+    # figure changed its mind, which is what happened.
+    #
+    # The floor is the one real compromise: the shallowest band starts at zero and a
+    # log axis has no zero, so it is clipped at 1 % like every other curve on a log
+    # axis in this app.
+    floor = 1.0 if share_scale == "log" else 0.0
+    for lower, upper, name, role in bands:
+        # Closed polygon rather than fill='tonextx': explicit, and immune to
+        # trace ordering.
+        lo = np.maximum(lower, floor)
+        hi = np.maximum(upper, floor)
+        fig.add_scatter(
+            x=np.concatenate([lo, hi[::-1]]),
+            y=np.concatenate([z, z[::-1]]),
+            fill="toself", fillcolor=rgba(role, 0.55, dark), mode="lines",
+            line=dict(color=colour(role, dark), width=1.0), name=name,
+            hoverinfo="skip",
+        )
+
     # An invisible trace carrying the real numbers, so hovering reads out the
     # four shares at one depth instead of a polygon vertex.
     fig.add_scatter(
         x=cum3, y=z, mode="lines", line=dict(width=0), showlegend=False,
-        visible=share_scale == "linear",
         customdata=np.column_stack([
             np.full_like(z, sweep.share_chance_failure) * 100.0,
             sweep.share_dry_with_attic * 100.0,
@@ -693,8 +678,8 @@ def pfig_a2_outcome_tree(
                # Both readings carry a second title line, so the plot area is the
                # same height under either and the toggle does not shift the figure
                # under the reader (Lars, 2026-08-18).
-               + ("<br><sub>log axis: each outcome's own share, not a running "
-                  "total — cumulative bands cannot stack on a log scale</sub>"
+               + ("<br><sub>stacked, log axis: read the boundaries, not the band "
+                  "widths — a width is not a share on a log scale</sub>"
                   if share_scale == "log" else
                   "<br><sub>stacked: each band starts where the last ended, so "
                   "the four sum to 100 % at every depth</sub>")),

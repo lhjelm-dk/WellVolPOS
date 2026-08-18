@@ -263,3 +263,45 @@ def test_red_means_mefs_and_only_mefs():
     from wellvolpos.viz.theme import LIGHT
 
     assert "assessment_min" not in LIGHT
+
+
+def test_the_top_margin_grows_with_the_title_and_with_a_top_axis(reduced, area_depth):
+    """Room is reserved for what the figure actually carries.
+
+    ``autoexpand`` is off across the project — deliberately, so a legend cannot shrink
+    one panel of a row — which means nothing grows a margin on its own. The first
+    version of this reserved a fixed band and A1, whose title runs to three lines,
+    printed its top axis straight through the subtitles. A constant is only ever right
+    for the figure it was measured on.
+    """
+    import wellvolpos.viz.interactive as I
+
+    plain = I.pfig_a1_area_depth(area_depth)                 # one title line, no top axis
+    full = I.pfig_a1_area_depth(area_depth, ts=reduced)      # three lines and a top axis
+
+    assert plain.layout.title.text.count("<br>") == 0
+    assert full.layout.title.text.count("<br>") == 2
+    assert full.layout.margin.t > plain.layout.margin.t
+
+    # The extra room comes out of the margin *and* the height, so a panel sharing a
+    # depth row keeps the same plot area as its neighbours.
+    def plot_height(fig):
+        return fig.layout.height - fig.layout.margin.t - fig.layout.margin.b
+
+    assert plot_height(full) == pytest.approx(plot_height(plain), abs=1)
+
+
+def test_no_figure_hides_its_top_axis_title_under_the_figure_title(reduced, area_depth):
+    """Every top axis is titled, and every titled top axis has its band."""
+    import wellvolpos.viz.interactive as I
+    from wellvolpos.viz.theme import TOP_AXIS_BAND
+
+    for fig in (I.pfig_a1_area_depth(area_depth, ts=reduced),
+                I.pfig_a8_contact_distribution(reduced)):
+        tops = [k for k in fig.layout if str(k).startswith("xaxis")
+                and getattr(fig.layout[k], "side", None) == "top"]
+        assert tops, "expected a top axis"
+        for k in tops:
+            assert fig.layout[k].title.text, f"{k}: an unlabelled second scale is a trap"
+        lines = fig.layout.title.text.count("<br>") + 1
+        assert fig.layout.margin.t >= 55 + TOP_AXIS_BAND + 17 * max(0, lines - 2)

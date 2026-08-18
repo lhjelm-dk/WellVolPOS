@@ -126,12 +126,17 @@ def test_the_two_readings_on_4_2_toggle_independently(parts):
 
 
 # ------------------------------------------------------------- 3.1's log axis
-def test_3_1_on_a_log_axis_gives_up_stacking_and_says_so(reduced):
-    """Cumulative bands are addition, which a log scale does not preserve.
+def test_3_1_stacks_on_both_scales_and_says_what_the_log_axis_costs(reduced):
+    """**A log axis changes the scale, not the quantity** (corrected 2026-08-18).
 
-    So the log mode draws each outcome's own share instead. That is a different
-    reading of the same numbers, and the subtitle has to carry it or the figure
-    silently changes meaning between two settings of one radio button.
+    This test used to assert the opposite, and the reasoning behind it was wrong:
+    stacking is addition and a log scale does not preserve addition — true, and
+    beside the point, because a band spans the *interval* between two cumulative
+    boundaries and an interval is perfectly well defined on a log axis. What the log
+    scale destroys is only that a band's width on screen equals its share.
+
+    Drawing each outcome's own share instead meant a reader toggling an axis got a
+    different quantity, which is exactly what Lars reported seeing.
     """
     sweep = run_sweep(reduced, POS, z_gap=50.0)
     lin = I.pfig_a2_outcome_tree(sweep, current_z=ENTRY, share_scale="linear")
@@ -144,13 +149,26 @@ def test_3_1_on_a_log_axis_gives_up_stacking_and_says_so(reduced):
     lo, hi = log.layout.xaxis.range
     assert 10 ** lo == pytest.approx(1.0, rel=1e-6)
     assert 10 ** hi == pytest.approx(110.0, rel=1e-6)
-    assert "cannot stack" in log.layout.title.text
     assert "log scale" in log.layout.xaxis.title.text
+    # The caveat that replaced the wrong one: widths are not shares here.
+    assert "read the boundaries" in log.layout.title.text
 
-    # The log traces are shares, not a running total: none may exceed 100 %.
-    for t in log.data:
-        if t.x is not None and t.name:
-            assert np.nanmax(np.asarray(t.x, dtype=float)) <= 100.0 + 1e-9, t.name
+    # Four stacked bands on both, with the same names in the same order.
+    def bands(fig):
+        return [t.name for t in fig.data if t.fill == "toself" and t.name]
+
+    assert bands(log) == bands(lin)
+    assert len(bands(log)) == 4
+
+    # The outermost boundary is the running total and reaches 100 % on both.
+    for fig in (lin, log):
+        outer = [t for t in fig.data if t.fill == "toself"][-1]
+        assert np.nanmax(np.asarray(outer.x, dtype=float)) == pytest.approx(100.0, abs=1e-6)
+
+    # The one real compromise: the shallowest band is clipped at the axis floor,
+    # because it starts at zero and a log axis has no zero.
+    inner = [t for t in log.data if t.fill == "toself"][0]
+    assert np.nanmin(np.asarray(inner.x, dtype=float)) == pytest.approx(1.0)
 
 
 def test_an_unknown_share_scale_raises(reduced):

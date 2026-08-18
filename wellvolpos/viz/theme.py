@@ -458,7 +458,12 @@ def level_row(*figs, height: int | None = None) -> None:
 CONTACT_SHARE = 1.0 / 6.0
 
 #: Extra top margin for a figure carrying a titled x-axis on top of the plot area.
-TOP_AXIS_BAND = 38
+#: Room for the tick row and the axis title above it.
+TOP_AXIS_BAND = 46
+
+#: Height of one ``<sub>`` line in a figure title. ``t=55`` fits a title and one such
+#: line, which is what almost every figure here carries.
+SUBTITLE_LINE = 17
 
 
 def _has_top_axis(fig) -> bool:
@@ -471,6 +476,19 @@ def _has_top_axis(fig) -> bool:
                 getattr(ax, "title", None), "text", None):
             return True
     return False
+
+
+def _title_lines(fig) -> int:
+    """How many ``<br>``-separated lines the title carries.
+
+    **The band has to be sized from the title that is there, not from the usual
+    one** (Lars, 2026-08-18, image 4). The first version reserved a fixed band and
+    A1 -- which carries a title *plus two* ``<sub>`` lines, the area caveat and the
+    base-reservoir statistics -- printed its top axis straight through them. A
+    constant is only ever right for the figure it was measured on.
+    """
+    text = getattr(getattr(fig.layout, "title", None), "text", None) or ""
+    return text.count("<br>") + 1
 
 
 
@@ -493,7 +511,9 @@ def apply_plotly(fig, dark: bool = False, height: int | None = PANEL_HEIGHT):
     # panel of a row -- which means nothing grows the margin on its own. Reserving
     # the band here rather than in the one figure that has such an axis today keeps
     # the next one from rediscovering the collision.
-    top = 55 + (TOP_AXIS_BAND if _has_top_axis(fig) else 0)
+    top = (55
+           + SUBTITLE_LINE * max(0, _title_lines(fig) - 2)
+           + (TOP_AXIS_BAND if _has_top_axis(fig) else 0))
     if height is not None:
         height = int(height) + max(0, bottom - legend_margin(3)) + (top - 55)
     fig.update_layout(
