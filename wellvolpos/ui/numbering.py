@@ -273,10 +273,32 @@ def ref(text: str) -> str:
     return re.sub(r"\{([a-z][a-z0-9_]*)\}", sub, text)
 
 
+def _number_key(key: str) -> tuple[int, int]:
+    """Sort key from a figure number, so 3.10 follows 3.9 rather than 3.1.
+
+    Anything unmapped sorts last rather than raising: a figure with no number is a
+    defect ``test_every_figure_the_app_charts_has_a_number`` already catches, and it
+    should fail there rather than by crashing the guide.
+    """
+    number = FIGURE_NUMBERS.get(key)
+    if not number or "." not in number:
+        return (99, 99)
+    tab, _, within = number.partition(".")
+    return (int(tab), int(within))
+
+
 def guide_table() -> str:
-    """The guide's figure table, in markdown, numbered from :data:`FIGURE_NUMBERS`."""
+    """The guide's figure table, in markdown, numbered from :data:`FIGURE_NUMBERS`.
+
+    **Sorted by number, not by dict order** (Lars, 2026-08-18). ``FIGURE_GUIDE`` is
+    keyed by figure *letter* and was written in the order the figures were built, so
+    the table listed 3.7 before 3.5, 3.8 after 3.13, and 6.1 in the middle of tab ④.
+    A reader scanning for a number they have just seen on screen has no reason to
+    expect any of that.
+    """
     rows = ["| Figure | The question it answers |", "|---|---|"]
-    for key, (what, question) in FIGURE_GUIDE.items():
+    for key in sorted(FIGURE_GUIDE, key=_number_key):
+        what, question = FIGURE_GUIDE[key]
         number = FIGURE_NUMBERS.get(key, "—")
         # No legacy code in the reader-facing table (Lars, 2026-08-12): "(was A5)"
         # meant nothing to anyone who had not used the app before the renumbering,

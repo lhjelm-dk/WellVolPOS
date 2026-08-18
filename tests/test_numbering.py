@@ -140,3 +140,24 @@ def test_every_figure_the_app_charts_has_a_number():
         f"charted but unnumbered: {missing}. A figure with no entry in FIGURE_NUMBERS "
         f"keeps its raw letter code on screen while its neighbours are numbered."
     )
+
+
+def test_the_guide_table_runs_in_figure_number_order():
+    """A reader scans it for a number they have just seen on screen.
+
+    ``FIGURE_GUIDE`` is keyed by figure letter and written in the order the figures
+    were built, so before 2026-08-18 the table listed 3.7 before 3.5, 3.8 after 3.13
+    and 6.1 in the middle of tab ④. Sorting on the *string* would be just as wrong —
+    3.10 would follow 3.1 — so the key parses the two halves as integers.
+    """
+    from wellvolpos.ui.numbering import _number_key
+
+    keys = sorted(FIGURE_GUIDE, key=_number_key)
+    numbers = [FIGURE_NUMBERS[k] for k in keys]
+    parsed = [tuple(int(x) for x in n.split(".")) for n in numbers]
+    assert parsed == sorted(parsed), numbers
+
+    # And the rendered table follows that order, not the dict's.
+    body = guide_table()
+    positions = [body.index(f"**{n}**") for n in numbers]
+    assert positions == sorted(positions), numbers
