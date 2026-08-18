@@ -244,7 +244,7 @@ delete, so this bit is yours. In File Explorer, in the `WellVolPOS` folder:
 - `WellVolPOS_Design_Plan_v3.md`
 - `WellVolPOS_Design_Plan.md` *(the one in the root — the current copy now lives in `docs\`)*
 - `graphics_mockup.png`
-- `sheetA_structure_outcomes.png` and `sheetB_sweep_risk.png` *(also now in `docs\`)*
+- `sheetA_structure_outcomes.png` and `sheetB_sweep_risk.png`
 - `~$WELL Location POS and Resources V10052017_prospect A.xlsx` *(an Excel lock file)*
 - all the loose `.pdf` files in the root *(they are already copied into `Papers\`)*
 - `WellVolPOS_phase0.zip` in the parent folder, once step 1 worked

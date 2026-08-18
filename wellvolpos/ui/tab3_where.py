@@ -738,14 +738,15 @@ def _location_sweep_tab(ctx: Ctx):
     tb1, = st.columns(1)
     with tb1:
         b7_scale = st.radio(
+            # **Label and help hidden** (Lars, 2026-08-18). The radio sits
+            # directly above the figure it controls, so the words repeated the
+            # figure's own number and the help icon invited a click for something
+            # "Log / Linear" already says. The reasoning stays here, where it is
+            # useful, rather than behind a tooltip nobody opens.
             f"{fig_ref('{b7}')} chance axis", ["log", "linear"], horizontal=True,
+            label_visibility="collapsed",
             key="w_b7_scale",
             format_func=lambda k: {"linear": "Linear", "log": "Log"}[k],
-            help=("The chance axis, not the volume one (Lars, 2026-08-12). Linear shows "
-                  "the absolute rate of exchange — how many MMboe a point of chance "
-                  "buys. Log runs 1 % to 110 % and spreads the low-chance end out, "
-                  "which is where the deep locations sit and where a linear axis "
-                  "compresses the whole trade into the bottom centimetre."),
         )
         _f_b7 = pfig_b7_frontier(vsweep, current_z=entry, chance_scale=b7_scale)
         _chart(_f_b7, key="b7")

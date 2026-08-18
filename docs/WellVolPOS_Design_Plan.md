@@ -193,7 +193,7 @@ So the app: takes an **apex depth** as an input (not extrapolated — you know i
 
 ## 6 · Graphics
 
-Two figure sheets, both drawn on the demo data. Attached as `sheetA_structure_outcomes.png` and `sheetB_sweep_risk.png`.
+Two figure sheets, both drawn on the demo data. *(Removed 2026-08-18: they were drawn before the palette and the figure numbering changed, so they showed a version of the app that no longer exists. This plan is a dated record and is left as written otherwise.)*
 
 ### 6.1 The depth rule
 

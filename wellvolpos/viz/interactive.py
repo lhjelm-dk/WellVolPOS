@@ -304,31 +304,10 @@ def pfig_a1_area_depth(
     # bin, so the mode reaches a sixth of the way across whatever the counts are, and
     # the axis is labelled -- an unlabelled second scale is how a reader comes to
     # believe the bars are areas.
-    contact_note = ""
-    if show_contacts and ts is not None and ts.has("contact"):
-        _res = np.asarray(ts.col("resource"), dtype=float)
-        _c = np.asarray(ts.col("contact"), dtype=float)
-        _ok = (_res > 0) & np.isfinite(_c)
-        if _ok.sum() > 1:
-            _c = _c[_ok]
-            _n, _edges = np.histogram(_c, bins=int(n_bins),
-                                      range=(float(_c.min()), float(_c.max())))
-            _mid = 0.5 * (_edges[:-1] + _edges[1:])
-            fig.add_bar(
-                x=_n, y=_mid, orientation="h",
-                width=float(_edges[1] - _edges[0]) * 0.92, xaxis="x2",
-                marker=dict(color=rgba("well_associated", 0.45, dark),
-                            line=dict(width=0)),
-                name="Sampled contacts",
-                hovertemplate="%{x:,.0f} trials with a contact near "
-                              + DEPTH_HOVER + "<extra></extra>",
-            )
-            contact_note = "sampled contacts"
-            fig.update_layout(xaxis2=dict(
-                title="contacts per bin", overlaying="x", side="top",
-                showgrid=False,
-                range=[0, float(_n.max()) * max(1.0, 1.0 / contact_share)],
-            ))
+    contact_note = ("sampled contacts"
+                    if (show_contacts and contact_histogram(
+                        fig, ts, n_bins=n_bins, share=contact_share, dark=dark))
+                    else "")
 
     # bool(), because TrialSet.has returns numpy's bool and plotly's validators
     # reject np.True_ for showlegend.
@@ -1565,6 +1544,13 @@ def pfig_b2_chance_vs_regret(
             f"B2 · Chance vs regret (MEFS {vsweep.mefs:.1f} MMboe, "
             f"{reference_label(vsweep.reference)}, "
             f"exit = entry + {vsweep.z_gap:.0f} m, from the well input)"
+            # **Not the chance that the mean exceeds MEFS** (Lars asked, 2026-08-18,
+            # and the answer is no). Each curve is ``(volume > mefs).mean()`` over the
+            # trials of its own case -- the *share of outcomes* that clear the line. A
+            # mean has no probability of clearing a threshold for the same reason a
+            # percentile does not: it is one fixed number, so it clears or it does not.
+            "<br><sub>each curve is the share of that case's own trials whose volume "
+            "exceeds MEFS — not the chance that its <i>mean</i> does</sub>"
         ),
         xaxis_title="Probability (%)",
     )
@@ -3028,42 +3014,25 @@ def pfig_b8_commercial_chance(
         # `core.summary.shallowest_argmax`.
         best = shallowest_argmax(pc)
         _span = plateau_span(pc, z, best)
-        if _span is not None and _span[1] - _span[0] > 1.0:
-            # A shape cannot enter the legend, so it is labelled where it sits. The
-            # thick line inside it carries the legend entry; this is the same band
-            # extended across the plot so the depth range is readable against the
-            # other curves rather than only against the Pc one.
-            fig.add_hrect(y0=_span[0], y1=_span[1],
-                          fillcolor=rgba("minimum", 0.10, dark), line_width=0,
-                          layer="below",
-                          annotation_text="best Pc, anywhere in this band",
-                          annotation_position="top left",
-                          annotation_font=dict(size=9,
-                                               color=colour("minimum", dark)))
-            # **Named in the legend** (Lars, 2026-08-16: "what is the light red thick
-            # line and rectangle?"). A shaded region with no entry is a reader guessing,
-            # and on a figure whose whole subject is a trade-off the wrong guess is
-            # that it means uncertainty.
-            fig.add_scatter(
-                x=[float(np.nanmax(pc))] * 2, y=list(_span), mode="lines",
-                line=dict(color=colour("minimum", dark), width=6), opacity=0.35,
-                name=(f"Within 2 % of the best Pc — {_span[0]:,.0f}–{_span[1]:,.0f} m"),
-                legendgroup="plateau",
-                hovertemplate=(f"within 2 % of the best Pc anywhere from "
-                               f"{_span[0]:,.0f} to {_span[1]:,.0f} m<extra></extra>"),
-            )
+        _span = _span if (_span is not None
+                          and _span[1] - _span[0] > 1.0) else None
+        # **The marker only** (Lars, 2026-08-18: *"remove the pink band"*). The band
+        # existed so a flat Pc curve did not get a falsely precise star -- but
+        # ``shallowest_argmax`` now makes that star a written rule rather than a
+        # floating-point accident, and the label already names the whole near-max span
+        # in words. A shaded region covering a third of the plot to say "roughly here"
+        # costs more than it explains.
+        _label = (f"best Pc {pc[best]:.1f}%, "
+                  + (f"{_span[0]:,.0f}–{_span[1]:,.0f} m" if _span
+                     else f"{z[best]:,.0f} m"))
         fig.add_scatter(
-            x=[pc[best]], y=[z[best]], mode="markers+text",
+            x=[float(pc[best])], y=[float(z[best])], mode="markers+text",
             marker=dict(symbol="star", size=13, color=colour("minimum", dark)),
-            text=[(f"  best Pc {pc[best]:.1f}%, "
-                   + (f"{_span[0]:,.0f}–{_span[1]:,.0f} m"
-                      if _span is not None and _span[1] - _span[0] > 1.0
-                      else f"at {z[best]:.0f} m"))],
-            textposition="middle right",
-            textfont=dict(size=9, color=colour("minimum", dark)), showlegend=False,
-            hovertemplate=f"maximum commercial chance<br>{pc[best]:.1f}% at "
-                          f"{z[best]:.0f} m TVDSS<extra></extra>",
+            text=[" " + _label], textposition="middle right",
+            textfont=dict(size=9, color=colour("minimum", dark)),
+            name=_label, hovertemplate=_label + "<extra></extra>",
         )
+
     if current_z is not None:
         well_lines(fig, current_z, current_exit, dark)
 
@@ -3118,9 +3087,56 @@ def _well_track(fig, ad: AreaDepth, *, z_entry: float, z_exit: float,
     return fig
 
 
+def contact_histogram(fig, ts, *, n_bins: int = 40, share: float = CONTACT_SHARE,
+                      role: str = "well_associated", dark: bool = False,
+                      title: str = "contacts per bin"):
+    """Sampled hydrocarbon contacts as a horizontal histogram on a top x-axis.
+
+    **Shared by 2.1 and 4.3** (Lars, 2026-08-18, asking for it on the second). It was
+    written inline in 2.1 first; a second caller is the point at which "one more copy"
+    becomes two places for the sixth to drift from.
+
+    The bars answer *how often do the trials put the contact here*, which is the
+    question a structural section cannot answer on its own: area above a depth the
+    contact never reaches is not volume anyone finds.
+
+    **A sixth of the width, and the number is the mechanism.** The bars are context for
+    whatever the panel's own subject is; given the full width they become the figure.
+    The top axis is scaled to ``1/share`` times the tallest bin, so the mode reaches
+    that fraction across whatever the counts are, and it is labelled -- an unlabelled
+    second scale is how a reader comes to believe the bars are areas.
+
+    Returns ``True`` when bars were drawn, so a caller can decide about its legend.
+    """
+    if ts is None or not ts.has("contact"):
+        return False
+    res = np.asarray(ts.col("resource"), dtype=float)
+    c = np.asarray(ts.col("contact"), dtype=float)
+    ok = (res > 0) & np.isfinite(c)
+    if ok.sum() <= 1:
+        return False
+    c = c[ok]
+    counts, edges = np.histogram(c, bins=int(n_bins),
+                                 range=(float(c.min()), float(c.max())))
+    fig.add_bar(
+        x=counts, y=0.5 * (edges[:-1] + edges[1:]), orientation="h",
+        width=float(edges[1] - edges[0]) * 0.92, xaxis="x2",
+        marker=dict(color=rgba(role, 0.45, dark), line=dict(width=0)),
+        name="Sampled contacts",
+        hovertemplate="%{x:,.0f} trials with a contact near " + DEPTH_HOVER
+                      + "<extra></extra>",
+    )
+    fig.update_layout(xaxis2=dict(
+        title=title, overlaying="x", side="top", showgrid=False,
+        range=[0, float(counts.max()) * max(1.0, 1.0 / share)],
+    ))
+    return True
+
+
 def pfig_c1_section(
     ad: AreaDepth, ts: TrialSet, *, z_entry: float, z_exit: float,
     area_scale: str = "area", zlim: tuple[float, float] | None = None,
+    show_contacts: bool = True, contact_share: float = CONTACT_SHARE,
     dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
     """C1 -- the structure, above C2's curves.
@@ -3143,6 +3159,12 @@ def pfig_c1_section(
     p = palette(dark)
     _, transform = AREA_SCALES.get(area_scale, AREA_SCALES["area"])
     fig = go.Figure()
+    # **The contact density, as on 2.1** (Lars, 2026-08-18). This panel says where the
+    # classes sit; the bars say how often the contact actually lands there, and the
+    # boundary between proven and attic *is* the contact. Drawn first so the class
+    # shading and the well track stay on top of it.
+    _has_contacts = (contact_histogram(fig, ts, share=contact_share, dark=dark)
+                     if show_contacts else False)
     note = _reservoir_band(fig, ad, ts, z_entry=z_entry, z_exit=z_exit, dark=dark,
                            transform=transform, labels=True)
     _hline(fig, z_entry, p["well"], "dash", "well entry")
@@ -3156,7 +3178,8 @@ def pfig_c1_section(
         xaxis_title=AREA_SCALES.get(area_scale, AREA_SCALES["area"])[0],
         showlegend=False,
     )
-    fig.update_xaxes(rangemode="tozero")
+    # The primary axis only: xaxis2's range is set deliberately by the histogram.
+    fig.layout.xaxis.rangemode = "tozero"
     apply_plotly(fig, dark, height)
     depth_axis_plotly(fig, zlim or (ad.shallowest, ad.deepest))
     return fig

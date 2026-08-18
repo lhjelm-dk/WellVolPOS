@@ -178,9 +178,14 @@ def test_every_twin_draws_the_same_named_series(kit):
     for name, pfig, (_mfig, max_) in _pairs(kit):
         # Normalised, like the axis titles: the two backends spell markup
         # differently and neither spelling is content.
+        # **Marker-only traces count too.** The filter was ``"lines" in mode``, so a
+        # named series drawn as markers -- 3.10's starred optimum -- was invisible to
+        # this guard, and its matplotlib twin looked like an extra series. A named
+        # trace is a named series whatever it is drawn with.
         p_names = {
             _normalise(t.name) for t in pfig.data
-            if getattr(t, "name", None) and "lines" in (getattr(t, "mode", "") or "lines")
+            if getattr(t, "name", None)
+            and {"lines", "markers"} & set((getattr(t, "mode", "") or "lines").split("+"))
         }
         # **Every axes on the figure, not only the one returned.** A twinned axis
         # is a sibling rather than a child, so a series drawn on a second x-axis --

@@ -597,7 +597,9 @@ def fig_a5_exceedance(
             if mefs is not None:
                 y_at = float(np.interp(float(mefs), v, pct))
                 ax.plot([float(mefs)], [y_at], marker="x", ms=7, mew=2.0,
-                        color=colour(role, dark), zorder=5)
+                        color=colour(role, dark), zorder=5, ls="none",
+                        label=(f"{label} at MEFS" if reading == "conditional"
+                               else f"{label} at MEFS — risked"))
                 ax.annotate(f"{y_at:.1f}% > MEFS", (float(mefs), y_at),
                             textcoords="offset points", xytext=(6, 0), va="center",
                             fontsize=7.5, color=colour(role, dark))
@@ -929,6 +931,9 @@ def fig_b2_chance_vs_regret(
     ax.set_title(
         f"B2 · Chance vs regret (MEFS {vsweep.mefs:.1f} MMboe, "
         f"{reference_label(vsweep.reference)})"
+        + chr(10)
+        + "each curve is the share of that case's own trials whose volume exceeds MEFS",
+        fontsize=9,
     )
     ax.legend(loc="upper right", fontsize=7.5)
     fig.tight_layout()
@@ -1464,7 +1469,8 @@ def fig_b7_frontier(
     if current_z is not None:
         hx = float(np.interp(current_z, vsweep.z, np.nan_to_num(base, nan=0.0)))
         hy = float(np.interp(current_z, vsweep.z, np.nan_to_num(pw, nan=0.0)))
-        ax.plot([hx], [hy], marker="o", ms=10, mfc="none", mec=p["well"], mew=2.5, zorder=5)
+        ax.plot([hx], [hy], marker="o", ms=10, mfc="none", mec=p["well"], mew=2.5,
+                zorder=5, ls="none", label="This well")
         ax.annotate(f"  this well, {current_z:.0f} m", (hx, hy), fontsize=8,
                     color=p["well"], va="center")
     if vsweep.mefs is not None:
@@ -1530,18 +1536,16 @@ def fig_b8_commercial_chance(
         # was starring whichever grid point won by 5e-17. See
         # `core.summary.shallowest_argmax`.
         best = shallowest_argmax(pc)
-        # The plateau band -- see the plotly twin. Named, because a shaded region with
-        # no legend entry is a reader guessing, and the wrong guess on a trade-off
-        # figure is that it means uncertainty.
+        # **The marker only, no band** -- see the plotly twin. The span is named in
+        # the label instead, which is the whole of what the shading said.
         _span = plateau_span(pc, z, best)
-        if _span is not None and _span[1] - _span[0] > 1.0:
-            ax.axhspan(_span[0], _span[1], color=colour("minimum", dark), alpha=0.10,
-                       lw=0, zorder=0)
-            ax.plot([float(np.nanmax(pc))] * 2, list(_span),
-                    color=colour("minimum", dark), lw=5, alpha=0.35,
-                    label=f"Within 2 % of the best Pc — {_span[0]:,.0f}–{_span[1]:,.0f} m")
-        ax.plot([pc[best]], [z[best]], marker="*", ms=12, color=colour("minimum", dark), zorder=5)
-        ax.annotate(f"  best {pc[best]:.1f}% at {z[best]:.0f} m", (pc[best], z[best]),
+        _span = _span if (_span is not None and _span[1] - _span[0] > 1.0) else None
+        _label = (f"best Pc {pc[best]:.1f}%, "
+                  + (f"{_span[0]:,.0f}–{_span[1]:,.0f} m" if _span
+                     else f"{z[best]:,.0f} m"))
+        ax.plot([pc[best]], [z[best]], marker="*", ms=12,
+                color=colour("minimum", dark), zorder=5, ls="none", label=_label)
+        ax.annotate("  " + _label, (pc[best], z[best]),
                     fontsize=7.5, color=colour("minimum", dark), va="center")
     if current_z is not None:
         ax.axhline(current_z, color=p["text"], ls="--", lw=1.0)
@@ -1932,6 +1936,31 @@ def _reservoir_section_mpl(ax, ad, ts, *, z_entry, z_exit, dark, area_scale="are
     return stats if thickness is not None else None
 
 
+def contact_histogram_mpl(ax, ts, *, n_bins: int = 40, share: float = CONTACT_SHARE,
+                          role: str = "well_associated", dark: bool = False,
+                          title: str = "contacts per bin"):
+    """The sampled contacts on a twinned top axis. Twin of ``viz.contact_histogram``."""
+    if ts is None or not ts.has("contact"):
+        return False
+    res = np.asarray(ts.col("resource"), dtype=float)
+    c = np.asarray(ts.col("contact"), dtype=float)
+    ok = (res > 0) & np.isfinite(c)
+    if ok.sum() <= 1:
+        return False
+    c = c[ok]
+    counts, edges = np.histogram(c, bins=int(n_bins),
+                                 range=(float(c.min()), float(c.max())))
+    top = ax.twiny()
+    top.barh(0.5 * (edges[:-1] + edges[1:]), counts,
+             height=float(edges[1] - edges[0]) * 0.92,
+             color=colour(role, dark), alpha=0.45, zorder=0,
+             label="Sampled contacts")
+    top.set_xlim(0, float(counts.max()) * max(1.0, 1.0 / share))
+    top.set_xlabel(title, fontsize=8)
+    top.tick_params(labelsize=7)
+    return True
+
+
 def fig_c1_section(
     ad: AreaDepth, ts: TrialSet, *, z_entry: float, z_exit: float,
     area_scale: str = "area", dark: bool = False,
@@ -1947,6 +1976,8 @@ def fig_c1_section(
     p = palette(dark)
     label, _ = AREA_SCALES.get(area_scale, AREA_SCALES["area"])
     fig, ax = new_figure(figsize=(6.0, 4.0), dark=dark)
+    # The contact density, as on 2.1 -- drawn first so the classes stay on top.
+    contact_histogram_mpl(ax, ts, dark=dark)
     _reservoir_section_mpl(ax, ad, ts, z_entry=z_entry, z_exit=z_exit,
                            dark=dark, area_scale=area_scale)
     for depth, ls, name in ((z_entry, "--", "well entry"), (z_exit, ":", "well exit")):
