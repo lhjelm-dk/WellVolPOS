@@ -247,9 +247,14 @@ def test_tab_three_is_grouped_and_leads_with_its_two_inputs(fresh):
 
     # And the current well is readable from the tabs that are about it, without
     # being a second widget that could disagree with tab ①'s.
-    readouts = [c.value for c in fresh.caption if c.value.startswith("**Well:**")]
+    # Keyed on the penetrated thickness, not on the "**Well:**" prefix: tab ④ drops
+    # the depths from its readout because the headline sentence above it already
+    # gives them, and that sentence is the one written to be quoted (2026-08-18).
+    readouts = [c.value for c in fresh.caption if "of reservoir penetrated" in c.value]
     assert len(readouts) >= 2, readouts
     assert all("top of tab ③" in r for r in readouts)
+    # Exactly one of them repeats the depths -- tab ③'s, where nothing above it has.
+    assert sum(1 for r in readouts if r.startswith("**Well:**")) == 1, readouts
 
 
 def test_the_guide_opens_with_what_this_tool_assumes(fresh):

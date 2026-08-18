@@ -218,7 +218,8 @@ def figure_note(headline: str, detail: str = "", *,
             st.markdown(detail)
 
 
-def well_readout(entry: float, exit_: float, *, note: str = "") -> None:
+def well_readout(entry: float, exit_: float, *, note: str = "",
+                 show_depths: bool = True) -> None:
     """The current well, at the top of a tab that is about it.
 
     Lars, 2026-08-15: the sliders live at the top of tab ③ and a reader on ④
@@ -229,9 +230,14 @@ def well_readout(entry: float, exit_: float, *, note: str = "") -> None:
     need its own key -- and a second key is a second source of truth for the one number
     every figure in the app is computed from. One place to set it, everywhere to see it.
     """
+    # ``show_depths=False`` where the line above has already given them. Tab ④
+    # opened by naming the entry and the exit three times in three lines -- in a
+    # subheader, here, and in the headline sentence -- and the sentence is the one
+    # that has to keep them, because it is written to be quoted into a proposal
+    # (Lars, 2026-08-18).
     st.caption(
-        f"**Well:** {entry:,.0f} – {exit_:,.0f} m TVDSS  ·  "
-        f"{exit_ - entry:,.0f} m of reservoir penetrated"
+        (f"**Well:** {entry:,.0f} – {exit_:,.0f} m TVDSS  ·  " if show_depths else "")
+        + f"{exit_ - entry:,.0f} m of reservoir penetrated"
         + (f"  ·  {note}" if note else "")
         + "  ·  *set at the top of tab ③*"
     )

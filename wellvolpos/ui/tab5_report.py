@@ -164,7 +164,6 @@ def render(ctx: Ctx) -> None:
     def _split_caveat() -> None:
         split_caveat(ctx)
 
-    st.caption(f"Effective POS prospect: **{pos:.4f}**, from {pos_source}.")
     if risking_convention == "trials_risked" and abs(pos_from_table - pos) > 1e-9:
         st.info(
             f"The table above multiplies to {pos_from_table:.4f}, but the trials imply "
@@ -219,8 +218,9 @@ def render(ctx: Ctx) -> None:
     # of the prospect, the other of this well in it.
     _m1, _m2, _m3 = st.columns(3)
     _m1.metric("Prospect POS", f"{_summary.prospect_pos:.1%}",
-               help="Play x the four elements. What the prospect is worth before "
-                    "anyone picks a location.")
+               help=f"Play x the four elements. What the prospect is worth before "
+                    f"anyone picks a location. The POS in force is {pos:.4f}, "
+                    f"from {pos_source}.")
     _m2.metric("r_location", f"{chance.r_location:.1%}",
                help="P(contact deeper than the well | hydrocarbons present). The "
                     "only quantity the well's position controls.")
@@ -247,9 +247,9 @@ def render(ctx: Ctx) -> None:
             f"**Read it across.** Each element starts at its entered chance "
             f"(*{SUMMARY_COLUMNS[1]}*) and is reduced by the correction factor "
             f"**{_summary.correction_factor:.3f}** where it carries the location penalty. "
-            f"Multiply the third column and you get **P_well = {_summary.well_pos:.4f}** — the same "
-            f"number as `POS_prospect × r_location` = {chance.pos_prospect:.4f} × "
-            f"{chance.r_location:.4f}, by construction rather than by coincidence.\n\n"
+            f"Multiply the third column and you get the **P_well** in the strip above — "
+            f"the same number as `POS_prospect × r_location`, by construction rather "
+            f"than by coincidence.\n\n"
             f"**Allocation is a convention, not a fact.** All three shipped schemes give the same "
             f"P_well; only the split across elements differs, which is what {fig_ref('{b5}')} below "
             f"shows. This "

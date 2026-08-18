@@ -73,9 +73,9 @@ def render(ctx: Ctx) -> None:
                       class_stats=_cs_head, commercial=_cc_head,
                       mefs=mefs if has_area else None)
 
-    st.subheader(f"At {entry:,.0f}–{exit_:,.0f} m TVDSS")
-    well_readout(entry, exit_)
+    st.subheader("The answer at this well")
     st.markdown(_head.sentence())
+    well_readout(entry, exit_, show_depths=False)
 
     # **What the last move did** (Lars, 2026-08-15). The tool's subject is
     # sensitivity to one depth and it re-rendered everything with no sign of what
