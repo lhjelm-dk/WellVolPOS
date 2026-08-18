@@ -521,7 +521,15 @@ def apply_plotly(fig, dark: bool = False, height: int | None = PANEL_HEIGHT):
         paper_bgcolor=p["surface"],
         plot_bgcolor=p["surface"],
         font=dict(family=FONT_STACK, size=FONT_SIZES["body"], color=p["text"]),
-        title=dict(font=dict(size=FONT_SIZES["title"], color=p["text"])),
+        # **Pinned to the top of the container, not centred in the margin.**
+        # Plotly's default places the title in the *middle* of the top margin, so
+        # reserving more room for a top axis pushed the title down into it and the
+        # two still overprinted -- growing the margin made the collision no better
+        # (Lars, 2026-08-18, image 1). Anchored at the top, the extra room goes
+        # where it was reserved for: between the title block and the axis.
+        title=dict(font=dict(size=FONT_SIZES["title"], color=p["text"]),
+                   yref="container", y=1.0, yanchor="top",
+                   pad=dict(t=12, l=4)),
         # autoexpand=False is load-bearing, not tidiness. With it on, plotly
         # grows the margins to make room for a legend or colour bar placed
         # outside the axes -- so one panel in a row acquiring a legend shrinks

@@ -200,12 +200,29 @@ def test_the_wedge_stands_at_full_thickness_up_dip_and_pinches_to_zero():
     assert np.nanmin(thick) >= 0.0
     assert np.nanmin(thick) < 0.02 * T, "the wedge never pinches out"
 
+    # **The thickness panel makes the same two claims as a graph** (Lars's sketch,
+    # 2026-08-18), so they are measured there too. The charged curve equals T up-dip
+    # and reaches zero at the contact, and it does so by falling *monotonically*:
+    # a curve that wandered would not be the wedge.
+    curve = next(t for t in fig.data if t.name == "Charged thickness at this depth")
+    cy = np.asarray(curve.y, dtype=float)
+    cx = np.asarray(curve.x, dtype=float)
+    order = np.argsort(cy)
+    cx = cx[order]
+    cy = cy[order]
+    assert cx[0] == pytest.approx(T, abs=1e-9), "not full thickness up-dip"
+    assert cx[-1] == pytest.approx(0.0, abs=1e-9), "does not pinch out"
+    assert np.all(np.diff(cx) <= 1e-9), "the charged thickness is not monotonic"
+    # It leaves T exactly one thickness above the contact -- that is the taper.
+    departs = float(cy[np.argmax(cx < T - 1e-9)])
+    assert departs == pytest.approx(zc - T, abs=(cy[1] - cy[0]) * 1.01)
+
     # Area-averaged pay is strictly less than T, which is the figure's whole point.
-    bars = {t.name: t for t in fig.data if t.name and " = " in t.name}
-    pay = next(v for k, v in bars.items() if "Area-averaged" in k)
-    tee = next(v for k, v in bars.items() if "thickness" in k)
-    pay_m = abs(float(pay.y[0]) - float(pay.y[1]))
-    t_m = abs(float(tee.y[0]) - float(tee.y[1]))
+    rules = {t.name: t for t in fig.data if t.name and " = " in t.name}
+    pay = next(v for k, v in rules.items() if "pay" in k.lower())
+    tee = next(v for k, v in rules.items() if "Reservoir thickness" in k)
+    pay_m = float(np.asarray(pay.x, dtype=float)[0])
+    t_m = float(np.asarray(tee.x, dtype=float)[0])
     assert t_m == pytest.approx(T, abs=1e-6)
     assert 0.0 < pay_m < t_m, (pay_m, t_m)
 
@@ -227,15 +244,22 @@ def test_the_wedge_has_an_export_twin_that_draws_the_same_thing():
 
     kw = dict(thickness=50.0, z_contact=2255.0, z_entry=2205.0, z_exit=2255.0,
               apex=2064.0)
-    _fig, ax = F.fig_c4_wedge(**kw)
-    labels = " | ".join(str(t.get_label()) for t in ax.lines + list(ax.collections))
-    assert "Area-averaged pay" in labels and "Reservoir thickness" in labels, labels
-    lo, hi = ax.get_ylim()
-    assert lo > hi
+    _fig, axes = F.fig_c4_wedge(**kw)
+    # Both panels: the section on the left, the thickness graph on the right.
+    assert len(axes) == 2
+    labels = " | ".join(str(t.get_label())
+                        for ax in axes
+                        for t in list(ax.lines) + list(ax.collections))
+    assert "pay" in labels.lower() and "Reservoir thickness" in labels, labels
+    assert "Charged thickness at this depth" in labels, labels
+    for ax in axes:
+        lo, hi = ax.get_ylim()
+        assert lo > hi, "depth axis not inverted"
+
     # Both backends report the same averaged pay, to the metre.
     p_int = next(t for t in I.pfig_c4_wedge(**kw).data
-                 if t.name and "Area-averaged" in t.name)
-    assert f"{abs(float(p_int.y[0]) - float(p_int.y[1])):,.0f} m" in labels
+                 if t.name and "pay" in t.name.lower())
+    assert f"{float(np.asarray(p_int.x, dtype=float)[0]):,.0f} m" in labels
 
 
 # --------------------------------------------------------- C5, restored and fixed

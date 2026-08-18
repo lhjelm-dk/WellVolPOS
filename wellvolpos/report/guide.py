@@ -285,12 +285,25 @@ drawn by shifting A(z) down by pay.
         _t = _t[_np.isfinite(_t) & (_t > 0)]
         _succ = ts.col("contact")[ts.col("resource") > 0]
         if _t.size and _succ.size:
+            # **The area-averaged pay comes from the trials, not from the
+            # schematic** (Lars, 2026-08-18). GeoX's gross-pay column *is* the
+            # area-averaged charged thickness -- that is what the wedge inversion
+            # validated against, to 0.01 m -- so the figure's headline number is a
+            # measurement. Averaging the schematic instead would be a *distance*
+            # average over an arbitrary horizontal extent, which is fine for the
+            # shape and wrong for the number.
+            _pay = _np.asarray(ts.col("gross_pay"), dtype=float) if ts.has("gross_pay") else None
+            if _pay is not None:
+                _pay = _pay[(_np.asarray(ts.col("resource"), dtype=float) > 0)
+                            & _np.isfinite(_pay) & (_pay > 0)]
             _chart(
                 pfig_c4_wedge(
                     thickness=float(_np.percentile(_t, 50)),
                     z_contact=float(_np.median(_succ)),
                     z_entry=entry, z_exit=exit_,
                     apex=float(ad.apex_estimate()),
+                    mean_pay=(float(_pay.mean()) if _pay is not None and _pay.size
+                              else None),
                 ),
                 key="c4",
             )

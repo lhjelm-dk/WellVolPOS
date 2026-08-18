@@ -305,3 +305,27 @@ def test_no_figure_hides_its_top_axis_title_under_the_figure_title(reduced, area
             assert fig.layout[k].title.text, f"{k}: an unlabelled second scale is a trap"
         lines = fig.layout.title.text.count("<br>") + 1
         assert fig.layout.margin.t >= 55 + TOP_AXIS_BAND + 17 * max(0, lines - 2)
+
+
+def test_no_figure_produces_plotlys_phantom_new_text_annotation(reduced, area_depth):
+    """``add_vline(annotation_text=None, annotation_position=...)`` invents "new text".
+
+    Third time: once when ``_hline``/``_vline`` were written, once on 5.2 by calling
+    ``add_vline`` directly. It is invisible in code review and glaring on screen, so
+    it is checked across every figure rather than at the two call sites that have
+    already done it.
+    """
+    import wellvolpos.viz.interactive as I
+
+    figs = [
+        I.pfig_b5_allocation_dumbbell(
+            {"charge": 0.9, "trap": 0.9, "reservoir": 0.7, "retention": 0.8},
+            0.6, pos_prospect=0.7605),
+        I.pfig_a1_area_depth(area_depth, ts=reduced, current_entry=3500,
+                             current_exit=3550),
+        I.pfig_a9_prospect_density(reduced, mefs=14.0),
+        I.pfig_c4_wedge(thickness=50.0, z_contact=3520.0, apex=3400.0),
+    ]
+    for fig in figs:
+        texts = [str(a.text) for a in fig.layout.annotations if a.text]
+        assert "new text" not in texts, (fig.layout.title.text, texts)

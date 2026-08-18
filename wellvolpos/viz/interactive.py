@@ -597,10 +597,16 @@ def pfig_a2_outcome_tree(
     """
     p = palette(dark)
     z = sweep.z
-    cum0 = np.full_like(z, sweep.share_chance_failure * 100.0)
-    cum1 = cum0 + sweep.share_dry_with_attic * 100.0
-    cum2 = cum1 + sweep.share_contact_seen * 100.0
-    cum3 = cum2 + sweep.share_hc_to_exit * 100.0
+    # **Chance failure stacks last, at the right edge** (Lars, 2026-08-18). It was
+    # first, so every hydrocarbon outcome was displaced by a constant that has nothing
+    # to do with where the well goes -- the chance failure share is the same at every
+    # depth by definition, since it is a property of the prospect. With it on the
+    # outside, the three outcomes that *do* move with depth all start from zero and
+    # their boundaries can be read straight off the axis.
+    cum0 = sweep.share_dry_with_attic * 100.0
+    cum1 = cum0 + sweep.share_contact_seen * 100.0
+    cum2 = cum1 + sweep.share_hc_to_exit * 100.0
+    cum3 = cum2 + np.full_like(z, sweep.share_chance_failure) * 100.0
 
     # Roles rather than colours, so the fills can be taken translucent from one
     # place. Translucent at Lars's request (2026-08-10): at full opacity the four
@@ -609,10 +615,10 @@ def pfig_a2_outcome_tree(
     # also lets the current-depth rule show *through* the bands instead of being
     # drawn over them.
     bands = [
-        (np.zeros_like(z), cum0, "Chance failure", "muted"),
-        (cum0, cum1, "Dry, with attic", "attic"),
-        (cum1, cum2, "Discovery, contact seen", "tested"),
-        (cum2, cum3, "Discovery, HC to exit", "below_lkh"),
+        (np.zeros_like(z), cum0, "Dry, with attic", "attic"),
+        (cum0, cum1, "Discovery, contact seen", "tested"),
+        (cum1, cum2, "Discovery, HC to exit", "below_lkh"),
+        (cum2, cum3, "Chance failure", "muted"),
     ]
     if share_scale not in ("linear", "log"):
         raise ValueError(f"unknown share_scale {share_scale!r}; expected 'linear' or 'log'")
@@ -657,17 +663,18 @@ def pfig_a2_outcome_tree(
     fig.add_scatter(
         x=cum3, y=z, mode="lines", line=dict(width=0), showlegend=False,
         customdata=np.column_stack([
-            np.full_like(z, sweep.share_chance_failure) * 100.0,
             sweep.share_dry_with_attic * 100.0,
             sweep.share_contact_seen * 100.0,
             sweep.share_hc_to_exit * 100.0,
+            np.full_like(z, sweep.share_chance_failure) * 100.0,
         ]),
+        # Read out in the order the bands are drawn, left to right.
         hovertemplate=(
             DEPTH_HOVER
-            + "<br>chance failure %{customdata[0]:.1f}%"
-            + "<br>dry with attic %{customdata[1]:.1f}%"
-            + "<br>contact seen %{customdata[2]:.1f}%"
-            + "<br>HC to exit %{customdata[3]:.1f}%<extra></extra>"
+            + "<br>dry with attic %{customdata[0]:.1f}%"
+            + "<br>contact seen %{customdata[1]:.1f}%"
+            + "<br>HC to exit %{customdata[2]:.1f}%"
+            + "<br>chance failure %{customdata[3]:.1f}%<extra></extra>"
         ),
     )
     if current_z is not None:
@@ -1858,13 +1865,19 @@ def pfig_b5_allocation_dumbbell(
             # and an unlabelled dotted line makes the reader take that on trust. Once
             # only, on the first panel: three copies of one number read as three
             # numbers.
+            # **The annotation kwargs go in only when there is a label.** Passing
+            # ``annotation_text=None`` alongside any other ``annotation_*`` makes
+            # plotly invent an annotation reading *"new text"* -- the exact trap
+            # ``_hline``/``_vline`` were rewritten to avoid, walked into again here
+            # by calling ``add_vline`` directly (Lars, 2026-08-18).
+            _ann = (dict(annotation_text=f"P_well {pos_prospect * r:.3f}",
+                         annotation_position="top left",
+                         annotation_font=dict(size=9, color=p["text_secondary"]))
+                    if i == 1 else {})
             fig.add_vline(
                 x=pos_prospect * r,
                 line=dict(color=p["muted"], width=1, dash="dot"),
-                annotation_text=(f"P_well {pos_prospect * r:.3f}" if i == 1 else None),
-                annotation_position="top left",
-                annotation_font=dict(size=9, color=p["text_secondary"]),
-                row=1, col=i)
+                row=1, col=i, **_ann)
         if scheme == "none":
             fig.add_annotation(
                 x=0.5, y=-0.5, text=f"r = {r:.3f} reported separately", showarrow=False,
@@ -3513,6 +3526,7 @@ def pfig_c3_mefs_bars(
 def pfig_c4_wedge(
     *, thickness: float, z_contact: float, z_entry: float | None = None,
     z_exit: float | None = None, apex: float | None = None,
+    mean_pay: float | None = None,
     dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
     """C4 -- the wedge: why area-averaged pay is less than reservoir thickness.
@@ -3547,6 +3561,31 @@ def pfig_c4_wedge(
 
     Depth on y, inverted, as every section here: this is spatially congruent with the
     subsurface, so the wedge sits where the wedge sits.
+
+    **The right-hand panel is the same geometry as a graph** (Lars, 2026-08-18, who
+    sketched it). The section shows *where* the wedge is; this shows *how thick* it is
+    at every depth, on the same depth axis, so the two read straight across:
+
+    ===========================  ==============================================
+    Reservoir thickness ``T``    vertical -- the layer is the same thickness
+                                 everywhere, which is what "true vertical
+                                 thickness" means
+    Charged (pay) thickness      equal to ``T`` down to ``contact - T``, then
+                                 falling **linearly** to zero at the contact,
+                                 and zero below it
+    Area-averaged pay            vertical, and the number GeoX reports as gross
+                                 pay -- necessarily left of ``T``
+    ===========================  ==============================================
+
+    Reading it across is the argument in one move: the pay curve *is* ``T`` up-dip
+    and only departs from it in the last ``T`` metres above the contact, yet the
+    average over the whole charged area sits well short of ``T``. That gap is the
+    taper, and it is why an area-averaged pay can never be read as a layer thickness.
+
+    ``mean_pay`` should be the **area-averaged** pay from the trials. Left out, the
+    figure falls back to averaging its own schematic along dip, which is a *distance*
+    average over an arbitrary horizontal extent -- fine for the shape and wrong for
+    the number, so the label then says schematic.
     """
     p = palette(dark)
     T = float(thickness)
@@ -3562,14 +3601,17 @@ def pfig_c4_wedge(
     z_hc_base = np.minimum(z_base, zc)
     charged = np.clip(z_hc_base - z_top, 0.0, None)
 
-    fig = go.Figure()
+    fig = make_subplots(
+        rows=1, cols=2, shared_yaxes=True, column_widths=[0.72, 0.28],
+        horizontal_spacing=0.06,
+    )
     # The reservoir layer, as context behind the charged part.
     fig.add_scatter(
         x=np.concatenate([x, x[::-1]]),
         y=np.concatenate([z_top, z_base[::-1]]),
         fill="toself", fillcolor=rgba("muted", 0.18, dark), mode="lines",
         line=dict(color=p["muted"], width=1.0), name="Reservoir layer",
-        hoverinfo="skip",
+        hoverinfo="skip", row=1, col=1,
     )
     # The wedge itself.
     live = charged > 0
@@ -3581,23 +3623,50 @@ def pfig_c4_wedge(
         name="Charged interval — the wedge",
         hovertemplate="charged thickness %{customdata:.1f} m<extra></extra>",
         customdata=np.concatenate([charged[live], charged[live][::-1]]),
+        row=1, col=1,
     )
-    _hline(fig, zc, colour("prospect", dark), "dash", "contact")
+    # The contact spans **both** panels: it is one depth, and a rule that stopped at
+    # the section would invite reading the right-hand panel on some other datum.
+    fig.add_hline(y=zc, line=dict(color=colour("prospect", dark), width=1.2,
+                                  dash="dash"),
+                  annotation_text="contact", annotation_position="top left",
+                  annotation_font=dict(size=10, color=p["text_secondary"]))
 
-    # **Area-averaged pay against true thickness.** The whole point of the figure, so
-    # it is drawn rather than asserted: the mean charged thickness over the charged
-    # extent, against T.
-    mean_pay = float(charged[live].mean()) if live.any() else 0.0
-    x_bar = float(x[live].max()) if live.any() else 1.0
-    for value, name, role, dash in ((T, "Reservoir thickness T", "muted", "solid"),
-                                    (mean_pay, "Area-averaged pay", "tested", "dot")):
-        fig.add_scatter(
-            x=[x_bar * 1.02, x_bar * 1.02], y=[zc, zc - value], mode="lines",
-            line=dict(color=colour(role, dark), width=4 if dash == "solid" else 4,
-                      dash=dash),
-            name=f"{name} = {value:,.0f} m",
-            hovertemplate=f"{name} {value:,.1f} m<extra></extra>",
-        )
+    # ------------------------------------------------ the thickness panel
+    # **Thickness against depth**, on the section's own depth axis. The two rules
+    # that used to stand at the right edge of the section became this: they gave the
+    # two numbers and not the *shape*, and the shape is what makes the gap between
+    # them inevitable rather than arbitrary.
+    schematic_pay = float(charged[live].mean()) if live.any() else 0.0
+    avg_pay = float(mean_pay) if mean_pay is not None else schematic_pay
+    avg_label = ("Area-averaged pay" if mean_pay is not None
+                 else "Mean pay (schematic average)")
+
+    zz = np.linspace(float(min(z_top.min(), zc - T)), float(zc + 0.6 * T), 400)
+    # The charged interval at a map point whose *top* sits at zz: full thickness
+    # until the base drops below the contact, tapering after that, nothing below.
+    pay_at = np.clip(np.minimum(T, zc - zz), 0.0, T)
+
+    fig.add_scatter(
+        x=np.full_like(zz, T), y=zz, mode="lines",
+        line=dict(color=p["text"], width=2),
+        name=f"Reservoir thickness = {T:,.0f} m",
+        hovertemplate=f"reservoir {T:,.1f} m<extra></extra>", row=1, col=2,
+    )
+    fig.add_scatter(
+        x=np.full_like(zz, avg_pay), y=zz, mode="lines",
+        line=dict(color=colour("tested", dark), width=2, dash="dash"),
+        name=f"{avg_label} = {avg_pay:,.0f} m",
+        hovertemplate=f"{avg_label.lower()} {avg_pay:,.1f} m<extra></extra>",
+        row=1, col=2,
+    )
+    fig.add_scatter(
+        x=pay_at, y=zz, mode="lines",
+        line=dict(color=colour("well_associated", dark), width=3),
+        name="Charged thickness at this depth",
+        hovertemplate="charged %{x:,.1f} m at " + DEPTH_HOVER + "<extra></extra>",
+        row=1, col=2,
+    )
 
     if z_entry is not None:
         # The well, drawn where it actually cuts the layer rather than at the edge.
@@ -3607,19 +3676,28 @@ def pfig_c4_wedge(
             x=[x[i], x[i]], y=[top_crest, bottom], mode="lines",
             line=dict(color=p["well"], width=3),
             name="The well", hovertemplate="the well<extra></extra>",
+            row=1, col=1,
         )
 
     fig.update_layout(
         title=("C4 · The wedge — why area-averaged pay is less than the reservoir "
                f"thickness ({T:,.0f} m)"
-               "<br><sub>schematic: the dip and the width are drawn for legibility, "
-               "the relationship is not</sub>"),
-        xaxis_title="Distance down dip (schematic)",
+               "<br><sub>left: schematic section, the dip and the width drawn for "
+               "legibility · right: the same geometry as thickness against depth"
+               "</sub>"),
     )
-    fig.update_xaxes(showticklabels=False, range=[-0.02, 1.12])
+    fig.update_xaxes(showticklabels=False, range=[-0.02, 1.06],
+                     title_text="Distance down dip (schematic)", row=1, col=1)
+    fig.update_xaxes(range=[0, T * 1.25], title_text="Thickness (m)",
+                     row=1, col=2)
     apply_plotly(fig, dark, height)
-    depth_axis_plotly(fig, (float(min(z_top.min(), zc - T)) - 0.1 * T,
-                            float(max(z_base.max(), zc)) + 0.1 * T))
+    zlim = (float(min(z_top.min(), zc - T)) - 0.1 * T,
+            float(max(z_base.max(), zc)) + 0.1 * T)
+    depth_axis_plotly(fig, zlim)
+    # ``depth_axis_plotly`` sets the first y-axis; the second panel shares it through
+    # ``shared_yaxes`` but still needs the range, or plotly autoscales it and the two
+    # panels stop being readable across.
+    fig.update_yaxes(range=[zlim[1], zlim[0]], row=1, col=2)
     return fig
 def pfig_c6_outcome_tree(
     groups, *, pos_prospect: float, p_well: float, pc_well: float | None = None,

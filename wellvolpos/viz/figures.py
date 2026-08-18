@@ -2123,14 +2123,16 @@ def fig_c3_mefs_bars(
 
 def fig_c4_wedge(
     *, thickness: float, z_contact: float, z_entry: float | None = None,
-    z_exit: float | None = None, apex: float | None = None, dark: bool = False,
+    z_exit: float | None = None, apex: float | None = None,
+    mean_pay: float | None = None, dark: bool = False,
 ):
     """C4, for the export path. Twin of ``pfig_c4_wedge``.
 
     The geometry the proven / unproven split rests on, in one picture: a layer of
     constant true vertical thickness, a flat contact, and therefore a charged interval
     that stands at full thickness up-dip and pinches to zero where the top surface
-    meets the contact. See the plotly twin for why it is schematic.
+    meets the contact. See the plotly twin for why it is schematic, and for what the
+    right-hand thickness panel is for.
     """
     p = palette(dark)
     T = float(thickness)
@@ -2143,7 +2145,9 @@ def fig_c4_wedge(
     charged = np.clip(z_hc_base - z_top, 0.0, None)
     live = charged > 0
 
-    fig, ax = new_figure(figsize=(7.2, 4.4), dark=dark)
+    fig, axes = new_figure(1, 2, figsize=(8.6, 4.4), dark=dark, sharey=True,
+                           gridspec_kw={"width_ratios": [2.6, 1.0]})
+    ax, ax_t = axes[0], axes[1]
     ax.fill_between(x, z_top, z_base, color=colour("muted", dark), alpha=0.18,
                     lw=1.0, edgecolor=p["muted"], label="Reservoir layer")
     ax.fill_between(x[live], z_top[live], z_hc_base[live],
@@ -2154,12 +2158,26 @@ def fig_c4_wedge(
     ax.text(0.01, zc, "contact", va="bottom", fontsize=8,
             color=colour("prospect", dark))
 
-    mean_pay = float(charged[live].mean()) if live.any() else 0.0
-    x_bar = float(x[live].max()) if live.any() else 1.0
-    ax.plot([x_bar * 1.02] * 2, [zc, zc - T], color=colour("muted", dark), lw=4,
-            label=f"Reservoir thickness T = {T:,.0f} m")
-    ax.plot([x_bar * 1.02] * 2, [zc, zc - mean_pay], color=colour("tested", dark),
-            lw=4, ls=":", label=f"Area-averaged pay = {mean_pay:,.0f} m")
+    # The two rules became a panel: they gave the numbers and not the shape, and it
+    # is the shape that makes the gap between them inevitable rather than arbitrary.
+    schematic_pay = float(charged[live].mean()) if live.any() else 0.0
+    avg_pay = float(mean_pay) if mean_pay is not None else schematic_pay
+    avg_label = ("Area-averaged pay" if mean_pay is not None
+                 else "Mean pay (schematic average)")
+
+    zz = np.linspace(float(min(z_top.min(), zc - T)), float(zc + 0.6 * T), 400)
+    pay_at = np.clip(np.minimum(T, zc - zz), 0.0, T)
+    ax_t.plot(np.full_like(zz, T), zz, color=p["text"], lw=1.8,
+              label=f"Reservoir thickness = {T:,.0f} m")
+    ax_t.plot(np.full_like(zz, avg_pay), zz, color=colour("tested", dark), lw=1.8,
+              ls="--", label=f"{avg_label} = {avg_pay:,.0f} m")
+    ax_t.plot(pay_at, zz, color=colour("well_associated", dark), lw=2.4,
+              label="Charged thickness at this depth")
+    ax_t.axhline(zc, color=colour("prospect", dark), ls="--", lw=1.2)
+    ax_t.set_xlim(0, T * 1.25)
+    ax_t.set_xlabel("Thickness (m)")
+    ax_t.grid(True, lw=0.6, alpha=0.7)
+    ax_t.legend(fontsize=6.5, loc="lower right", frameon=False)
 
     if z_entry is not None:
         i = int(np.argmin(np.abs(z_top - float(z_entry))))
@@ -2167,16 +2185,18 @@ def fig_c4_wedge(
         ax.plot([x[i], x[i]], [top_crest, bottom], color=p["well"], lw=2.5,
                 label="The well")
 
-    ax.set_xlim(-0.02, 1.12)
+    ax.set_xlim(-0.02, 1.06)
     ax.set_xticks([])
     ax.set_xlabel("Distance down dip (schematic)")
-    depth_axis(ax, (float(min(z_top.min(), zc - T)) - 0.1 * T,
-                    float(max(z_base.max(), zc)) + 0.1 * T))
-    ax.set_title("C4 · The wedge — why area-averaged pay is less than the "
-                 f"reservoir thickness ({T:,.0f} m)")
+    zlim = (float(min(z_top.min(), zc - T)) - 0.1 * T,
+            float(max(z_base.max(), zc)) + 0.1 * T)
+    depth_axis(ax, zlim)
     ax.legend(fontsize=7.5, loc="lower left", frameon=False)
+    fig.suptitle("C4 · The wedge — why area-averaged pay is less than the "
+                 f"reservoir thickness ({T:,.0f} m)", fontsize=9.5,
+                 fontweight="bold", color=p["text"])
     fig.tight_layout()
-    return fig, ax
+    return fig, axes
 def fig_c6_outcome_tree(
     groups, *, pos_prospect: float, p_well: float, pc_well: float | None = None,
     volumes: dict | None = None, dark: bool = False,
