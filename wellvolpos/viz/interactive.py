@@ -3821,6 +3821,19 @@ def pfig_b14_hurdle_cost(
     commerciality that hurdle buys. Depth is not on an axis -- it appears as labels
     along the ``P_well`` curve, the same device 3.8 uses -- so B14 joins A5, A6, B4,
     B5, B7 and 3.12 in the depth-rule exemption.
+
+    **Why it is a staircase, and why that is the honest shape** (Lars, 2026-08-18:
+    *"the curve is oddly jagged"*). The answer to "where must the well go" has to be
+    one of the depths the sweep evaluates -- 60 of them, about 6 m apart on the demo
+    data. Tightening the hurdle by a point usually does not move the depth at all, so
+    nothing changes; when it finally does move, everything jumps by a whole grid step
+    at once. Flat runs and vertical risers, which drawn as a smooth line read as
+    noise and drawn as steps read as what they are.
+
+    Interpolating between the steps would look tidier and would be a lie twice over:
+    the depths between grid points were never evaluated, and the commerciality curve
+    being inverted is itself estimated from a finite number of trials. So the figure
+    steps, and ``line_shape="hv"`` says the value holds until the next riser.
     """
     p = palette(dark)
     ok = hurdle.feasible
@@ -3834,7 +3847,10 @@ def pfig_b14_hurdle_cost(
         v = np.asarray(values, dtype=float) * 100.0
         fig.add_scatter(
             x=x[ok], y=v[ok], mode="lines", name=name,
-            line=dict(color=colour(role, dark), width=width, dash=dash),
+            # A step, because the answer is one of the sweep's depths and nothing
+            # lies between them. See the docstring.
+            line=dict(color=colour(role, dark), width=width, dash=dash,
+                      shape="hv"),
             customdata=hurdle.depth[ok],
             hovertemplate=(name + "<br>%{y:.1f}% at a %{x:.0f}% hurdle"
                            "<br>entering at %{customdata:,.0f} m TVDSS<extra></extra>"),
@@ -3859,7 +3875,8 @@ def pfig_b14_hurdle_cost(
     fig.update_layout(
         title=("B14 · What the commerciality hurdle costs"
                "<br><sub>x is the confidence demanded, not a depth · labels on the "
-               "upper curve are the entry it requires</sub>"),
+               "upper curve are the entry it requires · it steps because the answer "
+               "is one of the swept depths</sub>"),
         xaxis_title="Confidence insisted on — P(discovery clears MEFS) (%)",
         yaxis_title="Probability (%)",
     )

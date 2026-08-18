@@ -14,8 +14,10 @@ from wellvolpos.core import (
     ce_curve,
     certainty_equivalent,
     constrained_best,
+    hurdle_curve,
     run_volume_sweep,
 )
+from wellvolpos.core.stats import thin
 
 POS, MEFS = 0.7605, 14.0
 
@@ -183,3 +185,67 @@ def test_an_impossible_hurdle_leaves_a_gap_rather_than_a_guess(reduced):
     h = hurdle_curve(vs)
     assert not h.feasible.any()
     assert np.all(np.isnan(h.depth))
+
+
+# ------------------------------------------------- 3.8, checked against the trials
+# Lars, 2026-08-18: "recheck the logic and the math of this plot because I don't
+# understand it and I haven't seen anything like it." Fair — it sweeps a requirement
+# rather than a depth, which no other figure here does. These three tests are that
+# recheck, done against the trial file rather than against the sweep's own output.
+
+
+def test_the_constrained_depth_is_a_guarantee_and_the_shallowest_one(sweep):
+    """Two properties, both easy to lose and neither visible on the figure.
+
+    The depth returned must satisfy the hurdle **from there all the way down** — a
+    first crossing would return depths that deeper locations contradict, which is the
+    same trap B6's ``_required_depth`` avoids — and it must be the *shallowest* such
+    depth, because ``P_well`` falls monotonically so anything deeper costs chance for
+    nothing.
+    """
+    pm = thin(sweep.p_discovery_exceeds_mefs, sweep.n_discovery, 30)
+    z = np.asarray(sweep.z, dtype=float)
+
+    def guaranteed_from(zz):
+        deeper = pm[z >= zz]
+        deeper = deeper[np.isfinite(deeper)]
+        return deeper.min() if deeper.size else np.nan
+
+    for q in (0.50, 0.60, 0.70, 0.80, 0.90, 0.99):
+        r = constrained_best(sweep, confidence=q)
+        if not r.feasible:
+            continue
+        assert guaranteed_from(r.depth) >= q, f"{q}: the hurdle is not held below"
+        shallower = [zz for zz in z if zz < r.depth and guaranteed_from(zz) >= q]
+        assert not shallower, f"{q}: {len(shallower)} shallower depths also qualify"
+
+
+def test_pc_never_rises_as_the_hurdle_tightens(sweep):
+    """The figure's whole reason for existing, asserted rather than asserted in prose.
+
+    Demanding more confidence pushes the well deeper; deeper costs ``P_well`` faster
+    than it buys commerciality; the product falls. A reader who takes "more confident"
+    to mean "better" is reading a constraint as an objective.
+    """
+    h = hurdle_curve(sweep)
+    pc = h.pc[h.feasible]
+    assert pc.size > 5
+    assert np.all(np.diff(pc) <= 1e-12), "Pc rose as the hurdle tightened"
+
+
+def test_the_hurdle_curve_is_a_staircase_not_a_smooth_relation(sweep):
+    """Why 3.8 looks jagged, pinned so the explanation cannot become untrue.
+
+    The answer must be one of the swept depths, so many neighbouring hurdles share
+    one depth and the curve is flat between risers. If a later change ever
+    interpolated, this would fail — and it should, because the depths between grid
+    points were never evaluated.
+    """
+    h = hurdle_curve(sweep)
+    depths = h.depth[h.feasible]
+    assert depths.size > 20
+    # Far fewer distinct depths than hurdle levels: that ratio is the staircase.
+    assert len(set(depths.tolist())) < depths.size * 0.75
+    # And every depth is one the sweep actually evaluated.
+    grid = set(np.asarray(sweep.z, dtype=float).tolist())
+    assert set(depths.tolist()) <= grid

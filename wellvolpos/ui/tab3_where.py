@@ -498,6 +498,46 @@ def _location_sweep_tab(ctx: Ctx):
     # equivalent. Its unit is MMboe, which is a real limitation stated in
     # core/utility.py: risk tolerance is properly monetary and no well cost appears
     # anywhere in this tool.
+    # **The two controls get an explanation, not just a tooltip** (Lars, 2026-08-18:
+    # *"I need some explanation to what the certainty equivalent means. And what is
+    # rho?"*). A help icon is the right place for a definition a reader half-knows and
+    # the wrong place for one they have never met -- and exponential utility is not
+    # part of the exploration-geoscience vocabulary the rest of this app is written in.
+    with st.expander("What these two controls mean"):
+        st.markdown(
+            "**The commercial confidence** is a *mandate*: how sure you insist on "
+            "being that a discovery here would clear MEFS. It is not something the "
+            "trials know — it is a statement about what your house will accept. "
+            "Tighten it and the well is pushed down-dip, which costs chance.\n\n"
+            "**The certainty equivalent** answers a different question: *what "
+            "guaranteed volume would I swap this gamble for?*\n\n"
+            "A well at some depth is a gamble — `P_well` of finding a distribution "
+            "of volumes, and nothing otherwise. Its **expected value** is chance × "
+            "mean, and an expectation is *risk-neutral*: it values a 10 % chance of "
+            "500 MMboe exactly like a 50 % chance of 100. Most parties do not. The "
+            "certainty equivalent is the certain volume you would accept **instead "
+            "of** the gamble, and for anyone risk-averse it is smaller than the "
+            "expectation. The gap between the two curves on the targeting figure is "
+            "that difference, and it widens down-dip because that is where the "
+            "low-chance, high-volume tail lives.\n\n"
+            "**ρ (rho) is the risk tolerance** — the one number that says *how* "
+            "risk-averse. It is the scale over which you stop caring about upside:\n\n"
+            "- **ρ small** — very averse. A big prize far out in the tail adds almost "
+            "nothing, so the certainty equivalent sits near the low end of the "
+            "distribution.\n"
+            "- **ρ large** — nearly risk-neutral. The certainty equivalent converges "
+            "on the plain expectation, and this figure stops saying anything new.\n\n"
+            "The formula is Cozzolino's, standard in petroleum decision analysis:\n\n"
+            "`CE = −ρ · ln( p · E[e^(−V/ρ)] + (1 − p) )`\n\n"
+            "**One honest limitation.** ρ is properly a *monetary* tolerance — the "
+            "loss a company can absorb — and this tool carries no well cost, so ρ is "
+            "expressed in MMboe and has to be calibrated by feel. It still ranks "
+            "locations correctly when the well cost is the same at every depth, "
+            "which is the case a single prospect is usually in. Do **not** carry a "
+            "certainty equivalent in MMboe into an economic model as if it were an "
+            "expected value."
+        )
+
     _u1, _u2 = st.columns(2)
     with _u1:
         # **Integer per cent, not a fraction.** `format="%.0f%%"` on a 0.50-0.99 float

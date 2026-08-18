@@ -2287,7 +2287,7 @@ def fig_b14_hurdle_cost(hurdle, *, current: float | None = None, label_every: in
     """B14, for the export path. Twin of ``pfig_b14_hurdle_cost``.
 
     Sweeps the requirement rather than the depth. See the plotly twin for why the
-    falling ``Pc`` curve is the point.
+    falling ``Pc`` curve is the point, and why both curves are drawn as steps.
     """
     p = palette(dark)
     ok = hurdle.feasible
@@ -2299,7 +2299,8 @@ def fig_b14_hurdle_cost(hurdle, *, current: float | None = None, label_every: in
         (hurdle.pc, "Pc — commercial chance there", "minimum", "--", 2.2),
     ):
         v = np.asarray(values, dtype=float) * 100.0
-        ax.plot(x[ok], v[ok], color=colour(role, dark), lw=lw, ls=ls, label=name)
+        ax.plot(x[ok], v[ok], color=colour(role, dark), lw=lw, ls=ls, label=name,
+                drawstyle="steps-post")
 
     pwv = np.asarray(hurdle.p_well, dtype=float) * 100.0
     for i in range(0, x.size, max(1, label_every)):
@@ -2314,7 +2315,9 @@ def fig_b14_hurdle_cost(hurdle, *, current: float | None = None, label_every: in
     ax.set_ylim(bottom=0)
     ax.set_xlabel("Confidence insisted on — P(discovery clears MEFS) (%)")
     ax.set_ylabel("Probability (%)")
-    ax.set_title("B14 · What the commerciality hurdle costs")
+    ax.set_title("B14 · What the commerciality hurdle costs\n"
+                 "it steps because the answer is one of the swept depths",
+                 fontsize=9)
     ax.legend(fontsize=7.5, frameon=False, loc="upper right")
     fig.tight_layout()
     return fig, ax
