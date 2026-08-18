@@ -439,3 +439,53 @@ def test_wilson_stays_inside_zero_and_one_where_the_normal_interval_would_not():
     # And it still brackets the estimate in the ordinary case.
     lo, hi = wilson_interval(2918, 7605)
     assert lo < 2918 / 7605 < hi
+
+
+# ------------------------------ the case chance, as the app uses it (2026-08-18)
+# Lars asked whether the chance of each case is just POS x the count fraction. It is,
+# and the denominator is the thing that makes it true: **success trials, not all
+# trials**. This is asserted for every row on a file that has chance failures and on
+# one that has none, because the two conventions are exactly where a count-based
+# chance goes wrong and the error is invisible on either file alone.
+
+
+@pytest.mark.parametrize("dataset,entry,pos,mefs", [
+    ("demo_prospectA_reduced.csv", 3500.0, 0.7605, 14.0),   # 2,395 chance failures
+    ("demo_prospectC_reduced.csv", 1630.0, 0.4536, 103.0),  # none
+])
+def test_every_case_chance_is_pos_times_the_success_share(dataset, entry, pos, mefs):
+    from pathlib import Path
+
+    from wellvolpos.core import AreaDepth, group_trials, split_trials
+    from wellvolpos.core.chance import p_well as p_well_fn
+    from wellvolpos.core.rose import commercial_chance
+    from wellvolpos.io.adapters import read_trials
+
+    ts = read_trials(Path(__file__).resolve().parents[1] / "data" / dataset)
+    ad = AreaDepth.from_trials(ts.col("contact"), ts.col("area"))
+    ex = entry + 50.0
+    g = group_trials(ts, entry, ex)
+    vc = split_trials(ts, ad, g, entry, ex)
+    ch = p_well_fn(ts, entry, pos_prospect=pos)
+    res = np.asarray(ts.col("resource"), dtype=float)
+    cc = commercial_chance(ts, g, vc.proven, ch.p_well, mefs)
+
+    ns = int((res > 0).sum())
+    n_disc = int(np.asarray(g.discovery).sum())
+    n_dry = int(np.asarray(g.dry_with_attic).sum())
+    n_below = int(np.asarray(g.hc_to_exit).sum())
+
+    def formula(n):
+        return pos * n / ns
+
+    # Every row, against the chance the app computes by its own route.
+    assert formula(ns) == pytest.approx(ch.pos_prospect, abs=5e-9)
+    assert formula(n_disc) == pytest.approx(ch.p_well, abs=5e-9)
+    assert formula(n_below) == pytest.approx(ch.p_well * n_below / n_disc, abs=5e-9)
+    assert formula(n_dry) == pytest.approx(max(pos - ch.p_well, 0.0), abs=5e-9)
+    assert formula(cc.n_commercial) == pytest.approx(cc.pc_well, abs=5e-9)
+
+    # And the denominator matters: n_trials only works where the file happens to
+    # carry the risk itself, which is precisely what must not be assumed.
+    if ns != ts.n_trials:
+        assert pos * n_disc / ts.n_trials != pytest.approx(ch.p_well, abs=1e-3)

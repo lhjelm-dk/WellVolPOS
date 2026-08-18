@@ -588,6 +588,23 @@ def render(ctx: Ctx) -> None:
             rows.append(("Commercial accumulation (clears MEFS)",
                          _res_disc[_commercial], chance.p_well * _p_mcfs))
         stats = [(name, class_percentiles(values, ch)) for name, values, ch in rows]
+        # **The chance the app uses, beside the chance the file shows** (Lars,
+        # 2026-08-18, asking whether it is just POS x the count fraction).
+        #
+        # It is -- but with ``n_success`` as the denominator, not ``n_trials``, and the
+        # difference is the whole reason the column is worth adding. Checked on both
+        # published prospects before implementing:
+        #
+        #     chance = POS_prospect x n / n_success
+        #
+        # holds exactly for every row -- prospect, well associated, tested, unproven
+        # below LKH, up-dip and commercial. ``POS x n / n_trials`` does **not** (it is
+        # 0.348 against a P_well of 0.458 on prospect A), and the existing ``n / n``
+        # column is right on prospect A only by coincidence: there POS happens to equal
+        # ``n_success / n_trials``, because that file's trials carry the risk. On
+        # prospect C the same column reads 100 % for the prospect row against a real
+        # chance of 45 %.
+        _n_success = int((np.asarray(res_all, dtype=float) > 0).sum())
         pcols = [f"P{q}" for q in REPORT_PERCENTILES]
 
         # One table, not two (Lars, 2026-08-11). The percentiles are the
@@ -611,14 +628,28 @@ def render(ctx: Ctx) -> None:
                 {"class": name,
                  "n": int(s_["n"]),
                  "chance of the case (n / N)": chance_from_counts(int(s_["n"]), ts.n_trials),
+                 "chance in force (POS × n / n success)": (
+                     chance.pos_prospect * int(s_["n"]) / _n_success
+                     if _n_success else float("nan")),
                  **{f"P{q}": s_[f"p{q}"] for q in REPORT_PERCENTILES},
                  "Mean": s_["mean"]}
                 for name, s_ in stats
             ])[["class", "n", "chance of the case (n / N)",
+                "chance in force (POS × n / n success)",
                 "P99", "P90", "P50", "Mean", "P10", "P1"]],
             hide_index=True, width="stretch",
             column_config={
-                "chance of the case (n / N)": st.column_config.NumberColumn(format="percent"),
+                "chance of the case (n / N)": st.column_config.NumberColumn(
+                    format="percent",
+                    help="The trial file's own chance: this case's count over every "
+                         "trial in the file."),
+                "chance in force (POS × n / n success)": st.column_config.NumberColumn(
+                    format="percent",
+                    help="The chance the app is using for this case — POS_prospect "
+                         "times the case's share of the *success* trials. The "
+                         "prospect row is POS_prospect, the well-associated row is "
+                         "P_well and the commercial row is Pc(well), by "
+                         "construction rather than by coincidence."),
                 **{c: st.column_config.NumberColumn(format="%.2f")
                    for c in [f"P{q}" for q in REPORT_PERCENTILES] + ["Mean"]},
             },
