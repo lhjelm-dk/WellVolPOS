@@ -90,6 +90,7 @@ from wellvolpos.ui.loading import load as _load
 from wellvolpos.core.rose import AT_WELL_WINDOW_M
 from wellvolpos.ui.well import deviation_caption, read_well, well_editor
 from wellvolpos.ui.tabstyle import apply_metric_size as _shrink_metrics
+from wellvolpos.ui.tabstyle import apply_table_widths as _even_tables
 from wellvolpos.ui.tabstyle import inject as _inject_tab_style
 from wellvolpos.viz import (
     AREA_SCALES,
@@ -210,6 +211,7 @@ _inject_tab_style()
 # Metric values one size down: the default is a headline size, right for one
 # number and wrong for a strip of eight (Lars, 2026-08-18).
 _shrink_metrics()
+_even_tables()
 
 with tabs[0]:
     st.subheader("Trial data")

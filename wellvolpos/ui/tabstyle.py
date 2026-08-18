@@ -97,3 +97,34 @@ METRIC_CSS = """
 def apply_metric_size() -> None:
     """Shrink metric values. Call once, beside the tab tint."""
     st.markdown(METRIC_CSS, unsafe_allow_html=True)
+
+
+#: Two-column markdown tables share one column split.
+#:
+#: **Three reference tables, three different first-column widths** (Lars, 2026-08-18,
+#: image 1). Markdown tables size their columns to whatever is in them, so the guide's
+#: three reference tables -- the same kind of table, stacked one under another -- each
+#: landed on a different split and the block read as three unrelated things.
+#:
+#: ``:has()`` narrows this to genuinely two-column tables: the second header cell is
+#: also the last one. Wider tables keep sizing themselves, which is what they need --
+#: the volume-class tables have six numeric columns and a fixed split would ruin them.
+#: In a browser without ``:has()`` the selector simply does not match and nothing
+#: changes, which is the right failure.
+TABLE_CSS = """
+<style>
+  [data-testid="stMarkdown"] table:has(thead th:nth-child(2):last-child) {
+    table-layout: fixed;
+    width: 100%;
+  }
+  [data-testid="stMarkdown"] table:has(thead th:nth-child(2):last-child) th:first-child,
+  [data-testid="stMarkdown"] table:has(thead th:nth-child(2):last-child) td:first-child {
+    width: 34%;
+  }
+</style>
+"""
+
+
+def apply_table_widths() -> None:
+    """Give every two-column markdown table the same column split. Call once."""
+    st.markdown(TABLE_CSS, unsafe_allow_html=True)

@@ -1262,7 +1262,8 @@ def fig_b5_allocation_dumbbell(
         if pos_prospect is not None:
             ax.axvline(pos_prospect * r, color=p["muted"], ls=":", lw=1.0)
             if i == 0:
-                ax.text(pos_prospect * r, len(ELEMENTS) - 0.5, r" $P_{well}$",
+                ax.text(pos_prospect * r, len(ELEMENTS) - 0.5,
+                        f" $P_{{well}}$ = {pos_prospect * r:.3f}",
                         fontsize=7, color=p["text_secondary"], va="top")
         if scheme == "none":
             ax.text(0.5, -0.6, f"r = {r:.3f} reported separately", ha="center", va="center",
@@ -1281,7 +1282,10 @@ def fig_b5_allocation_dumbbell(
         tick.set_color(element_colour(el, dark))
         tick.set_fontweight("bold")
     axes[0].legend(loc="lower right", fontsize=7)
-    fig.suptitle("B5 · Allocation dumbbell", fontsize=9.5, fontweight="bold", color=p["text"])
+    fig.suptitle("B5 · How the location penalty is shared out between risk elements\n"
+                 "hollow = entered chance · filled = at this well · "
+                 "every scheme lands on the same P_well",
+                 fontsize=9.5, fontweight="bold", color=p["text"])
     fig.tight_layout()
     return fig, axes
 

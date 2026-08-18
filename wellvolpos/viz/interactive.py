@@ -1853,8 +1853,18 @@ def pfig_b5_allocation_dumbbell(
                 fig.add_scatter(x=[None], y=[names[0]], mode="markers", name=label,
                                 marker=marker, hoverinfo="skip", row=1, col=1)
         if pos_prospect is not None:
-            fig.add_vline(x=pos_prospect * r, line=dict(color=p["muted"], width=1, dash="dot"),
-                          row=1, col=i)
+            # **Labelled with its value** (Lars, 2026-08-18). The rule is the claim
+            # the figure exists to make -- every scheme lands on the same P_well --
+            # and an unlabelled dotted line makes the reader take that on trust. Once
+            # only, on the first panel: three copies of one number read as three
+            # numbers.
+            fig.add_vline(
+                x=pos_prospect * r,
+                line=dict(color=p["muted"], width=1, dash="dot"),
+                annotation_text=(f"P_well {pos_prospect * r:.3f}" if i == 1 else None),
+                annotation_position="top left",
+                annotation_font=dict(size=9, color=p["text_secondary"]),
+                row=1, col=i)
         if scheme == "none":
             fig.add_annotation(
                 x=0.5, y=-0.5, text=f"r = {r:.3f} reported separately", showarrow=False,
@@ -1862,7 +1872,10 @@ def pfig_b5_allocation_dumbbell(
             )
         fig.update_xaxes(range=[0, 1.03], title_text="Chance", row=1, col=i)
 
-    fig.update_layout(title="B5 · Allocation dumbbell")
+    fig.update_layout(
+        title=("B5 · How the location penalty is shared out between risk elements"
+               "<br><sub>hollow = the entered chance · filled = the same element at "
+               "this well · every scheme lands on the same P_well</sub>"))
     fig.update_annotations(font_size=10)
     apply_plotly(fig, dark, height)
     return fig

@@ -250,7 +250,7 @@ FIGURE_GUIDE = {
     "b4": ("chance waterfall",
            "The chance elements then the location factor, as a running product on a log axis. "
            "Totals to `pos_prospect × r` by construction."),
-    "b5": ("allocation dumbbell",
+    "b5": ("how the location penalty is shared out",
            "Which risk elements carry the location penalty. Every scheme gives the same "
            "`P_well` — only the attribution differs."),
 }
