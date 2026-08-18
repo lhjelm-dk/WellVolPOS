@@ -1,0 +1,8 @@
+# Streamlit Community Cloud installs these with apt before the Python deps.
+#
+# chromium is here for **kaleido** only, which renders the optional plotly report
+# to static images by driving a headless browser. Without it that one option is
+# disabled with a message naming the package, and every other part of the app --
+# including the default matplotlib report -- works exactly as it does locally.
+# Delete this file if you would rather have a faster, smaller deployment.
+chromium

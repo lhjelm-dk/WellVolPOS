@@ -1,4 +1,4 @@
-"""Tab ④ — what this well gets at the depth chosen in the sidebar.
+"""Tab ④ — what this well gets at the depth chosen on tab ③.
 
 The KPI strip, both engines' summaries, the class table, the live section,
 A6's overlap, the C1/C2 concepts pair and the conceptual map view. The map

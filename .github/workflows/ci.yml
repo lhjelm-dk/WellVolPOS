@@ -1,0 +1,33 @@
+# The suite is the specification, so it runs on every push. A clone has prospect A
+# and prospect C only -- prospect B is not published -- and the suite is green on
+# exactly that set, which is the thing this workflow exists to prove.
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      - name: Install
+        # kaleido is deliberately excluded here. It only renders the *optional*
+        # plotly report, it pulls a headless browser, and the tests that need it
+        # skip themselves when it is absent -- so installing it would add minutes
+        # to every run to exercise one code path.
+        run: |
+          grep -v '^kaleido' requirements.txt > ci-requirements.txt
+          python -m pip install --upgrade pip
+          pip install -r ci-requirements.txt
+      - name: Run the specification
+        run: pytest -q
