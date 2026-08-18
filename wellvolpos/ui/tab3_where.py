@@ -602,7 +602,7 @@ def _location_sweep_tab(ctx: Ctx):
             "best odds available once the hurdle is met — which is why it can sit "
             "deeper than every optimum above it and still be the right answer to the "
             "question it was asked.\n\n"
-            "Nothing here changes the well; the depth is set on tab ①."
+            "Nothing here changes the well; the depth is set at the top of this tab."
         )
         st.divider()
 

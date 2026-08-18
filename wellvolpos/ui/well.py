@@ -136,5 +136,22 @@ def deviation_caption(slot, well: Well, thickness) -> None:
 
     chk = check_deviation(thickness, well.gap)
     icon = {"vertical": "⟂", "deviated": "⟋", "partial": "⊣", "unknown": "?"}[chk.verdict]
-    slot.caption(f"{icon} **{chk.verdict}** — {well.gap:,.0f} m of section against a "
-                 f"{chk.thickness_p50:,.0f} m reservoir. {chk.message()}")
+    # **Phrased as an inference from the input** (Lars, 2026-08-18). It read as a
+    # verdict handed down -- "vertical" -- when what it is is a reading of two numbers
+    # the user typed against one the trials supply. Saying which numbers, and in which
+    # direction, is what makes it checkable rather than pronounced.
+    reading = {
+        "vertical": "a **vertical** well",
+        "deviated": "a **deviated** well, drilled down-dip inside the layer",
+        "partial": "a well **stopped inside** the reservoir — TD'd early or cased off",
+        "unknown": "no verdict",
+    }[chk.verdict]
+    slot.caption(
+        f"{icon} **The input suggests {reading}**, because the "
+        f"{well.gap:,.0f} m of section you set is "
+        + ("the same as" if chk.verdict == "vertical"
+           else "more than" if chk.verdict == "deviated"
+           else "less than" if chk.verdict == "partial" else "not comparable with")
+        + f" the {chk.thickness_p50:,.0f} m reservoir thickness recovered from the "
+          f"trials. {chk.message()}"
+    )

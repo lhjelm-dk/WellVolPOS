@@ -424,9 +424,6 @@ with tabs[0]:
     # the analysis tabs render, but they belong *here*, and `st.empty()` reserves the
     # position where it is declared.
     st.divider()
-    _well_slot = st.empty()
-
-    st.divider()
     st.subheader("Quality control")
     for c in qc.checks:
         st.markdown(f"{_badge(c.level)} **{c.name}** — {c.message}")
@@ -459,6 +456,18 @@ with tabs[0]:
 if qc.blocked:
     st.stop()
 
+with tabs[2]:
+    # **The two inputs that drive tab ③ sit at the top of it** (Lars, 2026-08-18).
+    # They were on tab ① with the conventions, which is defensible for a setting and
+    # wrong for these two: this is the tab that sweeps every depth and prices every
+    # threshold, so the pair being swept against belongs where the sweeping is. Depths
+    # first, because the threshold is read against them and not the other way round.
+    #
+    # Two slots rather than one, so the deviation verdict can be filled after A(z)
+    # exists without dragging the MEFS input down with it.
+    _well_slot = st.empty()
+    _mefs_slot = st.empty()
+
 with tabs[0]:
     # Declared at the foot of tab (1) and filled a few lines below. `st.empty()`
     # reserves its position where it is *declared*, so this is what puts the settings
@@ -480,41 +489,43 @@ with tabs[0]:
 # same device the case-save button already uses, and it is what lets a control live
 # on a tab while its value is available to the whole page.
 with _well_slot.container():
-    # **The well geometry is a setting**, and the one most often changed. It was in the
-    # sidebar until 2026-08-13, then on tab (3) for a day as four candidate locations;
-    # tab (3) sweeps *every* entry depth and argues about which to pick, so the pair
-    # you settle on belongs with the settings rather than on the tab whose subject is
-    # not having settled.
-    st.subheader("The well")
+    st.subheader("The well being tested")
     st.caption(
-        "Where the well enters and leaves the reservoir. Tab ③ sweeps every entry "
-        "depth and shows what each one buys; tab ④ is the write-up at the pair set "
-        "here."
+        "Everything below is measured against this pair. The figures sweep **every** "
+        "entry depth; these two say which one the tables, the split and tab ④ report."
     )
     _deviation_slot = well_editor(well, zmin, zmax)
 
+with _mefs_slot.container():
+    # **MEFS sits under the depths, on tab ③** (Lars, 2026-08-18). It is read against
+    # them on five figures here -- 3.6, 3.9, 3.11, 3.12, 3.13 -- and it is the second
+    # half of every commercial statement the tab makes. Leaving it two tabs away meant
+    # changing the threshold and then going to look for what it did.
+    #
+    # It scales with the prospect: 14 MMboe is a sensible bar against prospect A's
+    # 16 MMboe discovery mean and a rounding error against C's 121.
+    _default_mefs = float(np.round(
+        np.mean(ts.col("resource")[ts.col("resource") > 0]) * 0.85))
+    mefs = st.number_input(
+        "MEFS / MCFS (MMboe)", min_value=0.0, value=_default_mefs, step=0.5,
+        key="w_mefs",
+        help="Minimum economic field size, or Rose's minimum commercial field size — "
+             "the same threshold under two names, so one input serves both. Where a "
+             "house does separate them (economic at NPV = 0, commercial adding "
+             "strategic and contractual hurdles, so MCFS >= MEFS), enter the one you "
+             "are testing against. Drawn as a reference line and never applied to the "
+             "distributions.")
+    st.divider()
+
 with _settings_slot.container():
     st.divider()
-    st.subheader("Threshold and conventions")
+    st.subheader("Conventions")
     st.caption(
         "Never implicit — every one of these changes the numbers, and each is stamped "
         "in the footer on every tab."
     )
     _s1, _s2 = st.columns(2)
     with _s1:
-        # MEFS scales with the prospect: 14 MMboe is a sensible threshold against
-        # prospect A's 16 MMboe discovery mean and a rounding error against B's 121.
-        _default_mefs = float(np.round(
-            np.mean(ts.col("resource")[ts.col("resource") > 0]) * 0.85))
-        mefs = st.number_input(
-            "MEFS / MCFS (MMboe)", min_value=0.0, value=_default_mefs, step=0.5,
-            key="w_mefs",
-            help="Minimum economic field size, or Rose's minimum commercial field "
-                 "size — the same threshold under two names, so one input serves "
-                 "both. Where a house does separate them (economic at NPV = 0, "
-                 "commercial adding strategic and contractual hurdles, so MCFS >= "
-                 "MEFS), enter the one you are testing against. Drawn as a reference "
-                 "line and never applied to the distributions.")
         ref = st.radio(
             "Reference contour for the location factor",
             [ReferenceContour.CREST, ReferenceContour.P90_AREA],

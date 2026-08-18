@@ -221,7 +221,7 @@ def figure_note(headline: str, detail: str = "", *,
 def well_readout(entry: float, exit_: float, *, note: str = "") -> None:
     """The current well, at the top of a tab that is about it.
 
-    Lars, 2026-08-15, design review: the sliders live on tab ① and a reader on ③ or ④
+    Lars, 2026-08-15: the sliders live at the top of tab ③ and a reader on ④
     could not see what they were set to without going back. This is **display only**.
 
     Not a second pair of sliders, and that is a constraint rather than a preference:
@@ -233,5 +233,5 @@ def well_readout(entry: float, exit_: float, *, note: str = "") -> None:
         f"**Well:** {entry:,.0f} – {exit_:,.0f} m TVDSS  ·  "
         f"{exit_ - entry:,.0f} m of reservoir penetrated"
         + (f"  ·  {note}" if note else "")
-        + "  ·  *set on tab ①*"
+        + "  ·  *set at the top of tab ③*"
     )
