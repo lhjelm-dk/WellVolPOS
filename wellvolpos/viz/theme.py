@@ -452,6 +452,22 @@ def level_row(*figs, height: int | None = None) -> None:
     h = height or max(int(f.layout.height or PANEL_HEIGHT) for f in figs)
     for f in figs:
         f.update_layout(margin=dict(b=b), height=h)
+#: Extra top margin for a figure carrying a titled x-axis on top of the plot area.
+TOP_AXIS_BAND = 38
+
+
+def _has_top_axis(fig) -> bool:
+    """True when some x-axis is drawn on top *and* carries a title."""
+    for key in fig.layout:
+        if not str(key).startswith("xaxis"):
+            continue
+        ax = fig.layout[key]
+        if getattr(ax, "side", None) == "top" and getattr(
+                getattr(ax, "title", None), "text", None):
+            return True
+    return False
+
+
 
 
 def apply_plotly(fig, dark: bool = False, height: int | None = PANEL_HEIGHT):
@@ -465,8 +481,16 @@ def apply_plotly(fig, dark: bool = False, height: int | None = PANEL_HEIGHT):
     n_entries = legend_entries(fig)
     has_bar = _has_colourbar(fig)
     bottom = legend_margin(n_entries, colourbar=has_bar)
+    # **A titled top axis gets its own band** (Lars, 2026-08-18). ``t=55`` fits a
+    # title and its ``<sub>`` line and nothing else, so a figure with a second x-axis
+    # on top printed "trials per bin" straight through the subtitle. ``autoexpand``
+    # is off across the whole project -- deliberately, so a legend cannot shrink one
+    # panel of a row -- which means nothing grows the margin on its own. Reserving
+    # the band here rather than in the one figure that has such an axis today keeps
+    # the next one from rediscovering the collision.
+    top = 55 + (TOP_AXIS_BAND if _has_top_axis(fig) else 0)
     if height is not None:
-        height = int(height) + max(0, bottom - legend_margin(3))
+        height = int(height) + max(0, bottom - legend_margin(3)) + (top - 55)
     fig.update_layout(
         template="plotly_dark" if dark else "plotly_white",
         paper_bgcolor=p["surface"],
@@ -486,7 +510,7 @@ def apply_plotly(fig, dark: bool = False, height: int | None = PANEL_HEIGHT):
         # plot area and the row stops being level even though every axis carries
         # the identical range. Reserving the space on *every* figure instead keeps
         # a given depth on the same pixel row in every panel.
-        margin=dict(l=70, r=25, t=55, b=bottom, autoexpand=False),
+        margin=dict(l=70, r=25, t=top, b=bottom, autoexpand=False),
         legend=dict(
             bgcolor="rgba(0,0,0,0)", borderwidth=0, font=dict(size=10),
             orientation="h",

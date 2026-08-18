@@ -545,8 +545,11 @@ def _location_sweep_tab(ctx: Ctx):
         st.dataframe(
             pd.DataFrame([{
                 "Best at": c.label,
-                "Entry (m TVDSS)": c.describe_depth(),
+                "Entry (m TVDSS)": f"{c.depth:,.0f} m",
                 "Value there": c.value,
+                # Within 2 % of the best, so the value in the column before it is not
+                # the value here -- only indistinguishable from it.
+                "Equally good over": c.describe_plateau(),
                 "Figure": fig_ref("{" + c.figure + "}"),
             } for c in _cands]),
             hide_index=True, width="stretch",
@@ -593,12 +596,14 @@ def _location_sweep_tab(ctx: Ctx):
         _widest = max(_cands, key=lambda c: (c.plateau[1] - c.plateau[0])
                       if c.plateau else 0.0)
         st.caption(
-            ("**These are ranges, not points.** " if _flat else
+            ("**The depth is where the value is; the last column is where it "
+             "barely matters.** " if _flat else
              "**Three measures, three depths.** ")
-            + (f"Everything within 2 % of the best counts, and on this prospect that "
-               f"is a wide band — {_widest.label.lower()} is flat over "
-               f"{_widest.plateau[1] - _widest.plateau[0]:,.0f} m. A single depth "
-               f"would be false precision: the curve barely moves across it. "
+            + (f"Each *Value there* is the number at that entry depth. *Equally good "
+               f"over* is every depth within 2 % of it, which on this prospect is a "
+               f"wide band — {_widest.label.lower()} is flat over "
+               f"{_widest.plateau[1] - _widest.plateau[0]:,.0f} m, so treating the "
+               f"depth beside it as exact would be false precision. "
                if _flat else "")
             + "Best chance is the shallowest supported depth by construction — "
             "P_well only falls down-dip — so read that row as the top of the sweep "

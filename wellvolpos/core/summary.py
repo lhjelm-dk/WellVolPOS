@@ -149,9 +149,28 @@ class Candidate:
                 and (self.plateau[1] - self.plateau[0]) > 1.0)
 
     def describe_depth(self) -> str:
-        """The depth, widened to its plateau where the maximum is weak."""
+        """The depth, widened to its plateau where the maximum is weak.
+
+        Kept for prose, where a range reads correctly inside a sentence. **The table
+        does not use it** -- see :meth:`describe_plateau`.
+        """
         if not self.is_flat:
             return f"{self.depth:,.0f} m"
+        lo, hi = self.plateau
+        return f"{lo:,.0f}–{hi:,.0f} m"
+
+    def describe_plateau(self) -> str:
+        """The span of equally good depths, for a column beside the depth.
+
+        **The depth column and the value column must agree** (Lars, 2026-08-18). A
+        range under *Entry* against a single number under *Value there* invites the
+        reading that the value holds across the range, and it does not: the value is
+        the one at ``depth``, the ``argmax``. So the table reports the depth the value
+        belongs to and puts the plateau in its own column, where "equally good" is
+        stated rather than implied.
+        """
+        if not self.is_flat:
+            return "—"
         lo, hi = self.plateau
         return f"{lo:,.0f}–{hi:,.0f} m"
 

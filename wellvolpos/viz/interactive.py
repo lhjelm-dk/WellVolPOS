@@ -590,9 +590,23 @@ def pfig_a2_outcome_tree(
             (sweep.share_contact_seen, "Discovery, contact seen", "tested"),
             (sweep.share_hc_to_exit, "Discovery, HC to exit", "below_lkh"),
         ]
+        # **Filled to the axis floor, so the two readings look like one figure**
+        # (Lars, 2026-08-18). Four thin lines against four solid bands read as
+        # different plots of different things, and the toggle is meant to change the
+        # *scale*, not the subject. The fill is lighter than the linear one -- these
+        # bodies overlap where the stacked bands did not, so a heavy alpha would
+        # produce colours that are in the palette by accident.
         for values, name, role in shares:
+            share = np.asarray(values, dtype=float) * 100.0
+            floor = np.full_like(share, 1.0)
             fig.add_scatter(
-                x=np.asarray(values, dtype=float) * 100.0, y=z, mode="lines",
+                x=np.concatenate([floor, np.maximum(share, 1.0)[::-1]]),
+                y=np.concatenate([z, z[::-1]]),
+                fill="toself", fillcolor=rgba(role, 0.18, dark), mode="lines",
+                line=dict(width=0), showlegend=False, hoverinfo="skip",
+            )
+            fig.add_scatter(
+                x=share, y=z, mode="lines",
                 line=dict(color=colour(role, dark), width=2.4), name=name,
                 hovertemplate=name + "<br>%{x:.2f}% of trials at " + DEPTH_HOVER
                               + "<extra></extra>",
@@ -633,9 +647,14 @@ def pfig_a2_outcome_tree(
     fig.update_layout(
         title=(f"A2 · Outcome tree vs location "
                f"(exit = entry + {sweep.z_gap:.0f} m, from the well input)"
+               # Both readings carry a second title line, so the plot area is the
+               # same height under either and the toggle does not shift the figure
+               # under the reader (Lars, 2026-08-18).
                + ("<br><sub>log axis: each outcome's own share, not a running "
                   "total — cumulative bands cannot stack on a log scale</sub>"
-                  if share_scale == "log" else "")),
+                  if share_scale == "log" else
+                  "<br><sub>stacked: each band starts where the last ended, so "
+                  "the four sum to 100 % at every depth</sub>")),
         xaxis_title=("Share of trials (%) · log scale" if share_scale == "log"
                      else "Share of trials (%)"),
     )
