@@ -83,6 +83,7 @@ from .theme import (
     probability_axis_range,
     probability_coords,
     AREA_SCALES,
+    CONTACT_SHARE,
     PANEL_HEIGHT,
     VALUE_CMAP,
     apply_plotly,
@@ -274,6 +275,7 @@ def pfig_a1_area_depth(
     current_exit: float | None = None, n_bins: int = 40,
     zlim: tuple[float, float] | None = None, show_depth_labels: bool = True,
     area_scale: str = "area", show_reservoir: bool = True, show_classes: bool = True,
+    show_contacts: bool = True, contact_share: float = CONTACT_SHARE,
     dark: bool = False, height: int | None = PANEL_HEIGHT,
 ):
     """A1 -- the area-depth curve recovered from the trials, entry/exit marked.
@@ -287,6 +289,45 @@ def pfig_a1_area_depth(
     """
     p = palette(dark)
     fig = go.Figure()
+
+    # **The contact density, on a top axis, in a sixth of the width** (Lars,
+    # 2026-08-18). A(z) says how much area lies above each depth; this says how often
+    # the trials actually put the contact there, and the two together are the whole
+    # structural argument -- a large area at a depth the contact never reaches is not
+    # volume anyone finds. Reading them off separate figures means holding one depth
+    # in mind while looking at the other.
+    #
+    # **A sixth, and the number is the point.** The bars are context for the curve,
+    # not a second subject: given the whole width they read as the figure and A(z)
+    # reads as an annotation on them. The top axis is scaled to six times the tallest
+    # bin, so the mode reaches a sixth of the way across whatever the counts are, and
+    # the axis is labelled -- an unlabelled second scale is how a reader comes to
+    # believe the bars are areas.
+    contact_note = ""
+    if show_contacts and ts is not None and ts.has("contact"):
+        _res = np.asarray(ts.col("resource"), dtype=float)
+        _c = np.asarray(ts.col("contact"), dtype=float)
+        _ok = (_res > 0) & np.isfinite(_c)
+        if _ok.sum() > 1:
+            _c = _c[_ok]
+            _n, _edges = np.histogram(_c, bins=int(n_bins),
+                                      range=(float(_c.min()), float(_c.max())))
+            _mid = 0.5 * (_edges[:-1] + _edges[1:])
+            fig.add_bar(
+                x=_n, y=_mid, orientation="h",
+                width=float(_edges[1] - _edges[0]) * 0.92, xaxis="x2",
+                marker=dict(color=rgba("well_associated", 0.45, dark),
+                            line=dict(width=0)),
+                name="Sampled contacts",
+                hovertemplate="%{x:,.0f} trials with a contact near "
+                              + DEPTH_HOVER + "<extra></extra>",
+            )
+            contact_note = "sampled contacts"
+            fig.update_layout(xaxis2=dict(
+                title="contacts per bin", overlaying="x", side="top",
+                showgrid=False,
+                range=[0, float(_n.max()) * max(1.0, 1.0 / contact_share)],
+            ))
 
     # bool(), because TrialSet.has returns numpy's bool and plotly's validators
     # reject np.True_ for showlegend.
@@ -355,9 +396,11 @@ def pfig_a1_area_depth(
         title=f"A1 · Area–depth curve and reservoir (isotonic R² = {ad.r2:.6f})"
               f"{subtitle}{reservoir_note}",
         xaxis_title=axis_label,
-        showlegend=with_area,
+        showlegend=bool(with_area or contact_note),
     )
-    fig.update_xaxes(rangemode="tozero")
+    # The primary axis only: xaxis2's range is set deliberately above, and
+    # ``rangemode`` on it would let plotly widen the bars past their sixth.
+    fig.layout.xaxis.rangemode = "tozero"
     apply_plotly(fig, dark, height)
     depth_axis_plotly(fig, zlim or (ad.shallowest, ad.deepest), show_ticklabels=show_depth_labels)
     return fig
@@ -1116,7 +1159,8 @@ def pfig_a6_overlap(
 # ------------------------------------------------------------------- A9
 def pfig_a9_prospect_density(
     ts: TrialSet, *, mefs: float | None = None, bins: int = 40,
-    dark: bool = False, height: int | None = PANEL_HEIGHT,
+    show_exceedance: bool = False, dark: bool = False,
+    height: int | None = PANEL_HEIGHT,
 ):
     """A9 -- the prospect's resource distribution, on its own.
 
@@ -1168,8 +1212,36 @@ def pfig_a9_prospect_density(
     if mefs is not None:
         _vline(fig, mefs, colour("minimum", dark), "dot", "MEFS")
 
+    # **The exceedance curve, optional and off by default** (Lars, 2026-08-18). It is
+    # the same trials as the bars, integrated from the right -- so a reader can put a
+    # volume against its chance without leaving the figure that shows where the mass
+    # sits. Off by default because a density and a cumulative answer different
+    # questions and the figure's own subject is the shape.
+    #
+    # **Conditional only**, matching the solid family on the exceedance figure it
+    # comes from: the bars are success trials, so a risked curve over them would run
+    # against a histogram that has already dropped the failures.
+    if show_exceedance:
+        ordered = np.sort(values)
+        pct = 100.0 * (ordered.size - np.arange(ordered.size)) / ordered.size
+        fig.add_scatter(
+            x=ordered, y=pct, mode="lines", yaxis="y2", name="P(exceeding)",
+            line=dict(color=colour("prospect", dark), width=2.4),
+            hovertemplate="%{y:.1f}% of success trials exceed %{x:,.1f} MMboe"
+                          "<extra></extra>",
+        )
+        # A second **y**, allowed for the same reason A6 gets one: the rule is that a
+        # *depth* axis means one thing, and neither axis here carries a depth. Both
+        # families are read against the same x.
+        fig.update_layout(yaxis2=dict(
+            title="P(exceeding) — conditional (%)", overlaying="y", side="right",
+            range=[0, 105], showgrid=False,
+        ))
+
     fig.update_layout(
-        title="A9 · Prospect resource distribution (success case)",
+        title=("A9 · Prospect resource distribution (success case)"
+               + ("<br><sub>bars = density · line = P(exceeding), right axis · "
+                  "both conditional on success</sub>" if show_exceedance else "")),
         xaxis_title="Recoverable resource (MMboe)", yaxis_title="Density",
         showlegend=False,
     )

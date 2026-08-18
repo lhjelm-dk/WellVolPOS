@@ -668,7 +668,7 @@ def test_a1_draws_the_reservoir_band_from_a_real_thickness(concepts):
         assert q in named, q
     assert "thickness from pay" in fig.layout.title.text
     # The three volume classes, shaded between top and base.
-    assert sum(1 for t in fig.data if t.fillcolor) >= 3
+    assert sum(1 for t in fig.data if getattr(t, "fillcolor", None)) >= 3
 
 def test_concepts_draws_the_base_on_the_seven_column_paste_too(reduced, groups, vc, area_depth):
     """The payoff from back-calculating thickness instead of reading a column.
@@ -686,7 +686,7 @@ def test_concepts_draws_the_base_on_the_seven_column_paste_too(reduced, groups, 
     # own x-axis label, where it belongs and where it stopped colliding with the
     # first subplot heading.
     assert "thickness from pay" in fig.layout.title.text
-    assert sum(1 for d in fig.data if d.fillcolor) >= 3      # all three wedges
+    assert sum(1 for d in fig.data if getattr(d, "fillcolor", None)) >= 3      # all three wedges
 
 
 
@@ -768,7 +768,7 @@ def test_concepts_uses_one_colour_per_concept_across_both_panels(concepts):
         assert cond.line.color == colour(role) == uncond.line.color, concept
         assert cond.line.dash == "solid" and uncond.line.dash == "dash"
     # The section's bands carry the same roles, as translucent fills -- in C1 now.
-    fills = [t.fillcolor for t in c1.data if t.fillcolor]
+    fills = [t.fillcolor for t in c1.data if getattr(t, "fillcolor", None)]
     for role in ("up_dip", "tested", "below_lkh"):
         assert any(rgba_of(role) in (f or "") for f in fills), role
 
@@ -807,7 +807,12 @@ def test_the_three_area_scales_transform_the_axis_and_say_so(area_depth, reduced
     for key in I.AREA_SCALES:
         fig = I.pfig_a1_area_depth(area_depth, ts=reduced, current_entry=ENTRY,
                                    current_exit=EXIT, area_scale=key)
-        data = np.concatenate([np.asarray(t.x, float) for t in fig.data if t.x is not None])
+        # Traces on the *primary* x only. A1 also carries a contact histogram on a
+        # second x-axis whose values are counts, and counts do not transform with the
+        # area scale -- nor should they.
+        data = np.concatenate([np.asarray(t.x, float) for t in fig.data
+                               if t.x is not None
+                               and getattr(t, "xaxis", None) in (None, "x")])
         xs[key] = float(np.nanmax(data))
         labels[key] = fig.layout.xaxis.title.text
     assert xs["area²"] == pytest.approx(xs["area"] ** 2, rel=1e-6)
@@ -1365,3 +1370,53 @@ def test_c2_labels_the_conditional_curves_only_but_marks_both(reduced, groups, v
     # The bare ones are risked, so every one of them is pulled below its twin --
     # the highest risked mark is POS_prospect x 0.90, not 90 %.
     assert max(float(t.y[0]) for t in bare) == pytest.approx(90.0 * POS, abs=0.6)
+
+
+# ------------------------------------------------- context on a second axis
+# Two figures gained an optional overlay on 2026-08-18: A1 shows where the trials
+# actually put the contact, and A9 offers A5's exceedance curve. Both draw a second
+# series in units the primary axis does not carry, which is precisely the arrangement
+# that has to be checked rather than eyeballed.
+
+
+def test_a1_puts_the_contact_density_on_its_own_axis_in_a_sixth_of_the_width(
+        area_depth, reduced):
+    """The bars are context, and the sixth is the mechanism that keeps them so."""
+    fig = I.pfig_a1_area_depth(area_depth, ts=reduced, current_entry=ENTRY,
+                               current_exit=EXIT)
+    bars = [t for t in fig.data if t.type == "bar"]
+    assert len(bars) == 1, "expected exactly one contact histogram"
+    assert bars[0].xaxis == "x2", "the counts must not share the area axis"
+    assert fig.layout.xaxis2.side == "top"
+    assert fig.layout.xaxis2.title.text, "an unlabelled second scale is a trap"
+    # The tallest bin reaches CONTACT_SHARE of the way across, whatever the counts.
+    lo, hi = fig.layout.xaxis2.range
+    assert lo == 0
+    assert float(np.max(bars[0].x)) / hi == pytest.approx(I.CONTACT_SHARE, rel=1e-9)
+
+
+def test_a1_can_be_drawn_without_the_contacts(area_depth, reduced):
+    fig = I.pfig_a1_area_depth(area_depth, ts=reduced, show_contacts=False)
+    assert not [t for t in fig.data if t.type == "bar"]
+
+
+def test_a1_keeps_its_area_axis_anchored_at_zero_with_the_bars_on(area_depth, reduced):
+    """The second axis must not drag the first. A(z) starts at no area."""
+    fig = I.pfig_a1_area_depth(area_depth, ts=reduced)
+    assert fig.layout.xaxis.rangemode == "tozero"
+
+
+def test_a9_exceedance_is_optional_conditional_and_on_its_own_axis(reduced):
+    off = I.pfig_a9_prospect_density(reduced)
+    assert "yaxis2" not in off.layout
+    on = I.pfig_a9_prospect_density(reduced, show_exceedance=True)
+    curve = next(t for t in on.data if t.yaxis == "y2")
+    assert "conditional" in on.layout.yaxis2.title.text.lower()
+    # Conditional: it starts at 100 %, not at the chance. The bars are success
+    # trials, so a risked curve drawn over them would be reading a chance the
+    # histogram has already applied.
+    assert float(np.max(curve.y)) == pytest.approx(100.0, abs=1e-9)
+    values = np.asarray(reduced.col("resource"), dtype=float)
+    values = values[values > 0]
+    assert float(np.min(curve.x)) == pytest.approx(values.min())
+    assert float(np.max(curve.x)) == pytest.approx(values.max())

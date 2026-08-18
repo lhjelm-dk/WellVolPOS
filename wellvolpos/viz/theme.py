@@ -452,6 +452,11 @@ def level_row(*figs, height: int | None = None) -> None:
     h = height or max(int(f.layout.height or PANEL_HEIGHT) for f in figs)
     for f in figs:
         f.update_layout(margin=dict(b=b), height=h)
+#: How much of the plot width a context histogram drawn on a second x-axis may take.
+#: A sixth: the bars are context for the curve they sit behind, and given the whole
+#: width they become the figure while the curve reads as an annotation on them.
+CONTACT_SHARE = 1.0 / 6.0
+
 #: Extra top margin for a figure carrying a titled x-axis on top of the plot area.
 TOP_AXIS_BAND = 38
 

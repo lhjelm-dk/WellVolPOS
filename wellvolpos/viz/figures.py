@@ -71,6 +71,7 @@ from .theme import (
     probability_axis,
     probability_coords,
     AREA_SCALES,
+    CONTACT_SHARE,
     SEQUENTIAL_CMAP,
     VALUE_CMAP,
     colour,
@@ -283,7 +284,9 @@ def _mark_exceedance_mpl(ax, values, role: str, dark: bool, *, chance: float = 1
 def fig_a1_area_depth(
     ad: AreaDepth, *, ts: TrialSet | None = None, current_entry: float | None = None,
     current_exit: float | None = None, n_bins: int = 40, area_scale: str = "area",
-    show_reservoir: bool = True, show_classes: bool = True, dark: bool = False,
+    show_reservoir: bool = True, show_classes: bool = True,
+    show_contacts: bool = True, contact_share: float = CONTACT_SHARE,
+    dark: bool = False,
 ):
     """The area-depth curve recovered from the trials, entry/exit marked.
 
@@ -296,6 +299,36 @@ def fig_a1_area_depth(
     """
     fig, ax = new_figure(figsize=(6.5, 5.5), dark=dark)
     p = palette(dark)
+
+    # **The contact density, on a top axis, in a sixth of the width** (Lars,
+    # 2026-08-18). A(z) says how much area lies above each depth; this says how often
+    # the trials actually put the contact there, and the two together are the whole
+    # structural argument -- a large area at a depth the contact never reaches is not
+    # volume anyone finds. Reading them off separate figures means holding one depth
+    # in mind while looking at the other.
+    #
+    # **A sixth, and the number is the point.** The bars are context for the curve,
+    # not a second subject: given the whole width they read as the figure and A(z)
+    # reads as an annotation on them. The top axis is scaled to six times the tallest
+    # bin, so the mode reaches a sixth of the way across whatever the counts are, and
+    # the axis is labelled -- an unlabelled second scale is how a reader comes to
+    # believe the bars are areas.
+    if show_contacts and ts is not None and ts.has("contact"):
+        _res = np.asarray(ts.col("resource"), dtype=float)
+        _c = np.asarray(ts.col("contact"), dtype=float)
+        _ok = (_res > 0) & np.isfinite(_c)
+        if _ok.sum() > 1:
+            _c = _c[_ok]
+            _n, _edges = np.histogram(_c, bins=int(n_bins),
+                                      range=(float(_c.min()), float(_c.max())))
+            _top = ax.twiny()
+            _top.barh(0.5 * (_edges[:-1] + _edges[1:]), _n,
+                      height=float(_edges[1] - _edges[0]) * 0.92,
+                      color=colour("well_associated", dark), alpha=0.45,
+                      label="Sampled contacts", zorder=0)
+            _top.set_xlim(0, float(_n.max()) * max(1.0, 1.0 / contact_share))
+            _top.set_xlabel("contacts per bin", fontsize=8)
+            _top.tick_params(labelsize=7)
 
     # **The area family, which the export had been missing entirely** (found by
     # audit, 2026-08-11). Given ``ts`` the plotly original draws P90 / P50 / mean /
@@ -1536,7 +1569,8 @@ def fig_a8_contact_distribution(
     top = ax.twiny()
     top.barh(centres, counts, height=(edges[1] - edges[0]) * 0.92,
              color=colour("prospect", dark), alpha=0.55,
-             edgecolor=colour("prospect", dark), linewidth=0.4)
+             edgecolor=colour("prospect", dark), linewidth=0.4,
+             label="Sampled contacts")
     top.set_xlabel("trials per bin", fontsize=8)
     top.set_xlim(left=0)
 
@@ -1634,7 +1668,8 @@ def fig_b9_chance_weighted(
     return fig, ax
 
 def fig_a9_prospect_density(
-    ts: TrialSet, *, mefs: float | None = None, bins: int = 40, dark: bool = False,
+    ts: TrialSet, *, mefs: float | None = None, bins: int = 40,
+    show_exceedance: bool = False, dark: bool = False,
 ):
     """A9 for the export path. Twin of ``pfig_a9_prospect_density``.
 
@@ -1667,10 +1702,25 @@ def fig_a9_prospect_density(
     if mefs is not None:
         ax.axvline(mefs, color=colour("minimum", dark), ls=":", lw=1.0)
 
+    if show_exceedance:
+        # Conditional only, matching the solid family on the exceedance figure this
+        # comes from: the bars are success trials, so a risked curve over them would
+        # run against a histogram that has already dropped the failures.
+        ordered = np.sort(values)
+        pct = 100.0 * (ordered.size - np.arange(ordered.size)) / ordered.size
+        right = ax.twinx()
+        right.plot(ordered, pct, color=colour("prospect", dark), lw=2.0,
+                   label="P(exceeding)")
+        right.set_ylim(0, 105)
+        right.set_ylabel("P(exceeding) — conditional (%)", fontsize=8)
+        right.tick_params(labelsize=7)
+
     ax.set_xlim(left=0)
     ax.set_xlabel("Recoverable resource (MMboe)")
     ax.set_ylabel("Density")
-    ax.set_title("A9 · Prospect resource distribution (success case)")
+    ax.set_title("A9 · Prospect resource distribution (success case)"
+                 + ("\nbars = density · line = P(exceeding), right axis"
+                    if show_exceedance else ""))
     fig.tight_layout()
     return fig, ax
 

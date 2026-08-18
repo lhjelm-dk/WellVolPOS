@@ -154,7 +154,7 @@ NAME_EXEMPT = {
     # them as layout shapes with annotations, which have no trace name.
     "A1": {"well entry", "well exit"},
     "A4": {"well entry", "well exit"},
-    "A8": {"well entry", "sampled contacts"},
+    "A8": {"well entry"},
     "A9": {"prospect (n=7,605)"},
     # B0's bands are annotated in both, but only plotly names the traces.
     "B0": {"attic if dry", "proven", "unproven below lkh"},
@@ -182,10 +182,17 @@ def test_every_twin_draws_the_same_named_series(kit):
             _normalise(t.name) for t in pfig.data
             if getattr(t, "name", None) and "lines" in (getattr(t, "mode", "") or "lines")
         }
+        # **Every axes on the figure, not only the one returned.** A twinned axis
+        # is a sibling rather than a child, so a series drawn on a second x-axis --
+        # A1's and A8's contact histograms -- was invisible to this guard and had to
+        # be exempted by name. An exemption for a series that *is* drawn is the guard
+        # lying about its own coverage.
         m_names = set()
         for ax in np.atleast_1d(max_).ravel():
-            m_names |= {_normalise(lbl) for lbl in ax.get_legend_handles_labels()[1]
-                        if not lbl.startswith("_")}
+            for sibling in ax.figure.axes:
+                m_names |= {_normalise(lbl)
+                            for lbl in sibling.get_legend_handles_labels()[1]
+                            if not lbl.startswith("_")}
         exempt = NAME_EXEMPT.get(name, set())
         only_plotly = p_names - m_names - exempt
         only_mpl = m_names - p_names - exempt

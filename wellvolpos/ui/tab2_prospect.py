@@ -411,7 +411,19 @@ def render(ctx: Ctx) -> None:
         )
 
         st.divider()
-        _chart(pfig_a9_prospect_density(ts, mefs=mefs), key="a9")
+        # **The exceedance curve, offered here rather than assumed** (Lars,
+        # 2026-08-18). It is the same trials as the bars, integrated from the right,
+        # so putting a volume against its chance no longer means moving back up the
+        # tab. Off by default: a density and a cumulative answer different questions,
+        # and this figure's own subject is the shape.
+        _a9_exc = st.checkbox(
+            fig_ref("Add the exceedance curve from {a5}"), value=False,
+            key="a9_exceedance",
+            help="Conditional only, on a right-hand axis — the bars are success "
+                 "trials, so a risked curve over them would run against a histogram "
+                 "that has already dropped the failures.")
+        _chart(pfig_a9_prospect_density(ts, mefs=mefs, show_exceedance=_a9_exc),
+               key="a9")
         _a9_vals = res_all[res_all > 0]
         figure_note(
             fig_ref("**{a9}** — the same distribution as a shape rather than a curve: where the mass sits, not how likely each volume is."),
