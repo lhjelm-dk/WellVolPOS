@@ -454,6 +454,164 @@ def _draw_export_figures(b: Bundle, *, dark: bool = False) -> dict[str, object]:
     return figs
 
 
+#: The two ways a report can be drawn.
+#:
+#: **Both, and neither is the correction of the other** (Lars, 2026-08-18: *"I want
+#: both options to build the report"*). The matplotlib set was built for export and is
+#: what every artefact has carried; the plotly set is what the app draws, so a reader
+#: who recognises a figure from the screen gets that figure. They are the same
+#: computations either way -- ``assemble`` does the arithmetic once and both backends
+#: only format it, which is the convention that stops an XLSX disagreeing with the PDF
+#: beside it, and it now stops the two image sets disagreeing too.
+FIGURE_BACKENDS = ("matplotlib", "plotly")
+
+#: Static images from plotly need a renderer, and it is not a hard dependency: it
+#: drives a headless browser and costs a large download. Absent, the plotly backend
+#: refuses with a message naming the package rather than failing somewhere inside
+#: plotly's writer.
+KALEIDO_HINT = (
+    "The plotly report needs the `kaleido` package to turn interactive figures into "
+    "static images. Install it with `pip install kaleido`, or use the matplotlib "
+    "report, which needs nothing extra."
+)
+
+
+def kaleido_available() -> bool:
+    """Can plotly write a static image here?"""
+    try:
+        import kaleido  # noqa: F401
+    except Exception:
+        return False
+    return True
+
+
+#: Pixel size for a plotly figure rendered to a page. Wider than the app draws, so the
+#: text does not have to be scaled up in a document.
+PLOTLY_IMAGE_SIZE = (1400, 900)
+
+
+def build_plotly_figures(b: Bundle) -> dict[str, object]:
+    """The same report, drawn by the interactive backend.
+
+    **Keyed identically to :func:`build_figures`**, and a test asserts it: two builders
+    emitting different sets is how an exported document comes to be missing a figure
+    that is on screen, which has happened here before with A9.
+
+    Heights are left to each figure. ``apply_plotly`` already sizes them for their
+    legends, and overriding that would reintroduce the clipping the legend-aware
+    margin exists to prevent.
+    """
+    import numpy as np
+
+    from .. import viz as _V
+    from ..core.bands import banded_percentiles
+    from ..core.reservoir import thickness_from_pay
+    from ..core.rose import commercial_chance
+
+    c, ch, sc = b.case, b.chance, b.case.scheme
+    figs: dict[str, object] = {}
+
+    # The colour key leads both bundles: a reader who opens the archive first meets
+    # what the colours mean, and it is the one page that is the same in every report.
+    figs["colour_key"] = _V.pfig_colour_key()
+    figs["A2_outcome_tree"] = _V.pfig_a2_outcome_tree(
+        b.sweep, current_z=c.entry, current_exit=c.exit)
+    figs["A3_chance_decomposition"] = _V.pfig_a3_chance_decomposition(
+        b.sweep, pos_prospect=b.pos, current_z=c.entry, current_exit=c.exit)
+    figs["A4_resource_vs_depth"] = _V.pfig_a4_resource_vs_depth(
+        b.ts, current_entry=c.entry, current_exit=c.exit, mefs=c.mefs)
+    figs["B11_pos_sensitivity"] = _V.pfig_b11_pos_sensitivity(
+        b.sweep, pos_prospect=b.pos, current_z=c.entry, current_exit=c.exit)
+    figs["B3_uncertainty_reduction"] = _V.pfig_b3_uncertainty_reduction(
+        b.sweep, current_z=c.entry, current_exit=c.exit)
+    figs["B4_chance_waterfall"] = _V.pfig_b4_chance_waterfall(
+        c.chance_table, ch.r_location, b.pos, scheme=sc)
+    figs["B5_allocation_dumbbell"] = _V.pfig_b5_allocation_dumbbell(
+        c.chance_table, ch.r_location, pos_prospect=b.pos)
+    figs["A8_contact_distribution"] = _V.pfig_a8_contact_distribution(
+        b.ts, current_entry=c.entry)
+    figs["A9_prospect_density"] = _V.pfig_a9_prospect_density(b.ts, mefs=c.mefs)
+
+    if b.ad is not None:
+        figs["A1_area_depth"] = _V.pfig_a1_area_depth(
+            b.ad, ts=b.ts, current_entry=c.entry, current_exit=c.exit)
+        figs["map_view"] = _V.pfig_map_view(
+            b.ad, apex=float(b.ad.apex_estimate()), z_entry=c.entry, z_exit=c.exit,
+            interval=c.map_interval, well_azimuth_deg=c.map_azimuth_deg)
+    if b.vc is not None and b.ad is not None:
+        _cc = commercial_chance(b.ts, b.groups, b.vc.proven, ch.p_well, c.mefs)
+        figs["C1_section"] = _V.pfig_c1_section(
+            b.ad, b.ts, z_entry=c.entry, z_exit=c.exit, area_scale=c.area_scale)
+        figs["C2_exceedance"] = _V.pfig_c2_exceedance(
+            b.ts, b.groups, b.vc, pos_prospect=b.pos, p_well=ch.p_well,
+            mefs=c.mefs, pc_well=_cc.pc_well)
+        _thick = thickness_from_pay(b.ts, b.ad).thickness
+        _t50 = (float(np.nanpercentile(_thick[np.isfinite(_thick) & (_thick > 0)], 50))
+                if np.isfinite(_thick).any() else 50.0)
+        _pay = (np.asarray(b.ts.col("gross_pay"), dtype=float)
+                if b.ts.has("gross_pay") else None)
+        if _pay is not None:
+            _pay = _pay[(np.asarray(b.ts.col("resource"), dtype=float) > 0)
+                        & np.isfinite(_pay) & (_pay > 0)]
+        _dc = b.ts.col("contact")[(b.ts.col("resource") > 0)
+                                  & (b.ts.col("contact") > c.entry)]
+        if _dc.size:
+            figs["C5_partitions"] = _V.pfig_c5_partitions(
+                b.ad, z_entry=c.entry, z_exit=c.exit,
+                z_contact=float(np.median(_dc)), area_scale=c.area_scale)
+        figs["C4_wedge"] = _V.pfig_c4_wedge(
+            thickness=_t50,
+            z_contact=float(np.nanmedian(
+                b.ts.col("contact")[b.ts.col("resource") > 0])),
+            z_entry=c.entry, z_exit=c.exit, apex=float(b.ad.apex_estimate()),
+            mean_pay=(float(_pay.mean()) if _pay is not None and _pay.size else None))
+        if b.vsweep is not None and b.vsweep.p_discovery_exceeds_mefs is not None:
+            from ..core.utility import hurdle_curve
+            figs["B14_hurdle_cost"] = _V.pfig_b14_hurdle_cost(hurdle_curve(b.vsweep))
+        figs["C6_outcome_tree"] = _V.pfig_c6_outcome_tree(
+            b.groups, pos_prospect=b.pos, p_well=ch.p_well, pc_well=_cc.pc_well)
+        figs["C3_mefs_bars"] = _V.pfig_c3_mefs_bars(
+            b.ts, b.groups, b.vc, pos_prospect=b.pos, p_well=ch.p_well, mefs=c.mefs)
+        figs["A5_exceedance"] = _V.pfig_a5_exceedance(
+            b.ts, b.groups, b.vc, mefs=c.mefs, pos_prospect=b.pos, p_well=ch.p_well)
+        figs["A6_overlap"] = _V.pfig_a6_overlap(b.vc, b.groups, mefs=c.mefs)
+        figs["B0_section"] = _V.pfig_b0_section(b.ad, z_entry=c.entry, z_exit=c.exit)
+        figs["B12_banded_percentiles"] = _V.pfig_b12_banded_percentiles(
+            banded_percentiles(b.ts, b.groups, b.vc, z_entry=c.entry, z_exit=c.exit),
+            mefs=c.mefs)
+    if b.vsweep is not None:
+        figs["B1_volume_split"] = _V.pfig_b1_volume_split(
+            b.vsweep, current_z=c.entry, current_exit=c.exit)
+        figs["B13_below_exit"] = _V.pfig_b13_below_exit(
+            b.vsweep, current_z=c.entry, current_exit=c.exit)
+        figs["B2_chance_vs_regret"] = _V.pfig_b2_chance_vs_regret(
+            b.vsweep, current_z=c.entry, current_exit=c.exit)
+        figs["B6_inverse"] = _V.pfig_b6_inverse(
+            b.vsweep, target=c.mefs, ts=b.ts, mefs=c.mefs)
+        figs["B7_frontier"] = _V.pfig_b7_frontier(b.vsweep, current_z=c.entry)
+        figs["B8_commercial_chance"] = _V.pfig_b8_commercial_chance(
+            b.vsweep, current_z=c.entry, current_exit=c.exit)
+        figs["B9_chance_weighted"] = _V.pfig_b9_chance_weighted(
+            b.vsweep, current_z=c.entry, current_exit=c.exit)
+    return figs
+
+
+def plotly_figure_bytes(fig, fmt: str = "png", *, scale: float = 2.0) -> bytes:
+    """One plotly figure as PNG, SVG or PDF, through kaleido."""
+    if fmt not in FIGURE_FORMATS:
+        raise ValueError(f"unknown figure format {fmt!r}; expected one of {FIGURE_FORMATS}")
+    if not kaleido_available():
+        raise RuntimeError(KALEIDO_HINT)
+    w, h = PLOTLY_IMAGE_SIZE
+    # The figure's own height wins where it has one -- ``apply_plotly`` sized it for
+    # the legend, and forcing a common height is how a twelve-series legend gets
+    # clipped out of an exported page.
+    h = int(fig.layout.height) if fig.layout.height else h
+    # SVG is already vector, so scaling it would only inflate the file.
+    return fig.to_image(format=fmt, width=w, height=h,
+                        scale=(1.0 if fmt == "svg" else scale))
+
+
 def figure_bytes(fig, fmt: str = "png", *, dpi: int = 200) -> bytes:
     """One figure as PNG, SVG or PDF."""
     if fmt not in FIGURE_FORMATS:
@@ -464,7 +622,8 @@ def figure_bytes(fig, fmt: str = "png", *, dpi: int = 200) -> bytes:
     return buf.getvalue()
 
 
-def figures_zip(b: Bundle, fmt: str = "png", *, dpi: int = 200) -> bytes:
+def figures_zip(b: Bundle, fmt: str = "png", *, dpi: int = 200,
+                backend: str = "matplotlib") -> bytes:
     """Every figure in one archive, plus the stamp as a text file.
 
     The stamp travels as `README.txt` inside the archive because the figures
@@ -472,6 +631,18 @@ def figures_zip(b: Bundle, fmt: str = "png", *, dpi: int = 200) -> bytes:
     slides -- and a figure separated from its POS provenance is the failure this
     project keeps guarding against.
     """
+    if backend not in FIGURE_BACKENDS:
+        raise ValueError(f"unknown backend {backend!r}; expected one of {FIGURE_BACKENDS}")
+    if backend == "plotly":
+        figs = build_plotly_figures(b)
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+            z.writestr("README.txt", _cover_text(b))
+            z.writestr("case.json", b.case.to_json())
+            for name, fig in figs.items():
+                z.writestr(f"{name}.{fmt}", plotly_figure_bytes(fig, fmt))
+        return buf.getvalue()
+
     figs = build_figures(b)
     try:
         buf = io.BytesIO()
@@ -519,7 +690,7 @@ def _cover_text(b: Bundle) -> str:
     return "\n".join(lines)
 
 
-def pdf_bytes(b: Bundle) -> bytes:
+def pdf_bytes(b: Bundle, *, backend: str = "matplotlib") -> bytes:
     """Cover page, then one figure per page.
 
     Uses matplotlib's own ``PdfPages`` rather than assembling with pypdf: fewer
@@ -528,6 +699,11 @@ def pdf_bytes(b: Bundle) -> bytes:
     """
     import matplotlib.pyplot as plt
     from matplotlib.backends.backend_pdf import PdfPages
+
+    if backend not in FIGURE_BACKENDS:
+        raise ValueError(f"unknown backend {backend!r}; expected one of {FIGURE_BACKENDS}")
+    if backend == "plotly":
+        return _plotly_pdf_bytes(b)
 
     figs = build_figures(b)
     buf = io.BytesIO()
@@ -551,6 +727,49 @@ def pdf_bytes(b: Bundle) -> bytes:
         _close(figs)
         if cover is not None:
             plt.close(cover)
+
+
+def _plotly_pdf_bytes(b: Bundle) -> bytes:
+    """The plotly report as one PDF: kaleido writes the pages, pypdf staples them.
+
+    The cover page is still drawn by matplotlib. It is a block of monospaced text, not
+    a figure, and re-implementing it in plotly would give two covers that could drift
+    -- the thing this module exists to prevent. So one cover, both reports.
+    """
+    import matplotlib.pyplot as plt
+    from matplotlib.backends.backend_pdf import PdfPages
+    from pypdf import PdfReader, PdfWriter
+
+    if not kaleido_available():
+        raise RuntimeError(KALEIDO_HINT)
+
+    cover_buf = io.BytesIO()
+    cover = None
+    try:
+        with PdfPages(cover_buf) as pdf:
+            cover, ax = new_figure(figsize=(11.7, 8.3))
+            ax.axis("off")
+            ax.text(0.0, 1.0, _cover_text(b), va="top", ha="left", fontsize=9,
+                    family="monospace", transform=ax.transAxes)
+            pdf.savefig(cover)
+    finally:
+        if cover is not None:
+            plt.close(cover)
+
+    writer = PdfWriter()
+    for page in PdfReader(io.BytesIO(cover_buf.getvalue())).pages:
+        writer.add_page(page)
+    for fig in build_plotly_figures(b).values():
+        for page in PdfReader(io.BytesIO(plotly_figure_bytes(fig, "pdf"))).pages:
+            writer.add_page(page)
+    writer.add_metadata({
+        "/Title": "WellVolPOS — well location POS and volume",
+        "/Subject": b.stamp,
+        "/Creator": "WellVolPOS",
+    })
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
 
 
 def _close(figs: dict[str, object]) -> None:

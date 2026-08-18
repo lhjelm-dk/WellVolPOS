@@ -339,3 +339,93 @@ def test_the_warnings_from_the_session_reach_the_exported_file(reduced):
     with zipfile.ZipFile(io.BytesIO(E.figures_zip(b, "png"))) as z:
         assert "not the ones this case was saved against" in z.read("README.txt").decode("utf-8")
     plt.close("all")
+
+
+# ---------------------------------------------------- the second figure backend
+# Lars, 2026-08-18: "I want both options to build the report." The risk of a second
+# builder is not that it fails — it is that it quietly drifts, and an exported
+# document ends up missing a figure that is on screen. That has happened here before,
+# with A9, so the parity is asserted rather than maintained by care.
+
+
+def test_both_report_backends_draw_exactly_the_same_figures(bundle):
+    """Same keys, same set, no exceptions.
+
+    Comparing the *keys* is the check that matters: whether the two renderers agree
+    pixel for pixel is not the point and never could be, but a figure present in one
+    bundle and absent from the other is a document that silently says less.
+    """
+    mpl = E.build_figures(bundle)
+    ply = E.build_plotly_figures(bundle)
+    assert set(mpl) == set(ply), sorted(set(mpl) ^ set(ply))
+    assert len(mpl) > 20
+    import matplotlib.pyplot as plt
+    plt.close("all")
+
+
+def test_an_unknown_backend_raises_rather_than_falling_back(bundle):
+    """A silent fallback would hand back a document drawn the other way with nothing
+    saying so — the same failure mode Case.from_json refuses for conventions."""
+    with pytest.raises(ValueError, match="backend"):
+        E.figures_zip(bundle, "png", backend="ggplot")
+    with pytest.raises(ValueError, match="backend"):
+        E.pdf_bytes(bundle, backend="ggplot")
+
+
+PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
+
+@pytest.mark.skipif(not E.kaleido_available(),
+                    reason="kaleido is optional; the matplotlib report needs nothing")
+def test_kaleido_renders_a_figure_in_every_format(bundle):
+    """The renderer itself, on one figure.
+
+    **Deliberately not the whole bundle.** Rendering thirty figures twice through a
+    headless browser took 75 s, which would more than double a suite that is run after
+    every change -- and it buys nothing: a renderer that can draw one figure can draw
+    thirty. The *assembly* is checked separately, on a stub.
+    """
+    from pypdf import PdfReader
+
+    fig = E.build_plotly_figures(bundle)["A9_prospect_density"]
+    assert E.plotly_figure_bytes(fig, "png")[:8] == PNG_MAGIC
+    assert b"<svg" in E.plotly_figure_bytes(fig, "svg")[:4000]
+    pdf = E.plotly_figure_bytes(fig, "pdf")
+    assert pdf.startswith(b"%PDF") and len(PdfReader(io.BytesIO(pdf)).pages) == 1
+
+    with pytest.raises(ValueError, match="format"):
+        E.plotly_figure_bytes(fig, "eps")
+
+
+@pytest.mark.skipif(not E.kaleido_available(),
+                    reason="kaleido is optional; the matplotlib report needs nothing")
+def test_the_plotly_archive_and_pdf_assemble_the_same_way(bundle, monkeypatch):
+    """Assembly, on two figures rather than thirty -- see the note above.
+
+    What this checks is the plumbing: the archive still carries the stamp and the
+    case, and the PDF is still a cover page plus one page per figure. Both are
+    properties of the assembler and neither is a property of the renderer.
+    """
+    import zipfile
+
+    from pypdf import PdfReader
+
+    full = E.build_plotly_figures(bundle)
+    subset = {k: full[k] for k in list(full)[:2]}
+    monkeypatch.setattr(E, "build_plotly_figures", lambda _b: subset)
+
+    with zipfile.ZipFile(io.BytesIO(E.figures_zip(bundle, "png", backend="plotly"))) as z:
+        names = set(z.namelist())
+    assert "README.txt" in names and "case.json" in names
+    assert {f"{k}.png" for k in subset} <= names
+
+    pdf = E.pdf_bytes(bundle, backend="plotly")
+    assert pdf.startswith(b"%PDF")
+    assert len(PdfReader(io.BytesIO(pdf)).pages) == len(subset) + 1
+
+
+def test_the_plotly_backend_refuses_clearly_when_kaleido_is_missing(bundle, monkeypatch):
+    """The message names the package. Failing inside plotly's writer would not."""
+    monkeypatch.setattr(E, "kaleido_available", lambda: False)
+    with pytest.raises(RuntimeError, match="kaleido"):
+        E.figures_zip(bundle, "png", backend="plotly")

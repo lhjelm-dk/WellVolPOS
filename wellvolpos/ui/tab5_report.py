@@ -97,17 +97,40 @@ def _export_section(ctx: Ctx):
     )
 
     st.divider()
-    if st.button("Build the report", key="build_export", type="primary"):
+
+    # **Two renderers, and the choice is the reader's** (Lars, 2026-08-18: *"I want
+    # both options to build the report"*). The matplotlib set is what every artefact
+    # has carried since phase 5; the plotly set is what the app draws, so a figure in
+    # the document is the figure that was on screen. Neither is the correction of the
+    # other, and both are formatting the *same* bundle -- ``assemble`` does the
+    # arithmetic once, which is what keeps the workbook agreeing with the PDF beside
+    # it and now keeps the two image sets agreeing too.
+    _has_kaleido = export_mod.kaleido_available()
+    _backend = st.radio(
+        "Draw the figures with", export_mod.FIGURE_BACKENDS, horizontal=True,
+        key="export_backend",
+        format_func=lambda k: ("matplotlib — the export set, no extra install"
+                               if k == "matplotlib" else
+                               "plotly — the figures as the app draws them"),
+        help="The numbers are identical either way. Only the drawing differs.",
+    )
+    if _backend == "plotly" and not _has_kaleido:
+        st.warning(export_mod.KALEIDO_HINT)
+
+    _blocked = _backend == "plotly" and not _has_kaleido
+    if st.button("Build the report", key="build_export", type="primary",
+                 disabled=_blocked):
         with st.spinner("Drawing every figure and assembling the workbook…"):
             bundle = export_mod.assemble(
                 ctx.ts, case, pos=ctx.pos, pos_source=ctx.pos_source, qc=ctx.qc,
             )
             st.session_state["_export"] = {
                 "stamp": bundle.stamp,
+                "backend": _backend,
                 "xlsx": export_mod.workbook_bytes(bundle),
-                "pdf": export_mod.pdf_bytes(bundle),
-                "png": export_mod.figures_zip(bundle, "png"),
-                "svg": export_mod.figures_zip(bundle, "svg"),
+                "pdf": export_mod.pdf_bytes(bundle, backend=_backend),
+                "png": export_mod.figures_zip(bundle, "png", backend=_backend),
+                "svg": export_mod.figures_zip(bundle, "svg", backend=_backend),
                 "tables": {k: v for k, v in export_mod.tables(bundle).items()},
                 "warnings": bundle.warnings,
             }
@@ -138,10 +161,12 @@ def _export_section(ctx: Ctx):
         mime="application/zip", key="dl_svg",
     )
     st.caption(
-        "The figures in every artefact are the matplotlib set, not screenshots of the "
-        "interactive ones — both are driven from `viz/theme.py`, so they carry the same colours "
-        "and the same depth rule. Each figure archive also contains the stamp and the case, "
-        "because a figure dropped into a slide gets separated from its provenance immediately."
+        f"Drawn with **{payload.get('backend', 'matplotlib')}**. Both backends are "
+        "driven from `viz/theme.py`, so they carry the same colours, the same depth "
+        "rule and the same numbers — the plotly set is the one the app puts on "
+        "screen, rendered to static images. Each figure archive also contains the "
+        "stamp and the case, because a figure dropped into a slide gets separated "
+        "from its provenance immediately."
     )
 
     with st.expander("What is in the workbook"):
