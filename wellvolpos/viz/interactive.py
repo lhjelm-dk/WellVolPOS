@@ -1261,6 +1261,33 @@ def pfig_b1_volume_split(
              vsweep.at_well_p10, vsweep.at_well_n,
              f"At the well (contact within ±{vsweep.at_well_window:g} m)", "", None))
 
+    # **A faint P90-P10 wash behind each concept family** (Lars, 2026-08-18). Three
+    # bold means with nine dotted lines around them is a lot of line, and the eye has
+    # to assemble each distribution from its parts before it can compare any two. The
+    # wash gives it the body of the distribution first.
+    #
+    # **P90 to P10 only, and deliberately very light.** A fill reads as *equally likely
+    # anywhere inside it*, which is false -- so it is faint enough to be a backdrop
+    # rather than a claim, the same argument that keeps B6's contact fill off the P99
+    # and P1 extremes. Drawn before the lines, so every mean stays on top of it. The
+    # at-the-well series has no role colour and gets no wash: it is a *seam* between
+    # two classes rather than a class, so a filled body would overstate it.
+    for mean, p90, p50, p10, counts, label, cond, role in families:
+        if p90 is None or p10 is None or not role:
+            continue
+        lo = thin(p90, counts, min_support)
+        hi = thin(p10, counts, min_support)
+        band = np.isfinite(lo) & np.isfinite(hi)
+        if band.sum() < 2:
+            continue
+        fig.add_scatter(
+            x=np.concatenate([lo[band], hi[band][::-1]]),
+            y=np.concatenate([vsweep.z[band], vsweep.z[band][::-1]]),
+            fill="toself", fillcolor=rgba(role, 0.10, dark), mode="lines",
+            line=dict(width=0), name=f"{label} P90–P10 {cond}".strip(),
+            legendgroup=label, hoverinfo="skip",
+        )
+
     for mean, p90, p50, p10, counts, label, cond, role in families:
         col = colour(role, dark) if role else p["muted"]
         fig.add_scatter(
@@ -1294,7 +1321,7 @@ def pfig_b1_volume_split(
                f"(exit = entry + {vsweep.z_gap:.0f} m, from the well input"
                f", {reference_label(vsweep.reference)})"
                "<br><sub>bold = mean · dotted = P90 / P50 / P10 · "
-               "each volume conditional on its own outcome</sub>"),
+               "wash = P90–P10 · each volume conditional on its own outcome</sub>"),
         xaxis_title="Mean volume (MMboe)",
     )
     fig.update_xaxes(rangemode="tozero")

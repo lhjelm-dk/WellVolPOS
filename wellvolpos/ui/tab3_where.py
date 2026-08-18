@@ -510,7 +510,10 @@ def _location_sweep_tab(ctx: Ctx):
             key="w_confidence",
             help="P(a discovery clears MEFS). The panel reports the shallowest depth "
                  "from which it stays at or above this all the way down, and the best "
-                 "P_well available under that constraint.",
+                 "P_well available under that constraint. This is a **mandate**, not "
+                 "something the trials know: the default of 50 % asks only that the "
+                 "median discovery clears MEFS, which usually binds weakly, so any "
+                 "chance you give up above it is a choice you made.",
         )
     _succ = ts.col("resource")[ts.col("resource") > 0]
     _mean_succ = float(_succ.mean()) if _succ.size else 1.0
@@ -523,6 +526,15 @@ def _location_sweep_tab(ctx: Ctx):
                  f"expectation. One mean here is {_mean_succ:,.0f} MMboe.",
         )
     _rho = max(_mean_succ * float(_rho_frac), 1e-6)
+    with _u2:
+        # **The multiple is unitless and the decision is not** (Lars, 2026-08-18).
+        # A tolerance of "1.0x the success-case mean" is only calibratable once it is
+        # stated in the units the prospect is measured in, so the product is printed
+        # under the control that sets it rather than buried in a help tooltip.
+        st.caption(
+            f"= **{_rho:,.1f} MMboe** risk tolerance · success-case mean "
+            f"{_mean_succ:,.1f} MMboe"
+        )
     _constrained = (constrained_best(vsweep, confidence=float(_conf) / 100.0)
                     if vsweep.p_discovery_exceeds_mefs is not None else None)
     _ce = ce_curve(ts, vsweep, rho=_rho)

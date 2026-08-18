@@ -46,7 +46,14 @@ import numpy as np
 DEFAULT_RISK_FRACTION = 1.0
 
 #: The conditional commerciality a chance-constrained search defaults to asking for.
-DEFAULT_CONFIDENCE = 0.90
+#:
+#: **50 %, deliberately** (Lars, 2026-08-18). A hurdle is a *mandate* -- somebody's
+#: policy about what risk the house will accept -- and not a property of the prospect.
+#: Shipping 90 % as the default would assert that policy silently and move the answer
+#: for anyone who never touched the control. At 50 % the constraint is the median
+#: discovery clearing MEFS, which on ordinary data binds weakly or not at all, so the
+#: panel opens showing the unconstrained optimum and *tightening* is the deliberate act.
+DEFAULT_CONFIDENCE = 0.50
 
 
 def certainty_equivalent(values, chance: float, rho: float) -> float:

@@ -730,6 +730,31 @@ def fig_b1_volume_split(
              vsweep.at_well_p10, vsweep.at_well_n,
              f"At the well (contact within ±{vsweep.at_well_window:g} m)", None, "-"))
 
+    # **A faint P90-P10 wash behind each concept family** (Lars, 2026-08-18). Three
+    # bold means with nine dotted lines around them is a lot of line, and the eye has
+    # to assemble each distribution from its parts before it can compare any two. The
+    # wash gives it the body of the distribution first.
+    #
+    # **P90 to P10 only, and deliberately very light.** A fill reads as *equally likely
+    # anywhere inside it*, which is false -- so it is faint enough to be a backdrop
+    # rather than a claim, the same argument that keeps B6's contact fill off the P99
+    # and P1 extremes. Drawn before the lines, so every mean stays on top of it. The
+    # at-the-well series has no role colour and gets no wash: it is a *seam* between
+    # two classes rather than a class, so a filled body would overstate it.
+    for mean, p90, p50, p10, counts, label, role, style in families:
+        if p90 is None or p10 is None or not role:
+            continue
+        lo = thin(p90, counts, min_support)
+        hi = thin(p10, counts, min_support)
+        band = np.isfinite(lo) & np.isfinite(hi)
+        if band.sum() < 2:
+            continue
+        _base, _, _cond = label.partition(" |")
+        ax.fill_betweenx(vsweep.z[band], lo[band], hi[band],
+                         color=colour(role, dark), alpha=0.10, lw=0,
+                         label=(f"{_base} P90–P10 |{_cond}" if _cond
+                                else f"{_base} P90–P10"))
+
     for mean, p90, p50, p10, counts, label, role, style in families:
         col = colour(role, dark) if role else p["muted"]
         ax.plot(thin(mean, counts, min_support), vsweep.z, color=col,
@@ -752,7 +777,8 @@ def fig_b1_volume_split(
     ax.set_xlim(left=0)
     ax.set_xlabel("Mean volume (MMboe)")
     depth_axis(ax, zlim=zlim or (float(vsweep.z.min()), float(vsweep.z.max())))
-    ax.set_title("B1 · Volume split vs location — bold mean, dotted P90/P50/P10")
+    ax.set_title("B1 · Volume split vs location — bold mean, dotted P90/P50/P10, "
+                 "wash P90–P10")
     ax.grid(True, lw=0.6, alpha=0.7)
     ax.legend(loc="lower right", fontsize=6)
     fig.tight_layout()
