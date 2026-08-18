@@ -89,6 +89,96 @@ LEGACY_CODE = {
 __all__ = ["FIGURE_NUMBERS", "LEGACY_CODE", "ref", "renumber_title"]
 
 
+#: export-bundle key -> chart key, so an exported figure can find its number.
+#:
+#: **Explicit, not derived from the prefix** (Lars, 2026-08-18: *"the figures carry
+#: names like A4, B2, C4 ... I want the 3.12, 2.2, 4.2 kind of numbering"*). Splitting
+#: ``"A4_resource_vs_depth"`` on the underscore gets 27 of the 30 right and silently
+#: wrong on the three that matter: ``B0_section`` is the *live section*, which the app
+#: charts under the key ``live`` as 4.6, and ``map_view`` is ``mapview``. A rule that is
+#: right most of the time is how a figure ends up numbered as a different figure.
+EXPORT_FIGURE_KEYS = {
+    "A1_area_depth": "a1",
+    "A4_resource_vs_depth": "a4",
+    "A5_exceedance": "a5",
+    "A9_prospect_density": "a9",
+    "A8_contact_distribution": "a8",
+    "A2_outcome_tree": "a2",
+    "A3_chance_decomposition": "a3",
+    "B3_uncertainty_reduction": "b3",
+    "B11_pos_sensitivity": "b11",
+    "B1_volume_split": "b1",
+    "B2_chance_vs_regret": "b2",
+    "B13_below_exit": "b13",
+    "B14_hurdle_cost": "b14",
+    "B7_frontier": "b7",
+    "B8_commercial_chance": "b8",
+    "B9_chance_weighted": "b9",
+    "B6_inverse": "b6",
+    "B12_banded_percentiles": "b12",
+    "C6_outcome_tree": "c6",
+    "C5_partitions": "c5",
+    "C1_section": "c1",
+    "C2_exceedance": "c2",
+    "C3_mefs_bars": "c3",
+    # The same function the app draws as 4.6 "Live section", called again for export.
+    "B0_section": "live",
+    "A6_overlap": "a6",
+    "map_view": "mapview",
+    "B4_chance_waterfall": "b4",
+    "B5_allocation_dumbbell": "b5",
+    "C4_wedge": "c4",
+}
+
+#: Bundle entries that are deliberately unnumbered. The colour key is a *legend*, not
+#: a figure -- it has no number on screen either, and giving it one in the report would
+#: invent a figure the app does not have.
+UNNUMBERED_EXPORT_KEYS = frozenset({"colour_key"})
+
+
+def export_number(export_key: str) -> str | None:
+    """The displayed figure number for a bundle entry, or ``None`` if it has none."""
+    chart_key = EXPORT_FIGURE_KEYS.get(export_key)
+    return FIGURE_NUMBERS.get(chart_key) if chart_key else None
+
+
+def export_sort_key(export_key: str) -> tuple[int, int, str]:
+    """Order a bundle by figure number, so the PDF reads in the app's order.
+
+    Unnumbered entries lead: the colour key is the one page that explains every other,
+    so a reader meeting the archive first meets it.
+    """
+    number = export_number(export_key)
+    if not number:
+        return (-1, -1, export_key)
+    tab, _, within = number.partition(".")
+    return (int(tab), int(within), export_key)
+
+
+def export_filename(export_key: str) -> str:
+    """The name a figure file carries in the archive.
+
+    ``"A4_resource_vs_depth"`` -> ``"2.2_resource_vs_depth"``. The *descriptive* half
+    is kept: the number says where the figure sits and the words say what it is, and a
+    file called ``3.10.png`` tells a reader nothing once it is on their desktop.
+
+    **The number is exact, not zero-padded.** ``3.10`` therefore sorts before ``3.2``
+    in a naive alphabetical listing, and that is the deliberate trade: the whole point
+    is that the file name matches what is on screen. The archive is written in report
+    order and carries a contents list in ``README.txt``, which is the fix for ordering
+    that does not require lying about the number.
+    """
+    number = export_number(export_key)
+    if not number:
+        return export_key
+    # Strip the prefix only where it *is* a legacy code. ``map_view`` has none, and
+    # partitioning it blindly gave "4.8_view" -- the descriptive half silently halved.
+    code, _, rest = export_key.partition("_")
+    if rest and re.fullmatch(r"[A-Za-z]\d{1,2}", code):
+        return f"{number}_{rest}"
+    return f"{number}_{export_key}"
+
+
 def renumber_title(title: str, key: str) -> str:
     """Swap a figure title's leading letter code for its tab-relative number.
 

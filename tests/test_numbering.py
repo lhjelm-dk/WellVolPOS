@@ -161,3 +161,71 @@ def test_the_guide_table_runs_in_figure_number_order():
     body = guide_table()
     positions = [body.index(f"**{n}**") for n in numbers]
     assert positions == sorted(positions), numbers
+
+
+# --------------------------------------------------- the report carries app numbers
+# Lars, 2026-08-18: "the figures carry names like A4, B2, C4 ... I want the 3.12, 2.2,
+# 4.2 kind of numbering." The app renumbered on screen and the export path did not, so
+# the same figure was 2.1 in the browser and A1 in the PDF.
+
+
+def test_every_exported_figure_maps_to_a_number():
+    """No bundle entry may be unnumbered except the ones deliberately listed.
+
+    The colour key is a *legend*, not a figure — it has no number on screen either, and
+    inventing one for the report would give the document a figure the app does not have.
+    """
+    from wellvolpos.ui.numbering import (EXPORT_FIGURE_KEYS, UNNUMBERED_EXPORT_KEYS,
+                                         export_number)
+
+    for key in EXPORT_FIGURE_KEYS:
+        assert export_number(key), key
+    assert not (set(EXPORT_FIGURE_KEYS) & UNNUMBERED_EXPORT_KEYS)
+
+
+
+def test_the_export_key_map_covers_the_bundle(reduced):
+    """A new export figure without a number would ship as a letter code again."""
+    from wellvolpos.report import export as E
+    from wellvolpos.report.case import Case
+    from wellvolpos.ui.numbering import EXPORT_FIGURE_KEYS, UNNUMBERED_EXPORT_KEYS
+
+    case = Case(entry=3500.0, exit=3550.0, mefs=14.0,
+                risking_convention="trials_risked", reference="crest",
+                scheme="equal_cube_root",
+                chance_table={"charge": 0.9, "trap": 0.9, "reservoir": 0.7,
+                              "retention": 0.8},
+                dataset="A", n_trials=reduced.n_trials)
+    bundle = E.assemble(reduced, case, pos=0.7605, pos_source="the trials")
+    known = set(EXPORT_FIGURE_KEYS) | set(UNNUMBERED_EXPORT_KEYS)
+    built = set(E.build_figure_keys(bundle))
+    assert built <= known, sorted(built - known)
+    # The cheap key list must match what the builder actually produces, or the
+    # cover page's contents list describes a different document.
+    import matplotlib.pyplot as plt
+    assert built == set(E.build_figures(bundle))
+    plt.close("all")
+
+
+def test_export_file_names_are_the_numbers_the_app_shows():
+    from wellvolpos.ui.numbering import export_filename
+
+    assert export_filename("A4_resource_vs_depth") == "2.2_resource_vs_depth"
+    assert export_filename("B8_commercial_chance") == "3.10_commercial_chance"
+    assert export_filename("C4_wedge") == "6.1_wedge"
+    # No legacy code survives in a file name.
+    assert not re.match(r"[A-Za-z]\d", export_filename("B12_banded_percentiles"))
+    # A key with no legacy prefix keeps its whole descriptive name: partitioning
+    # "map_view" blindly once gave "4.8_view".
+    assert export_filename("map_view") == "4.8_map_view"
+    # Unnumbered entries are left exactly as they are.
+    assert export_filename("colour_key") == "colour_key"
+
+
+def test_the_bundle_is_ordered_by_figure_number():
+    from wellvolpos.ui.numbering import EXPORT_FIGURE_KEYS, export_number, export_sort_key
+
+    keys = sorted(list(EXPORT_FIGURE_KEYS) + ["colour_key"], key=export_sort_key)
+    assert keys[0] == "colour_key", "the key that explains the rest leads"
+    parsed = [tuple(int(x) for x in export_number(k).split(".")) for k in keys[1:]]
+    assert parsed == sorted(parsed), parsed

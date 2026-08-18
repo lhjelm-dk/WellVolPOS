@@ -417,7 +417,7 @@ def test_the_plotly_archive_and_pdf_assemble_the_same_way(bundle, monkeypatch):
     with zipfile.ZipFile(io.BytesIO(E.figures_zip(bundle, "png", backend="plotly"))) as z:
         names = set(z.namelist())
     assert "README.txt" in names and "case.json" in names
-    assert {f"{k}.png" for k in subset} <= names
+    assert {f"{E.export_filename(k)}.png" for k in subset} <= names
 
     pdf = E.pdf_bytes(bundle, backend="plotly")
     assert pdf.startswith(b"%PDF")

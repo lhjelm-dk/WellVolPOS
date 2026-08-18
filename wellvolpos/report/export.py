@@ -64,6 +64,8 @@ from ..core.sweep import Sweep, VolumeSweep, run_sweep, run_volume_sweep
 from ..io.adapters.base import TrialSet
 from ..viz import figures as F
 from ..viz.theme import new_figure
+from ..ui.numbering import (EXPORT_FIGURE_KEYS, export_filename, export_number,
+                            export_sort_key, renumber_title)
 from .case import Case, fingerprint
 
 FIGURE_FORMATS = ("png", "svg", "pdf")
@@ -451,7 +453,7 @@ def _draw_export_figures(b: Bundle, *, dark: bool = False) -> dict[str, object]:
             b.vsweep, current_z=c.entry, dark=dark)[0]
         figs["B9_chance_weighted"] = F.fig_b9_chance_weighted(
             b.vsweep, current_z=c.entry, dark=dark)[0]
-    return figs
+    return _in_report_order(figs)
 
 
 #: The two ways a report can be drawn.
@@ -593,7 +595,7 @@ def build_plotly_figures(b: Bundle) -> dict[str, object]:
             b.vsweep, current_z=c.entry, current_exit=c.exit)
         figs["B9_chance_weighted"] = _V.pfig_b9_chance_weighted(
             b.vsweep, current_z=c.entry, current_exit=c.exit)
-    return figs
+    return _in_report_order(figs)
 
 
 def plotly_figure_bytes(fig, fmt: str = "png", *, scale: float = 2.0) -> bytes:
@@ -610,6 +612,63 @@ def plotly_figure_bytes(fig, fmt: str = "png", *, scale: float = 2.0) -> bytes:
     # SVG is already vector, so scaling it would only inflate the file.
     return fig.to_image(format=fmt, width=w, height=h,
                         scale=(1.0 if fmt == "svg" else scale))
+
+
+def _renumber_matplotlib(fig, export_key: str) -> None:
+    """Rewrite a drawn matplotlib figure's title to carry its displayed number.
+
+    **Done to the figure rather than inside each of thirty drawing functions.** The
+    figure functions are shared with the docs and the tests and know nothing about tabs;
+    the number is a property of *where the figure sits in the app today*, which is
+    exactly what ``ui/numbering`` owns. The same argument put ``renumber_title`` in
+    ``ui.common.chart`` rather than in the plotly figures.
+
+    A ``suptitle`` wins where there is one -- the multi-panel figures use it and their
+    axes titles are panel labels, so rewriting an axes title there would renumber a
+    panel and leave the figure's own heading alone.
+    """
+    number = export_number(export_key)
+    if not number:
+        return
+    sup = getattr(fig, "_suptitle", None)
+    if sup is not None and sup.get_text():
+        sup.set_text(renumber_title(sup.get_text(), EXPORT_FIGURE_KEYS[export_key]))
+        return
+    for ax in fig.axes:
+        if ax.get_title():
+            ax.set_title(renumber_title(ax.get_title(),
+                                        EXPORT_FIGURE_KEYS[export_key]))
+            return
+
+
+def _renumber_plotly(fig, export_key: str) -> None:
+    """The same for a plotly figure. See :func:`_renumber_matplotlib`."""
+    key = EXPORT_FIGURE_KEYS.get(export_key)
+    if not key:
+        return
+    title = getattr(getattr(fig.layout, "title", None), "text", None)
+    if title:
+        fig.update_layout(title=dict(text=renumber_title(title, key)))
+
+
+def _in_report_order(figs: dict) -> dict:
+    """Sort a bundle by figure number, and renumber each title on the way through.
+
+    **Order was dict-insertion order**, which was neither the app's nor numeric -- so
+    the PDF ran 3.1, 3.2, 3.3, 3.4, 5.1, 5.2, 2.5, 2.4, 2.1 ... and a reader could not
+    follow it against the screen. One place to fix it, because both backends build
+    their dict in the order the code happens to be written in.
+    """
+    out = {}
+    for key in sorted(figs, key=export_sort_key):
+        fig = figs[key]
+        if hasattr(fig, "layout"):
+            _renumber_plotly(fig, key)
+        else:
+            _renumber_matplotlib(fig, key)
+        out[key] = fig
+    return out
+
 
 
 def figure_bytes(fig, fmt: str = "png", *, dpi: int = 200) -> bytes:
@@ -640,7 +699,8 @@ def figures_zip(b: Bundle, fmt: str = "png", *, dpi: int = 200,
             z.writestr("README.txt", _cover_text(b))
             z.writestr("case.json", b.case.to_json())
             for name, fig in figs.items():
-                z.writestr(f"{name}.{fmt}", plotly_figure_bytes(fig, fmt))
+                z.writestr(f"{export_filename(name)}.{fmt}",
+                           plotly_figure_bytes(fig, fmt))
         return buf.getvalue()
 
     figs = build_figures(b)
@@ -650,10 +710,38 @@ def figures_zip(b: Bundle, fmt: str = "png", *, dpi: int = 200,
             z.writestr("README.txt", _cover_text(b))
             z.writestr("case.json", b.case.to_json())
             for name, fig in figs.items():
-                z.writestr(f"{name}.{fmt}", figure_bytes(fig, fmt, dpi=dpi))
+                z.writestr(f"{export_filename(name)}.{fmt}",
+                           figure_bytes(fig, fmt, dpi=dpi))
         return buf.getvalue()
     finally:
         _close(figs)
+
+
+def build_figure_keys(b: Bundle) -> tuple[str, ...]:
+    """Which figures this bundle will contain, without drawing any of them.
+
+    The cover page needs the contents list and is itself drawn *into* the PDF, so
+    building the figures to find out what they are would draw everything twice. Both
+    builders emit the same keys -- a test asserts it -- so either one's key set is the
+    answer, and the cheap way to get it is the same set of conditions they branch on.
+    """
+    keys = ["colour_key", "A2_outcome_tree", "A3_chance_decomposition",
+            "A4_resource_vs_depth", "B11_pos_sensitivity", "B3_uncertainty_reduction",
+            "B4_chance_waterfall", "B5_allocation_dumbbell", "A8_contact_distribution",
+            "A9_prospect_density"]
+    if b.ad is not None:
+        keys += ["A1_area_depth", "map_view"]
+    if b.vc is not None and b.ad is not None:
+        keys += ["C1_section", "C2_exceedance", "C5_partitions", "C4_wedge",
+                 "C6_outcome_tree", "C3_mefs_bars", "A5_exceedance", "A6_overlap",
+                 "B0_section", "B12_banded_percentiles"]
+        if b.vsweep is not None and b.vsweep.p_discovery_exceeds_mefs is not None:
+            keys.append("B14_hurdle_cost")
+    if b.vsweep is not None:
+        keys += ["B1_volume_split", "B13_below_exit", "B2_chance_vs_regret",
+                 "B6_inverse", "B7_frontier", "B8_commercial_chance",
+                 "B9_chance_weighted"]
+    return tuple(keys)
 
 
 def _cover_text(b: Bundle) -> str:
@@ -682,6 +770,16 @@ def _cover_text(b: Bundle) -> str:
         "reference engine groups whole trials after Schneider et al. (2023); the",
         "extension splits each trial into proven, possible and attic.",
     ]
+    # **A contents list, in report order** (2026-08-18). The figure files are named
+    # with the number the app shows -- 3.10, not B8 -- which is what a reader has in
+    # front of them. The cost of an exact number is that "3.10" sorts before "3.2"
+    # alphabetically, so the order lives here rather than being faked by zero-padding
+    # a number that would then no longer match the screen.
+    lines += ["", "Figures, in report order:"]
+    for key in sorted(build_figure_keys(b), key=export_sort_key):
+        number = export_number(key)
+        lines.append(f"  {(number or '—'):>5}  {export_filename(key)}")
+
     if b.case.note:
         lines += ["", f"Note: {b.case.note}"]
     if b.warnings:
