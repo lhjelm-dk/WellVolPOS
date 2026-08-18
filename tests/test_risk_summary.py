@@ -195,3 +195,42 @@ def test_a_play_element_out_of_range_is_refused_by_the_case():
              play_elements={**PLAY, "charge": 1.4})
     with pytest.raises(ValueError, match="play chances are missing"):
         Case(entry=3500.0, exit=3550.0, mefs=14.0, play_elements={"charge": 0.9})
+
+
+def test_the_element_key_travels_with_the_row_so_colour_never_reads_a_label():
+    """Colour is keyed off ``trap``, never off the word "Closure".
+
+    The whole rename rested on behaviour branching on stable keys, and a table that
+    tinted its rows by matching the displayed label would have quietly reintroduced
+    the coupling — invisibly, because the tint would simply stop appearing.
+    """
+    s = risk_summary({"charge": 0.9, "trap": 0.9, "reservoir": 0.7, "retention": 0.8},
+                     0.6, scheme="equal_cube_root")
+    keys = s.element_keys()
+    assert keys[:4] == ("charge", "trap", "reservoir", "retention")
+    assert len(keys) == len(s.as_records())
+    # The private field never reaches the dataframe.
+    assert all(not k.startswith("_") for r in s.as_records() for k in r)
+
+
+def test_the_prospect_only_summary_is_the_full_one_with_r_set_to_one():
+    """Tab ② draws the same table without the well column.
+
+    It is built from ``risk_summary(..., r=1)`` rather than by multiplying in the
+    tab, so the two tables cannot drift: one function owns the arithmetic and the
+    tab drops a column from it. With r = 1 there is no location penalty to allocate,
+    so no scheme adds a row and the well POS collapses onto the prospect POS.
+    """
+    els = {"charge": 0.9, "trap": 0.9, "reservoir": 0.7, "retention": 0.8}
+    play = {"charge": 1.0, "trap": 0.95, "reservoir": 1.0, "retention": 0.9}
+    full = risk_summary(els, 0.6, scheme="equal_cube_root", play_elements=play)
+    prospect_only = risk_summary(els, 1.0, scheme="none", play_elements=play)
+
+    assert len(prospect_only.as_records()) == len(els)
+    assert prospect_only.prospect_pos == pytest.approx(full.prospect_pos)
+    assert prospect_only.well_pos == pytest.approx(prospect_only.prospect_pos)
+    # The first two columns are identical between the two tables -- they are the
+    # entered chances, and nothing about a well touches them.
+    for a, b in zip(prospect_only.as_records(), full.as_records()):
+        for col in SUMMARY_COLUMNS[:2]:
+            assert a[col] == pytest.approx(b[col])

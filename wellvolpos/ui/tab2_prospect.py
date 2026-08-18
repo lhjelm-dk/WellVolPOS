@@ -20,11 +20,14 @@ import streamlit as st
 from ..core import (
     check_column_heights,
     ELEMENT_LABELS,
+    SUMMARY_COLUMNS,
+    risk_summary,
     ELEMENTS,
     class_percentiles,
     group_summary,
 )
 from ..viz import (
+    element_colour,
     pfig_a1_area_depth,
     pfig_a4_resource_vs_depth,
     pfig_a5_exceedance,
@@ -99,11 +102,49 @@ def render(ctx: Ctx) -> None:
             label_visibility="collapsed",
         )
     _cond = float(np.prod(list(elements.values())))
+
+    # **The eight inputs, totalled where they are entered** (Lars, 2026-08-18). The
+    # summary in tab ⑤ was the only place these multiplied out, three tabs from the
+    # controls that set them -- so revising a chance meant leaving the tab to see what
+    # it did. This is the same table with **the well column removed**: `r_location`
+    # needs a well and a well belongs to tab ③, and a column of ones under a heading
+    # about location teaches the wrong thing.
+    #
+    # Built from :func:`risk_summary` with ``r = 1`` rather than by multiplying here,
+    # so the two tables cannot drift: one function owns the arithmetic and this one
+    # drops a column from it.
+    _prospect_only = risk_summary(elements, 1.0, scheme="none",
+                                  play_elements=play_elements)
+    _rows = pd.DataFrame(_prospect_only.as_records()).drop(
+        columns=[SUMMARY_COLUMNS[2], "Carries the location penalty"])
+    _keys = _prospect_only.element_keys()
+
+    def _tint(_col):
+        return [f"background-color: {element_colour(k, tint=True)}" if k else ""
+                for k in _keys]
+
+    sc1, sc2 = st.columns([3, 2])
+    with sc1:
+        st.dataframe(
+            _rows.style.apply(_tint, subset=["Chance element"]),
+            hide_index=True, width="stretch",
+            column_config={c: st.column_config.NumberColumn(format="percent")
+                           for c in SUMMARY_COLUMNS[:2]},
+        )
+    with sc2:
+        st.dataframe(
+            pd.DataFrame([r for r in _prospect_only.result_records()
+                          if r["result"] != "Well location POS"]),
+            hide_index=True, width="stretch",
+            column_config={"value": st.column_config.NumberColumn(format="percent")},
+        )
+        st.caption(
+            fig_ref("The well's own chance is not here: it needs `r_location`, which "
+                    "needs a well. Tab ③ sweeps it and tab ⑤ multiplies it in."))
+
     st.caption(
         f"**POS_prospect = play × prospect-given-play = {play_chance:.4f} × {_cond:.4f} = "
-        f"{play_chance * _cond:.4f}** — the product of all eight inputs. The risk summary in "
-        f"tab ⑤ shows the two levels as its first two columns and adds the location factor as "
-        f"the third."
+        f"{play_chance * _cond:.4f}** — the product of all eight inputs above."
     )
 
     # The convention: what the zero-volume trials mean, and therefore where POS comes
