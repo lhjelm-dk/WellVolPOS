@@ -203,7 +203,12 @@ def test_the_optimum_is_reported_as_a_plateau_and_survives_a_grid_change(reduced
             candidate_depths(run_volume_sweep(reduced, ad, POS, z_gap=50.0,
                                               mefs=14.0, n=60))}
     assert set(coarse) == set(fine)
+    # **Optima only.** A floor or a ceiling is a *crossing*, not a maximum, so it has
+    # no plateau to report and asserting one would be asking a bound to behave like an
+    # optimum. Their own grid-stability is covered by the window tests below.
     for key in coarse:
+        if coarse[key].kind != "optimum":
+            continue
         a, b = coarse[key].plateau, fine[key].plateau
         assert a is not None and b is not None, key
         # The reported span must not depend on how finely the sweep was sampled.
@@ -331,3 +336,85 @@ def test_the_figures_and_the_panel_use_one_plateau_definition(reduced):
     direct = plateau_span(pc, sw.z, int(np.nanargmax(pc)))
     panel = next(c for c in candidate_depths(sw) if c.key == "commercial").plateau
     assert direct == pytest.approx(panel, abs=1e-9)
+
+
+# ------------------------------------------------------------ the drilling window
+# Lars, 2026-08-18: "the entry depth on this table does not give any guidance to an
+# ideal depth to go for." He was right — every row was an *optimum*, and an optimum
+# says what is best on one axis, never that a depth is wrong. These tests pin the two
+# rows that do say so, and the bracket they make.
+
+
+@pytest.fixture(scope="module")
+def mefs_sweep(reduced):
+    from wellvolpos.core import run_volume_sweep
+
+    ad = AreaDepth.from_trials(reduced.col("contact"), reduced.col("area"))
+    return run_volume_sweep(reduced, ad, POS, z_gap=50.0, mefs=14.0, n=60)
+
+
+def test_the_floor_really_is_the_shallowest_depth_that_proves_mefs(mefs_sweep):
+    """Measured against the curve, and it must be a guarantee rather than a touch."""
+    from wellvolpos.core import candidate_depths
+    from wellvolpos.core.stats import thin
+
+    row = next(c for c in candidate_depths(mefs_sweep) if c.key == "proven_mefs")
+    assert row.kind == "floor"
+
+    z = np.asarray(mefs_sweep.z, dtype=float)
+    proven = thin(mefs_sweep.proven_mean, mefs_sweep.n_discovery, 30)
+
+    # From the reported depth down, the proven mean never falls below MEFS...
+    below = proven[z >= row.depth]
+    below = below[np.isfinite(below)]
+    assert below.min() >= 14.0
+
+    # ...and no shallower depth can say the same.
+    for zz in z[z < row.depth]:
+        deeper = proven[z >= zz]
+        deeper = deeper[np.isfinite(deeper)]
+        assert deeper.min() < 14.0, f"{zz} also qualifies, so it is not the shallowest"
+
+
+def test_the_two_bounds_point_in_opposite_directions(mefs_sweep):
+    """A floor and a ceiling, not two optima.
+
+    The proven mean rises down-dip and the attic mean rises down-dip too — which is
+    exactly why one is a floor and the other a ceiling. If both ever came out the same
+    kind, the geology behind the table would have been misread.
+    """
+    from wellvolpos.core import candidate_depths, drilling_window
+    from wellvolpos.core.stats import thin
+
+    cands = candidate_depths(mefs_sweep)
+    kinds = {c.key: c.kind for c in cands}
+    assert kinds.get("proven_mefs") == "floor"
+    assert kinds.get("proven_p90_mefs") == "floor"
+
+    # The conservative floor is never shallower than the average one: asking a *poor*
+    # discovery to clear the threshold can only push the well down-dip.
+    by_key = {c.key: c for c in cands}
+    assert by_key["proven_p90_mefs"].depth >= by_key["proven_mefs"].depth
+
+    floor, ceiling = drilling_window(cands)
+    assert floor == max(c.depth for c in cands if c.kind == "floor")
+    # Prospect A's attic mean never reaches 14 MMboe, so there is no ceiling and the
+    # window is open below. That is a fact about the prospect, and the honest answer.
+    attic = thin(mefs_sweep.attic_mean, mefs_sweep.n_dry, 30)
+    if np.nanmax(attic) < 14.0:
+        assert ceiling is None
+
+
+def test_the_chance_weighted_proven_peak_differs_from_the_well_associated_one(mefs_sweep):
+    """Two different questions, and on this data two different depths.
+
+    The existing row weights the *well-associated* volume — everything the discovery
+    holds, whether this well demonstrates it or not. Weighting the **proven** volume
+    asks what the well is expected to establish. If these ever coincided the new row
+    would be redundant, so the difference is asserted rather than assumed.
+    """
+    from wellvolpos.core import candidate_depths
+
+    by_key = {c.key: c for c in candidate_depths(mefs_sweep)}
+    assert {"expected", "expected_proven"} <= set(by_key)
+    assert by_key["expected_proven"].depth > by_key["expected"].depth

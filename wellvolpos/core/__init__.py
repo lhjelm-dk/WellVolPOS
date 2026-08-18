@@ -27,6 +27,7 @@ from .utility import (
     hurdle_curve,
 )
 from .summary import (Candidate, Headline, PLATEAU_TOL, candidate_depths,
+                      drilling_window,
                       headline, plateau_span)
 from .mefs import (
     CONCEPTS as MEFS_CONCEPTS,
@@ -121,7 +122,7 @@ __all__ = [
     "REDUCTION_RANGES",
     "MEFS_CONCEPTS", "MEFS_RUNGS", "ConceptReadout", "MefsReadout", "mefs_readout",
     "Crossing", "c2_cases", "c2_crossings",
-    "Headline", "headline", "Candidate", "candidate_depths",
+    "Headline", "headline", "Candidate", "candidate_depths", "drilling_window",
     "PLATEAU_TOL", "plateau_span",
     "DEFAULT_CONFIDENCE", "DEFAULT_RISK_FRACTION", "ConstrainedResult",
     "RiskAdjusted", "ce_curve", "certainty_equivalent", "constrained_best",

@@ -135,6 +135,17 @@ class Candidate:
     #: Which figure shows it, as a numbering key, so the panel can point at it.
     figure: str
     note: str = ""
+    #: What kind of advice this row is. **Three different things were being listed
+    #: under one heading** (Lars, 2026-08-18: *"the entry depth on this table does not
+    #: give any guidance to an ideal depth to go for"*) -- and he was right, because
+    #: every row was an *optimum* of some criterion and none of them bounded the
+    #: answer. A floor and a ceiling do more work than a fourth optimum: together they
+    #: are a window, and an optimum outside it is a warning rather than a target.
+    #:
+    #: ``optimum``  -- maximises something
+    #: ``floor``    -- go at least this deep
+    #: ``ceiling``  -- go no deeper than this
+    kind: str = "optimum"
     #: The depth range over which the measure stays within :data:`PLATEAU_TOL` of its
     #: maximum. ``argmax`` on a nearly flat curve returns whichever grid point wins by
     #: a hair, and the winner moves with the grid: prospect B's commercial optimum came
@@ -245,11 +256,42 @@ def plateau_span(values, z, i: int, tol: float = PLATEAU_TOL):
     return (float(zz.min()), float(zz.max()))
 
 
+def _guaranteed_crossing(values, z, target: float, counts, min_support: int):
+    """Shallowest depth from which ``values`` stays at or above ``target`` downward.
+
+    A *guarantee*, not a first touch -- the same rule ``_required_depth`` and
+    :func:`~wellvolpos.core.utility.constrained_best` use, and for the same reason: a
+    sampled curve dips wherever the group behind it is small, so inverting the first
+    crossing returns depths that deeper locations contradict.
+
+    Both quantities this is used on -- the proven mean and the attic mean -- rise
+    monotonically down-dip in principle, so on clean data the guarantee and the first
+    crossing coincide. The rule matters exactly where the data are not clean, which is
+    where a reader would otherwise be misled without noticing.
+    """
+    import numpy as np
+
+    from .stats import thin
+
+    v = thin(values, counts, min_support)
+    zz = np.asarray(z, dtype=float)
+    running = np.inf
+    ok = np.zeros(zz.size, dtype=bool)
+    for i in range(zz.size - 1, -1, -1):
+        if np.isfinite(v[i]):
+            running = min(running, float(v[i]))
+            ok[i] = running >= float(target)
+    if not ok.any():
+        return None
+    return float(zz[int(np.argmax(ok))])
+
+
 def candidate_depths(vsweep, *, min_support: int = 30,
                      constrained=None, risk_adjusted=None,
                      required_depth: float | None = None,
                      required_target: float | None = None,
-                     required_statistic: str = "mean") -> tuple[Candidate, ...]:
+                     required_statistic: str = "mean",
+                     sweep=None) -> tuple[Candidate, ...]:
     """The depths the sweep already identifies as optimal, gathered in one place.
 
     Lars, 2026-08-15, from the design review: the tool finds three optima on three
@@ -339,6 +381,86 @@ def candidate_depths(vsweep, *, min_support: int = 30,
                  f"expectation peak.",
         ))
 
+    # ---------------------------------------------------------------------------
+    # **Chance-weighted PROVEN volume** (Lars, 2026-08-18). The expectation row above
+    # weights the *well-associated* volume -- everything the discovery holds, whether
+    # this well demonstrates it or not. Weighting the **proven** volume instead asks
+    # what the well is expected to *establish*, and the two peak in different places:
+    # 3,350 m against 3,461 m on prospect A. The second is the exploration question
+    # when the well has to stand up on what it drilled.
+    if vsweep.proven_mean is not None:
+        weighted_proven = pw * thin(vsweep.proven_mean, n, min_support)
+        if np.any(np.isfinite(weighted_proven)):
+            i = shallowest_argmax(weighted_proven)
+            out.append(Candidate(
+                key="expected_proven", label="Most chance-weighted proven volume",
+                depth=float(z[i]),
+                value=f"{weighted_proven[i]:,.1f} MMboe expected",
+                figure="b9", plateau=plateau_span(weighted_proven, z, i),
+                note="P_well x the proven mean — what the well is expected to "
+                     "*establish*, as against what the accumulation holds.",
+            ))
+
+    # **Haskett's appraisal optimum**, from the uncertainty-reduction curve. It needs
+    # the reference-engine sweep, which is why one is passed in: the volume sweep does
+    # not carry it, and recomputing it here would be a second implementation of a
+    # curve the tab already draws.
+    if sweep is not None and getattr(sweep, "uncertainty_reduction", None) is not None:
+        red = np.asarray(sweep.uncertainty_reduction, dtype=float)
+        if np.any(np.isfinite(red)):
+            i = shallowest_argmax(red)
+            out.append(Candidate(
+                key="learning", label="Most uncertainty resolved",
+                depth=float(np.asarray(sweep.z, dtype=float)[i]),
+                value=f"{red[i]:.0%} of the P90–P10 range",
+                figure="b3", plateau=plateau_span(red, np.asarray(sweep.z, float), i),
+                note="Haskett's appraisal criterion: what the well is worth is what "
+                     "it *resolves*, not what it finds. Independent of MEFS.",
+            ))
+
+    # ---------------------------------------------------------------------------
+    # **The two bounds, which are what actually narrow the answer.**
+    #
+    # A floor and a ceiling do more work than a fourth optimum. The optima above all
+    # maximise something and none of them says a depth is *wrong*; these two do, and
+    # between them they are a window a reader can defend in a meeting.
+    if vsweep.mefs is not None:
+        if vsweep.proven_mean is not None:
+            zc = _guaranteed_crossing(vsweep.proven_mean, z, vsweep.mefs, n, min_support)
+            if zc is not None:
+                out.append(Candidate(
+                    key="proven_mefs", kind="floor",
+                    label="Shallowest that proves MEFS on average",
+                    depth=zc, value=f"proven mean ≥ {vsweep.mefs:,.1f} MMboe",
+                    figure="b1",
+                    note="Shallower than this and an average discovery does not "
+                         "demonstrate a commercial volume, however likely it is.",
+                ))
+        if vsweep.proven_p90 is not None:
+            zc = _guaranteed_crossing(vsweep.proven_p90, z, vsweep.mefs, n, min_support)
+            if zc is not None:
+                out.append(Candidate(
+                    key="proven_p90_mefs", kind="floor",
+                    label="Shallowest that proves MEFS even in a poor discovery",
+                    depth=zc, value=f"proven P90 ≥ {vsweep.mefs:,.1f} MMboe",
+                    figure="b1",
+                    note="The conservative reading of the row above: not the average "
+                         "discovery but a poor one still clears the threshold.",
+                ))
+        if vsweep.attic_mean is not None:
+            zc = _guaranteed_crossing(vsweep.attic_mean, z, vsweep.mefs, n, min_support)
+            if zc is not None:
+                out.append(Candidate(
+                    key="attic_mefs", kind="ceiling",
+                    label="Deeper than this, a dry hole leaves MEFS up-dip",
+                    depth=zc, value=f"attic mean ≥ {vsweep.mefs:,.1f} MMboe",
+                    figure="b1",
+                    note="The attic grows as the well goes down-dip. Past this depth "
+                         "a dry hole would have left a commercial volume untested "
+                         "above it — the regret case, and the reason not to chase "
+                         "volume indefinitely.",
+                ))
+
     if required_depth is not None and np.isfinite(required_depth):
         out.append(Candidate(
             key="required", label="Shallowest depth that proves the target",
@@ -350,3 +472,24 @@ def candidate_depths(vsweep, *, min_support: int = 30,
                  "target from here all the way down.",
         ))
     return tuple(out)
+
+
+def drilling_window(candidates) -> tuple[float | None, float | None]:
+    """The deepest floor and the shallowest ceiling, from a set of candidates.
+
+    **This is the answer the table was not giving** (Lars, 2026-08-18). Five optima
+    that all land on the shallow end tell a reader nothing about where to drill; a
+    bracket does, and any optimum falling outside it is then visibly a warning rather
+    than a target.
+
+    Either end can be ``None`` -- on prospect A the attic mean never reaches MEFS at
+    any depth, so there is no ceiling and the honest answer is that nothing bounds the
+    well from below. An empty window (floor deeper than ceiling) is also possible and
+    is left for the caller to report as such: it means no depth both proves the
+    threshold and avoids leaving it up-dip, which is a real finding about the prospect
+    rather than an error.
+    """
+    floors = [c.depth for c in candidates if c.kind == "floor"]
+    ceilings = [c.depth for c in candidates if c.kind == "ceiling"]
+    return (max(floors) if floors else None,
+            min(ceilings) if ceilings else None)

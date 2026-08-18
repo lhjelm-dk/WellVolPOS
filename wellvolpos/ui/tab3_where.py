@@ -25,6 +25,7 @@ from ..core import (
     hurdle_curve,
     DEFAULT_RISK_FRACTION,
     candidate_depths,
+    drilling_window,
     ce_curve,
     constrained_best,
     thickness_from_pay,
@@ -582,19 +583,68 @@ def _location_sweep_tab(ctx: Ctx):
                     if vsweep.p_discovery_exceeds_mefs is not None else None)
     _ce = ce_curve(ts, vsweep, rho=_rho)
 
-    _cands = candidate_depths(vsweep, constrained=_constrained, risk_adjusted=_ce)
+    _cands = candidate_depths(vsweep, sweep=sweep, constrained=_constrained,
+                              risk_adjusted=_ce)
     if _cands:
-        st.markdown("**Candidate depths** — the three optima this tab finds")
+        # **The window comes first, and the optima under it** (Lars, 2026-08-18:
+        # *"the entry depth on this table does not give any guidance to an ideal depth
+        # to go for"*). Every row used to be an *optimum* of some criterion, and an
+        # optimum says what is best on one axis, never that a depth is wrong. Two rows
+        # now do say so -- the shallowest that proves MEFS, and the depth past which a
+        # dry hole leaves MEFS up-dip -- and between them they are a range you can
+        # defend rather than five numbers to choose between.
+        _floor, _ceiling = drilling_window(_cands)
+        if _floor is not None or _ceiling is not None:
+            if _floor is not None and _ceiling is not None and _floor < _ceiling:
+                st.success(
+                    f"**Drill between {_floor:,.0f} m and {_ceiling:,.0f} m TVDSS.** "
+                    f"Shallower than {_floor:,.0f} m the well does not demonstrate "
+                    f"{mefs:,.1f} MMboe even when it works; deeper than "
+                    f"{_ceiling:,.0f} m a dry hole would have left that much "
+                    f"un-tested up-dip. Every optimum below is a preference *within* "
+                    f"this range — or, if it sits outside it, a warning."
+                )
+            elif _floor is not None and _ceiling is not None:
+                st.warning(
+                    f"**No depth satisfies both bounds.** The shallowest that proves "
+                    f"{mefs:,.1f} MMboe is {_floor:,.0f} m, but a dry hole already "
+                    f"leaves that much up-dip below {_ceiling:,.0f} m. That is a "
+                    f"finding about the prospect, not an error: at this threshold "
+                    f"there is no location that both demonstrates a commercial volume "
+                    f"and cannot strand one. Read the two rows below and decide which "
+                    f"risk you would rather carry."
+                )
+            elif _floor is not None:
+                st.success(
+                    f"**Drill at {_floor:,.0f} m TVDSS or deeper.** Shallower than "
+                    f"that the well does not demonstrate {mefs:,.1f} MMboe even when "
+                    f"it works. Nothing bounds it from below: the attic mean never "
+                    f"reaches {mefs:,.1f} MMboe at any depth, so no location strands "
+                    f"a commercial volume up-dip."
+                )
+            else:
+                st.warning(
+                    f"**Go no deeper than {_ceiling:,.0f} m TVDSS**, past which a dry "
+                    f"hole leaves {mefs:,.1f} MMboe up-dip. No depth in the sweep "
+                    f"proves that much, so there is no floor — this prospect cannot "
+                    f"be demonstrated commercial by one well at any location."
+                )
+
+        _KIND = {"optimum": "Optimum", "floor": "⬇ At least this deep",
+                 "ceiling": "⬆ No deeper than"}
+        st.markdown("**Candidate depths** — what bounds the answer, and what optimises it")
         st.dataframe(
             pd.DataFrame([{
-                "Best at": c.label,
+                "": _KIND.get(c.kind, c.kind),
+                "Criterion": c.label,
                 "Entry (m TVDSS)": f"{c.depth:,.0f} m",
                 "Value there": c.value,
                 # Within 2 % of the best, so the value in the column before it is not
                 # the value here -- only indistinguishable from it.
                 "Equally good over": c.describe_plateau(),
                 "Figure": fig_ref("{" + c.figure + "}"),
-            } for c in _cands]),
+            } for c in sorted(_cands, key=lambda c: ({"floor": 0, "ceiling": 1}.get(c.kind, 2),
+                                                     c.depth))]),
             hide_index=True, width="stretch",
         )
         # **A range, where the maximum is weak.** Reporting one depth was false
