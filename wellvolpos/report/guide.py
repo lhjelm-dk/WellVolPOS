@@ -21,6 +21,52 @@ from wellvolpos.core import commercial_chance, expected_volume, no_regrets, thic
 from wellvolpos.viz import pfig_colour_key
 
 
+#: The tab's sections, in render order, with what each is *for*.
+#:
+#: **A contents list, because this tab is 3,700 words** -- half the prose in the whole
+#: app, against ~500 on each of the others (review, 2026-08-18). It is meant to be long:
+#: it is the reference, not a caption. What it was missing is any way to *navigate* it,
+#: so a reader after one definition scrolled past sixteen sections to find out whether
+#: it was there at all.
+#:
+#: Declared rather than scraped from the rendered markdown, and
+#: ``test_the_guide_contents_matches_its_headings`` checks the two against each other --
+#: a contents list that can drift from the page is worse than none, because it is
+#: believed.
+GUIDE_SECTIONS = (
+    ("What this tool assumes", "the six choices that change how a number reads"),
+    ("Guidelines — six things to get right", "the working order, start to finish"),
+    ("Scope, assumptions and disclaimer", "what this does not do, and why"),
+    ("The one idea everything rests on", "P_well = POS_prospect × r_location"),
+    ("Colour associations", "which colour is which volume, and why never cycled"),
+    ("How to read each figure", "every figure by number, one line each"),
+    ("Pay thickness is not reservoir thickness", "the wedge, and what it costs"),
+    ("“Unproven below LKH” — and why not “possible”", "the naming, against PRMS"),
+    ("Choosing a location: five criteria, one frontier", "what each optimum optimises"),
+    ("Two sequential colour ramps, and what each one means", "Blues counts, inferno risks"),
+    ("Two different minimum volumes", "MEFS against the assessment minimum"),
+    ("Reading a volume against the line", "the ladder, and the one real probability"),
+    ("Rose's named quantities, at this location", "No Regrets, Pmcfs, Pc"),
+    ("Expected volume is not a volume anyone finds", "why the peak is for ranking"),
+    ("Uncertainty reduction ({b3}) — and what it is measuring *here*",
+     "Haskett's criterion, and its limit"),
+    ("References", "every source, and whether it was read or cited through"),
+)
+
+
+def _contents() -> str:
+    """The contents list as markdown. Plain, not linked.
+
+    Streamlit does generate heading anchors, but they are derived from the heading text
+    and this tab has headings carrying figure numbers and typographic quotes. A link
+    that silently goes nowhere is worse than a list that never claimed to be one, so
+    this orients the reader and does not pretend to navigate for them.
+    """
+    lines = [f"{i}. **{ref(title)}** — {what}"
+             for i, (title, what) in enumerate(GUIDE_SECTIONS, 1)]
+    return "\n".join(lines)
+
+
 def render(*, ts, ad, groups, vc, chance, mefs, entry, exit_, pos_source):
     """Draw the guide. Live numbers throughout, from the loaded trial set."""
     st.subheader("Theory, definitions and references")
@@ -78,6 +124,10 @@ def render(*, ts, ad, groups, vc, chance, mefs, entry, exit_, pos_source):
    reference engine untouched.
         """
     )
+
+    with st.expander(f"What is on this tab — {len(GUIDE_SECTIONS)} sections",
+                     expanded=False):
+        st.markdown(_contents())
 
     st.divider()
 
@@ -383,9 +433,11 @@ still does, on every figure and in the exported artefacts.
 
     st.divider()
     st.markdown("### Choosing a location: five criteria, one frontier")
-    st.markdown(
-        """
-There is no location that is optimal *simpliciter*. 3.8 is the honest object — the
+    # r-string: the markdown table below escapes a pipe as ``\|`` inside a
+    # ``P(>MEFS \| discovery)`` cell, which Python reads as an invalid escape.
+    st.markdown(ref(
+        r"""
+There is no location that is optimal *simpliciter*. {b14} is the honest object — the
 trade-off frontier — and every single-number criterion is a different scalarisation of
 it. Disagreement between them is information, not noise.
 
@@ -395,7 +447,7 @@ it. Disagreement between them is information, not noise.
 | **Expectation** | `P_well × mean volume` | The portfolio's. Additive across prospects, and **risk-neutral**. |
 | **Commercial chance** | `Pc = P_well × P(>MEFS \| discovery)` | Rose's, and the number an EMV calculation takes. |
 | **Certainty equivalent** | risk-adjusted volume | A risk-averse party's. Never deeper than the expectation peak. |
-| **Information** | uncertainty reduction (3.3) | Haskett's, and it is about *appraisal* — see the caveat there. |
+| **Information** | uncertainty reduction ({b3}) | Haskett's, and it is about *appraisal* — see the caveat there. |
 
 **A hurdle is not a criterion.** "90 % confident it is commercial" is a *constraint*:
 the feasible set is a half-line, and the answer is the best odds inside it. Three
@@ -414,13 +466,15 @@ anywhere in this tool. It ranks locations correctly under a fixed well cost, whi
 the case a single prospect is usually in. Do not carry a certainty equivalent in MMboe
 into an economic model as though it were an expected value.
         """
-    )
+    ))
 
     st.divider()
     st.markdown("### Two sequential colour ramps, and what each one means")
     st.markdown(
-        "**Blues counts trials. Inferno shows chance.** 2.2's grid and any density "
-        "shading run light-to-dark in one blue hue; 3.11's markers run inferno. They "
+        ref("**Blues counts trials. Inferno shows chance.** {a4}'s grid and any "
+            "density shading run light-to-dark in one blue hue; {b9}'s markers run "
+            "inferno. ")
+        + "They "
         "encode different *kinds* of thing and nothing said so before now. The concept "
         "palette is separate from both again: it names *which volume*, never how much "
         "or how likely."
@@ -546,7 +600,7 @@ size, never instead of them.
 
     # ------------------------------------------- Haskett, and what 3.3 measures here
     st.divider()
-    st.markdown("### Uncertainty reduction (3.3) — and what it is measuring *here*")
+    st.markdown(ref("### Uncertainty reduction ({b3}) — and what it is measuring *here*"))
     _res = np.asarray(ts.col("resource"), dtype=float)
     _disc = groups.discovery
     _p = float(_disc.mean())
@@ -607,7 +661,7 @@ that is the law of total expectation, and on these trials it holds to floating p
     )
     st.latex(r"\operatorname{Var}(X) = \underbrace{E[\operatorname{Var}(X \mid G)]}_{\text{within outcomes}}"
              r" + \underbrace{\operatorname{Var}(E[X \mid G])}_{\text{between outcomes}}")
-    st.markdown(
+    st.markdown(ref(
         f"""
 Probability-weighting the two child variances gives only the **first** term. On the trials
 loaded now that is {_within:,.0f} against a parent variance of {_parent_var:,.0f} — so
@@ -616,10 +670,10 @@ additive rule.
 
 That missing term is not an error in the method; it *is* the answer. `Var(E[X | G])` — how
 far apart the two outcome means sit — is precisely the uncertainty the well removes, and it
-is what 3.3 is built from. So the paper's arithmetic claim is loose while its conclusion
+is what {{b3}} is built from. So the paper's arithmetic claim is loose while its conclusion
 stands, and it is worth knowing which is which before quoting either.
 """
-    )
+    ))
 
     # -------------------------------------------------------------- references
     st.divider()
@@ -641,7 +695,7 @@ stands, and it is worth knowing which is which before quoting either.
 | **Schneider, M., Citron, G.P., Haryott, P. & Cook, D. (2023)** *Drilling an exploration prospect downdip: quantifying the trade-offs between chance of success and associated resource potential.* AAPG Bulletin **107**(5) 743–759. [doi:10.1306/09232222051](https://doi.org/10.1306/09232222051) · [open access](https://pubs.geoscienceworld.org/aapg/aapgbull/article/107/5/743/622239/Drilling-an-exploration-prospect-downdip) | The definitive reference. Whole-trial up-dip/down-dip grouping — this app's **reference engine**. Names the finer proven/possible split as *“additional complexity”* without computing it; `core/classes.py` is that complexity, implemented. Also the source of the convention that the EUR distribution is the **success case** and is determined *before* the chance, and that Pg is the chance of exceeding the **P99** EUR. |
 | **Milkov, A.V. (2021)** *Reporting the expected exploration outcome: when, why and how the probability of geological success and success-case volumes for the well differ from those for the prospect.* J. Pet. Sci. Eng. **204** 108754. [doi:10.1016/j.petrol.2021.108754](https://doi.org/10.1016/j.petrol.2021.108754) | The crest/apex reference convention, and the peer-reviewed statement that well POS is prospect POS times the contact distribution. His segment A2 falls from 0.34 at the crest to 0.07 down-dip. Also the definition this app uses for percentiles: *“P90 is defined as 90 % probability of exceeding the P90 estimated value.”* |
 | **Schneider, M. & Cook, D.M. Jr. (2017)** *Drilling a Downdip Location: Effect on Updip and Downdip Resource Estimates and Commercial Chance.* AAPG Search & Discovery **#42102**, posted 3 July 2017 — with the Rose & Associates long-form version, Houston, May 2021. [search & discovery](https://www.searchanddiscovery.com/documents/2017/42102schneider/ndx_schneider.pdf) | Equation 1 (`Pwell = Pg × Ptrap@well / Ptrap`, cap included), the P90-area reference contour, the *“No Regrets”* volume, `Pmcfs(well)` and `Pc(well)`. Both documents are in `_local/Papers/`; the 2021 file is a Rose & Associates client report authored by Schneider and Cook, not by Rose. |
-| **Haskett, W.J. (2003)** *Optimal Appraisal Well Location Through Efficient Uncertainty Reduction and Value of Information Techniques.* SPE **84241**, SPE ATCE, Denver, 5–8 October 2003. [doi:10.2118/84241-MS](https://doi.org/10.2118/84241-MS) | Appraisal placement as value of information — 3.3's uncertainty-reduction curve, with the optimum found by argmax rather than by eye. |
+| **Haskett, W.J. (2003)** *Optimal Appraisal Well Location Through Efficient Uncertainty Reduction and Value of Information Techniques.* SPE **84241**, SPE ATCE, Denver, 5–8 October 2003. [doi:10.2118/84241-MS](https://doi.org/10.2118/84241-MS) | Appraisal placement as value of information — {b3}'s uncertainty-reduction curve, with the optimum found by argmax rather than by eye. |
 | **Singh, V., Yemez, I., Izaguirre, E. & Racero, A. (2017)** *Optimal Subsurface Appraisal: A Key Link to the Success of Development Projects.* Am. J. Applied Sciences **14**(2) 217–230. [doi:10.3844/ajassp.2017.217.230](https://doi.org/10.3844/ajassp.2017.217.230) · open access | Appraisal-value framing around the same trade-off: what a well is worth is what it resolves, not what it finds. |
 | **Hood, K.C. (2019)** *Column Height.* Risk Coordinators' Workshop, 14 November 2019 (ExxonMobil Upstream Integrated Solutions) — and **Hood, K.C. (2024)** *Hydrocarbon Column Heights, Parts 1 & 2*, Rose & Associates blog. Both in `_local/Papers/HCWC/` | The assessment minimum belongs to a minimum **column height**, linked to seal capacity, not to a minimum volume — decision 6, and why this app maps a column height rather than filtering on a volume. Two separate documents; the 2019 workshop deck and the 2024 blog pair are often conflated. |
 

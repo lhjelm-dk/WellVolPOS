@@ -247,7 +247,7 @@ def _location_sweep_tab(ctx: Ctx):
     # point, since a band spans the *interval* between two cumulative boundaries and
     # an interval is well defined on any axis. See the figure's own note.
     _a2_scale = st.radio(
-        "3.1 share axis", ["linear", "log"], horizontal=True, key="w_a2_scale",
+        fig_ref("{a2} share axis"), ["linear", "log"], horizontal=True, key="w_a2_scale",
         help="Both stack the four outcomes to 100 %. Log runs 1 % to 110 %, which is "
              "the only way to read the small shares — at the cost that a band's "
              "width on screen is then no longer its share, so read the boundaries.",
@@ -281,7 +281,7 @@ def _location_sweep_tab(ctx: Ctx):
     # thing about this figure that gets misread, and a caption below eleven other
     # figures is not where a caveat survives contact with a reader in a hurry.
     st.warning(
-        "**3.3 measures information, not value.** The peak is the depth whose result "
+        fig_ref("**{b3} measures information, not value.**") + " The peak is the depth whose result "
         "you can least predict — it values learning *dry* exactly as much as learning "
         "*large*, and it contains no dry-hole cost, no development case and no "
         f"discount rate. It is **not** a recommended location. For that, read "
@@ -292,7 +292,7 @@ def _location_sweep_tab(ctx: Ctx):
         f"How much a well here narrows the answer. The best-informed depth is "
         f"**{sweep.z[int(np.nanargmax(sweep.uncertainty_reduction))]:,.0f} m**, and it "
         f"is rarely the best depth to drill.",
-        detail="**3.3 — how much would a well here *tell* you?** The expected shrinkage of the "
+        detail=fig_ref("**{b3} — how much would a well here *tell* you?**") + " The expected shrinkage of the "
         "prospect's P10–P90 range once you know which side of the well the contact fell on. "
         "The trials split in two — deeper than the entry, or not — which is Haskett's "
         "*discrete learning*: one bit, no partial outcome, and the whole population splits "
@@ -332,7 +332,7 @@ def _location_sweep_tab(ctx: Ctx):
     _chart(f_b11, key="b11", height=int(f_b11.layout.height))
     figure_note(
         "Every curve is the same shape scaled by a different POS — so revising the chance table and moving the well are independent levers.",
-        detail="**3.4 — how much of your answer is the chance table?** Every thin grey curve is "
+        detail=fig_ref("**{b11} — how much of your answer is the chance table?**") + " Every thin grey curve is "
         "`P_well` against depth for a different `POS_prospect`, a decile at a time; the heavy "
         "one is the POS actually in force. Deciles rather than every percentile: neighbours "
         "would differ by a hundredth and the fan would read as a smear.\n\n"

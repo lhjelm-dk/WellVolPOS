@@ -301,3 +301,79 @@ def test_tab_five_states_the_chance_chain_once(fresh):
     # In order, and consecutive: the strip reads left to right as the multiplication.
     at = [labels.index(name) for name in chain]
     assert at == sorted(at) and at[-1] - at[0] == len(chain) - 1, at
+
+
+def test_the_guide_contents_matches_its_headings():
+    """A contents list that can drift from the page is worse than none — it is believed.
+
+    Declared rather than scraped, because scraping the rendered markdown would make the
+    list true by construction and check nothing. This compares the declaration against
+    the headings the module actually writes.
+    """
+    import pathlib
+    import re
+
+    from wellvolpos.report import guide
+
+    src = pathlib.Path(guide.__file__).read_text(encoding="utf-8")
+    headings = re.findall(r'st\.markdown\((?:ref\()?"### ([^"]+)"', src)
+    declared = [t for t, _what in guide.GUIDE_SECTIONS]
+
+    assert headings, "no '### ' headings found — the scrape pattern has gone stale"
+    assert declared == headings, (
+        f"contents and headings disagree\n  only declared: "
+        f"{[d for d in declared if d not in headings]}\n  only rendered: "
+        f"{[h for h in headings if h not in declared]}")
+
+
+def test_no_figure_number_is_typed_into_reader_facing_copy():
+    """Figure numbers in prose must resolve through ``ref()``, never be typed.
+
+    **A source check, not a rendered one.** The first version of this read the page and
+    flagged every number it found -- which cannot distinguish a typed "2.1" from one
+    ``ref()`` had just produced, so it failed on correct code. The property that matters
+    is upstream: the *literal* must not be in the string.
+
+    This has gone wrong twice, both times within a day of a renumbering. The sensitivity
+    fan landing as 3.4 pushed five figures down; tab ④'s reorder moved the concepts pair
+    from 4.1/4.2 to 4.3/4.4 and the live section from 4.3 to 4.6, while six sentences
+    kept pointing at the old digits. ``ref()`` resolves at render time and cannot rot.
+
+    Two exemptions, listed rather than pattern-matched so a *new* stray still fails:
+    ``numbering.py`` is the mapping itself, and the guide has one paragraph that has to
+    show examples in order to explain the scheme.
+    """
+    import pathlib
+    import re
+
+    from wellvolpos.ui.numbering import FIGURE_NUMBERS
+
+    valid = set(FIGURE_NUMBERS.values())
+    PATTERN = re.compile(
+        r"(?:(?<=^)|(?<=[\s(\[*\"']))"      # start, or after space/bracket/quote/star
+        r"([2-6]\.\d{1,2})"                  # the number itself
+        r"(?=[\s.,;:)*\]\"'!?]|$)"           # then space or sentence punctuation
+    )
+    root = pathlib.Path(__file__).resolve().parents[1] / "wellvolpos"
+    files = sorted(root.glob("ui/*.py")) + sorted(root.glob("report/*.py"))
+    ALLOW_LINE = ("Figures are numbered", "5.1 and 5.2")
+
+    offenders = []
+    for f in files:
+        if f.name == "numbering.py":
+            continue
+        for i, line in enumerate(f.read_text(encoding="utf-8").splitlines(), 1):
+            body = line.strip()
+            if body.startswith("#") or any(a in body for a in ALLOW_LINE):
+                continue
+            if '"' not in body and "'" not in body:
+                continue
+            # Word-bounded on **both** sides. Without it this fires on a volume range
+            # ("2.2\u2013482.1 MMboe") and on the digits inside a DOI
+            # ("doi:10.2118/84241-MS"). A guard that cries wolf gets an exemption
+            # added instead of a fix, which is how a guard stops guarding.
+            for m in re.finditer(PATTERN, body):
+                if m.group(1) in valid:
+                    offenders.append(f"{f.name}:{i}: {body[:100]}")
+    assert not offenders, ("figure numbers typed instead of ref()'d:\n  "
+                           + "\n  ".join(offenders[:10]))

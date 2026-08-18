@@ -313,14 +313,14 @@ FIGURE_GUIDE = {
            "where the top surface meets the contact. The two rules on the right are "
            "area-averaged pay against the thickness; the gap between them is the point."),
     "c1": ("the structure, with the volume classes",
-           "Where each volume sits in the structure at this well. Read as a pair with 4.2."),
+           "Where each volume sits in the structure at this well. Read as a pair with {c2}."),
     "c2": ("the same volumes as exceedance curves",
            "Two curves per concept in one colour. The risked curves start at their own chance, "
            "so the vertical gap between the top two *is* the location penalty. Values are "
            "labelled on the conditional curves only — risking scales the probability, never "
            "the volume."),
     "c3": ("the chance of clearing MEFS, per volume",
-           "The eight numbers 4.2 marks on its MEFS line, given an axis of their own. "
+           "The eight numbers {c2} marks on its MEFS line, given an axis of their own. "
            "Solid is unrisked and hatched is risked; the ratio within a pair is the chance "
            "of the case itself, which differs per row — the up-dip bar is risked by "
            "POS − P_well, not by P_well."),

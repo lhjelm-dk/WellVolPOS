@@ -255,11 +255,12 @@ def render(ctx: Ctx) -> None:
         _atw_win = st.number_input(
             "At-the-well window, ± m", 0.5, 25.0, step=0.5,
             key="w_atw_window",
-            help="How close a trial's contact must be to the reservoir entry to count "
-                 "as landing *on* the well. Widen it for more trials and a blurrier "
-                 "answer; narrow it until the count gets too small to mean anything. "
-                 "**It also sets the at-the-well curve on 3.5**, which used to keep the "
-                 "2 m default no matter what was typed here.",
+            help=fig_ref(
+                "How close a trial's contact must be to the reservoir entry to count "
+                "as landing *on* the well. Widen it for more trials and a blurrier "
+                "answer; narrow it until the count gets too small to mean anything. "
+                "**It also sets the at-the-well curve on {b1}**, which used to keep the "
+                "2 m default no matter what was typed here."),
         )
         # The well-associated volume in the **same shape as tab ②'s prospect row**,
         # so the two can be read one above the other. That comparison -- what the
@@ -678,10 +679,12 @@ def render(ctx: Ctx) -> None:
             ), key="c2", height=C2_HEIGHT)
         figure_note(
             fig_ref("**{c1}** shows where each volume sits in the structure; **{c2}** shows the same volumes as exceedance curves, two per concept in one colour."),
-            detail="**4.1 and 4.2 — the concepts, twice.** 4.1 shows where each volume sits in the "
-            "structure; 4.2 shows the same volumes as exceedance curves, **two per concept in "
-            "one colour**. Read them as a pair: the first says *where*, the second says *how "
-            "much and how likely*.\n\n"
+            detail=fig_ref(
+                "**{c1} and {c2} — the concepts, twice.** {c1} shows where each volume "
+                "sits in the structure; {c2} shows the same volumes as exceedance "
+                "curves, **two per concept in one colour**. Read them as a pair: the "
+                "first says *where*, the second says *how much and how likely*.\n\n")
+            +
             "The **solid** curve is *conditional* — the success case, given that case happens. It "
             "starts at 100 % and it is where the percentiles live: that is what anyone means by "
             "\"the P50\". The **dashed** curve is *unconditional* (risked): the same volumes with "
@@ -756,13 +759,23 @@ def render(ctx: Ctx) -> None:
         # index of its own, so the only way to refer to it was "the one next to A6".
         # It is 4.3 now and A6 is 4.4.
         _chart(pfig_b0_section(ad, z_entry=entry, z_exit=exit_, title="Live section"), key="live")
-        st.caption(
-            "**4.3 — the live section**, drawn from A(z) at the well you have chosen, and shaded "
-            "in the same three colours the volume classes use everywhere else. Width is "
-            "proportional to √(enclosed area) — a circular-closure proxy, so the *shape* is "
-            "illustrative and the x-axis claims no unit. The **depths on y are the real "
-            "quantity**."
-        )
+        st.caption(fig_ref(
+            "**{live} — the live section**, drawn from A(z) at the well you have chosen "
+            "and shaded in the same three colours the volume classes use everywhere "
+            "else. Width is proportional to √(enclosed area) — a circular-closure "
+            "proxy, so the *shape* is illustrative and the x-axis claims no unit. The "
+            "**depths on y are the real quantity**."
+            "\n\n"
+            # **Why this is not a second copy of {c1}** (review, 2026-08-18). Both draw
+            # the three volume classes on the same depth axis, which is exactly the
+            # duplication that removed the schematic section from tab ③ -- but these
+            # two differ in the thing that matters: one has a *quantity* on x and the
+            # other a shape. Nothing said so, and a reader meeting two sections six
+            # figures apart is owed the difference rather than left to find it.
+            "**Not a second copy of {c1}.** That one puts real productive area on x "
+            "and carries the base-reservoir uncertainty, so it is the one to measure "
+            "against; this one is shaped like a section, so it is the one to look at."
+        ))
 
         st.divider()
         a6_norm = st.radio(
@@ -779,7 +792,8 @@ def render(ctx: Ctx) -> None:
             key="w_a6_curves",
             help=("The same four classes as cumulative curves, on a second x-axis in per cent. "
                   "Conditional only: a risked curve beside an unrisked histogram would be two "
-                  "readings on one figure, which is the mistake 4.2 exists to keep apart."),
+                  "readings on one figure, which is the mistake "
+                  + fig_ref("{c2}") + " exists to keep apart."),
         )
         # **The fill is a control, not a constant** (Lars, 2026-08-15). This figure is
         # about where the classes overlap, and five series at the old 0.45 hid each
