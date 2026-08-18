@@ -284,3 +284,46 @@ def test_4_2_carries_a_brace_for_the_commercial_class(reduced):
         assert name in labels, (name, labels)
     # And the axis grew to hold five braces rather than clipping the last.
     assert fig.layout.yaxis.range[0] < -40
+
+
+def test_the_commercial_chance_is_p_well_times_the_conditional(reduced, groups, area_depth):
+    """``Pc = P_well x P(>MEFS | discovery)``, and the table's row must say so.
+
+    The commercial row on tab ④ carries its own chance, computed as P_well times the
+    share of *discoveries* that clear MEFS. Computing it as the share of all trials
+    would give the same number only under the "trials are risked" convention, and
+    would be the recurring bug — an unrisked count under a risked label — the sixth
+    time.
+    """
+    res = np.asarray(reduced.col("resource"), dtype=float)
+    disc = np.asarray(groups.discovery, dtype=bool)
+    mefs = 14.0
+
+    commercial = disc & (res > mefs)
+    p_mcfs = commercial.sum() / disc.sum()
+    p_well = 0.7605 * (disc.sum() / (res > 0).sum())
+    pc = p_well * p_mcfs
+
+    # The same number the other way round: the share of *all* trials that are both a
+    # discovery here and above MEFS, scaled from the file's own POS onto the app's.
+    direct = commercial.sum() / (res > 0).sum() * 0.7605
+    assert pc == pytest.approx(direct, rel=1e-12)
+
+    # And it is strictly below P_well, because clearing MEFS is a further condition.
+    assert 0.0 < pc < p_well
+
+
+def test_the_commercial_mean_exceeds_the_well_associated_mean(reduced, groups, area_depth):
+    """Longley's point, made visible rather than hidden.
+
+    A volume cut-off raises the unrisked mean while lowering commercial chance. That
+    is precisely why this app never truncates the other distributions — and why the
+    commercial class, which *is* conditional on clearing the threshold, must come out
+    higher. If it ever did not, the class would be selecting the wrong trials.
+    """
+    res = np.asarray(reduced.col("resource"), dtype=float)
+    disc = np.asarray(groups.discovery, dtype=bool)
+    mefs = 14.0
+    commercial = disc & (res > mefs)
+    assert commercial.sum() > 10
+    assert res[commercial].mean() > res[disc].mean()

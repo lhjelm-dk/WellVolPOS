@@ -504,6 +504,13 @@ def render(ctx: Ctx) -> None:
              "The accumulation in the trials where hydrocarbons are present but sit **entirely "
              "above** the well: the well is dry, the prospect is not. This is what a dry hole "
              "leaves behind, and the number quoted when somebody argues for a sidetrack."),
+            ("Commercial accumulation",
+             "The well-associated volume among the discoveries that **clear MEFS**. Its chance "
+             "is Rose's `Pc(well)`, so this is the row whose distribution belongs to the number "
+             "an EMV takes. It is an *additional* class, not a cut of the ones above — nothing "
+             "here truncates the other distributions, because a volume cut-off raises the "
+             "unrisked mean while lowering commercial chance and the two do not cancel. Its "
+             "mean sitting above the well-associated mean is that effect made visible."),
         ]
         with st.expander("What each class means — worth reading once", expanded=False):
             for name, text in class_defs:
@@ -540,6 +547,24 @@ def render(ctx: Ctx) -> None:
              chance.p_well * _p_below_exit),
             ("Up-dip / attic volume", vc.attic[groups.dry_with_attic], p_updip),
         ]
+        # **The commercial accumulation, in the table it belongs to** (Lars,
+        # 2026-08-18). It is the well-associated volume among the discoveries that
+        # clear MEFS, and its chance is Rose's `Pc(well)` -- so it is the one row
+        # whose distribution goes with the number an EMV calculation takes. Every
+        # other row is conditional on an event Pc does not describe.
+        #
+        # **Not a MEFS cut of the rows above it.** Nothing there is truncated: a
+        # volume cut-off raises the unrisked mean while lowering commercial chance
+        # (Longley 2026), so applying one would put a reader's economics into
+        # everyone's volumes. This is an *additional* class, conditional on a
+        # different event, and its mean sitting above the well-associated mean is
+        # exactly that effect made visible rather than hidden.
+        _res_disc = np.asarray(res_all, dtype=float)
+        _commercial = np.asarray(groups.discovery, dtype=bool) & (_res_disc > float(mefs))
+        if _commercial.any():
+            _p_mcfs = float(_commercial.sum()) / max(_n_disc, 1)
+            rows.append(("Commercial accumulation (clears MEFS)",
+                         _res_disc[_commercial], chance.p_well * _p_mcfs))
         stats = [(name, class_percentiles(values, ch)) for name, values, ch in rows]
         pcols = [f"P{q}" for q in REPORT_PERCENTILES]
 
