@@ -279,3 +279,47 @@ def test_the_mefs_rule_spans_the_whole_probability_axis(bp):
                     and np.allclose(np.asarray(t.x, dtype=float), 15.0))
         assert np.isclose(min(rule.y), lo) and np.isclose(max(rule.y), hi), scale
         assert list(fig.layout.yaxis.range) == [lo, hi], scale
+
+
+def test_a_band_above_the_well_is_named_rather_than_left_blank(bp):
+    """A missing curve and a coinciding curve look identical.
+
+    Three of prospect C's six bands lie entirely up-dip of the default entry, so the
+    well never enters them and there is no proven curve to draw. Before 2026-08-18 the
+    figure simply showed nothing for them, which reads as a rendering failure rather
+    than as the geological statement it is.
+    """
+    above = [b for b in bp.bands if b.above_the_well]
+    if not above:
+        pytest.skip("this fixture's bands all hold discoveries")
+    for band in above:
+        assert band.n_discovery == 0
+        # No share to report, and nan rather than 0: nothing is proven there because
+        # the well is not in it, not because it is there and proves none.
+        assert np.isnan(band.proven_share(50, bp.percentiles))
+
+    fig = pfig_b12_banded_percentiles(bp)
+    named = [t.name for t in fig.data if t.name]
+    for band in above:
+        assert any(band.label in n and "above the well" in n for n in named), band.label
+    for band in bp.bands:
+        if not band.above_the_well:
+            assert any(band.label in n and "above the well" not in n for n in named)
+
+
+def test_the_proven_share_falls_with_depth_and_is_a_real_ratio(bp):
+    """The figure's decision content as a number, not as a gap between two curves.
+
+    On a log axis a gap *is* a ratio and does not look like one, which is exactly why
+    the share is computed rather than left to the eye. It must fall down-dip: the total
+    keeps growing and the proven part cannot, because the well stays where it is.
+    """
+    withp = [b for b in bp.bands if not b.above_the_well]
+    assert len(withp) >= 2
+    shares = [b.proven_share(50, bp.percentiles) for b in withp]
+    assert all(0.0 < s <= 1.0 + 1e-9 for s in shares), shares
+    assert shares == sorted(shares, reverse=True), shares
+    # And it agrees with the curves it summarises.
+    i = bp.percentiles.index(50)
+    for band, share in zip(withp, shares):
+        assert share == pytest.approx(float(band.proven[i]) / float(band.total[i]))

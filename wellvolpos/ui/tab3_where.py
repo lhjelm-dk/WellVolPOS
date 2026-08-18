@@ -913,17 +913,22 @@ def _band_section(ctx: Ctx):
     peel = _peel_note(bp) if show_proven else ""
     ladder = ", ".join("P" + str(q) for q in bp.percentiles)
     figure_note(
-        "The prospect split by contact-depth band, on log-probit axes — a lognormal is a straight line here. Solid is what this well would prove; dotted is the whole band.",
+        _band_headline(bp, entry) if show_proven else
+        "The prospect split by contact-depth band, on log-probit axes — a lognormal "
+        "is a straight line here.",
         detail=f"**{fig_ref('{b12}')} — the prospect cut by where the contact lands.** Schneider's "
         "Figure 9 with the parameterisation changed: he draws one distribution per "
         "*productive-area increment*, this draws one per **contact-depth interval**. Area is a "
         "deterministic function of contact depth here, so the two band the same trials — but a "
         "depth is what a well chooses, and an area is not."
         "\n\n"
-        "**Solid is the whole resource in the band; dotted is the part this well would prove.** "
+        "**Solid is the part this well would prove; dotted is the whole resource in the "
+        "band.** The emphasis is on the well, because that is the only half of the "
+        "figure a location decision can move. "
         f"The well entry — **{entry:.0f} m** — is always a band boundary, so no band mixes dry "
-        "trials with discoveries and the bands above the entry have no dotted curve at all: "
-        f"nothing is proven there.{peel}"
+        "trials with discoveries, and a band lying entirely up-dip of it has **no solid "
+        "curve at all**: the well never enters it, so it proves none of it. Those bands "
+        f"are named *above the well* in the legend.{peel}"
         "\n\n"
         "**Blues for the total, mauve for the proven part**, each running light to dark with "
         "increasing depth — so the *concept* is in the hue and the *depth ordering* is in the "
@@ -944,6 +949,28 @@ def _band_section(ctx: Ctx):
         "`P(resource > MEFS | contact in that band)`, read straight off the probability axis. It "
         "never truncates a distribution.",
     )
+
+
+def _band_headline(bp, entry: float) -> str:
+    """The tier-1 line, carrying this prospect's own numbers.
+
+    A headline that only names the line styles teaches nothing about the prospect on
+    screen -- and the styles are in the subtitle already. What the figure is *for* is
+    the share of each band the well would prove, so that is what the one visible line
+    says.
+    """
+    withp = [b for b in bp.bands if not b.above_the_well and b.proven is not None]
+    above = [b for b in bp.bands if b.above_the_well]
+    if not withp or 50 not in bp.percentiles:
+        return ("The prospect split by contact-depth band, on log-probit axes — a "
+                "lognormal is a straight line here.")
+    deep = withp[-1]
+    share = deep.proven_share(50, bp.percentiles)
+    lead = (f"At the P50 this well proves **{share:.0%}** of the deepest band "
+            f"({deep.label})") if share == share else ""
+    tail = (f", and none of the {len(above)} band(s) that lie entirely above "
+            f"{entry:,.0f} m." if above else ".")
+    return (lead + tail + " Solid is what the well proves, dotted the whole band.")
 
 
 def _peel_note(bp) -> str:

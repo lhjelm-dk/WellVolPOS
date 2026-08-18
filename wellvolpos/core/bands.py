@@ -156,6 +156,39 @@ class DepthBand:
     def discovery_fraction(self) -> float:
         return self.n_discovery / self.n if self.n else 0.0
 
+    @property
+    def above_the_well(self) -> bool:
+        """Does this band lie entirely up-dip of the entry?
+
+        Then the well penetrates none of it and there is no proven curve to draw --
+        which is different from a proven curve that coincides with the total, and the
+        figure has to say which it is. On prospect C's default well three of six bands
+        are in this state and the figure showed nothing at all for them.
+        """
+        return self.n_discovery == 0
+
+    def proven_share(self, percentile: int, percentiles) -> float:
+        """What fraction of the band's total the well proves, at one percentile.
+
+        The number the figure exists to make visible -- *"this well proves all of the
+        shallow band and 69 % of the deep one"* -- which a reader otherwise has to
+        estimate from the gap between two curves on a log axis, where a gap is a ratio
+        and does not look like one.
+
+        Returns ``nan`` where the band holds no discoveries, rather than 0: nothing is
+        proven there because the well is not in it, and a zero would read as *"the well
+        is there and proves none of it"*.
+        """
+        import numpy as np
+
+        if self.proven is None or self.above_the_well:
+            return float("nan")
+        idx = list(percentiles).index(int(percentile))
+        total = float(np.asarray(self.total, dtype=float)[idx])
+        if not np.isfinite(total) or total <= 0:
+            return float("nan")
+        return float(np.asarray(self.proven, dtype=float)[idx]) / total
+
 
 @dataclass(frozen=True)
 class BandedPercentiles:

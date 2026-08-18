@@ -1361,7 +1361,7 @@ def fig_b12_banded_percentiles(
         # Dotted and thinner: the band total is context, the proven part is the
         # subject -- see the plotly twin.
         ax.plot(band.total, y, color=shade, lw=1.4, ls=":", marker="o", ms=3.5,
-                label=f"{band.label}  (n {band.n})")
+                label=f"{band.label}  (n {band.n})" + ("  · above the well" if band.above_the_well else ""))
         if show_mean and np.isfinite(band.total_mean_p):
             ax.plot([band.total_mean],
                     [float(probability_coords(band.total_mean_p, probability_scale))],

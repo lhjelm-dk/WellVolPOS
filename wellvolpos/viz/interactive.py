@@ -2725,7 +2725,7 @@ def pfig_b12_banded_percentiles(
         group = band.label
         fig.add_scatter(
             x=band.total, y=y, mode="lines+markers",
-            name=f"{band.label}  (n {band.n})",
+            name=f"{band.label}  (n {band.n})" + ("  · above the well" if band.above_the_well else ""),
             legendgroup=group,
             # **Dotted, and the thinner of the two** (Lars, 2026-08-18). The band's
             # whole resource is context; what the *well* would prove is the subject,
