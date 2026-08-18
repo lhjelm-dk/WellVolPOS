@@ -181,6 +181,43 @@ class Candidate:
 PLATEAU_TOL = 0.02
 
 
+def shallowest_argmax(values, tol: float = 1e-9) -> int:
+    """Index of the maximum, resolving a tie **towards the crest**.
+
+    Lars, 2026-08-18: *"the entry depths are all the same — is this correct?"* It is,
+    and the reason is worth stating rather than leaving as a coincidence.
+
+    **Above the shallowest sampled contact every success trial is a discovery.** So
+    ``r_location`` is exactly 1 there, ``P_well`` is flat at ``POS_prospect``, and the
+    volume conditional on a discovery is the whole prospect distribution. Every
+    criterion that does not involve MEFS is therefore *indifferent* across that whole
+    band, and several of them are flat well past it. The sweep grid also starts 3 %
+    above the shallowest contact by design, so the curves visibly saturate rather than
+    beginning mid-rise -- which puts a genuinely degenerate stretch at the top of
+    every one of them.
+
+    ``np.nanargmax`` returned the first maximum, which happened to be the shallowest.
+    That was the right answer arrived at by accident, and an accident is not a rule:
+    a later change to the grid, or to argmax's tie behaviour, would silently move
+    every reported optimum. So the tie-break is written down.
+
+    **Shallowest, because shallower never costs chance.** ``P_well`` falls
+    monotonically down-dip, so among depths where the criterion cannot tell the
+    difference, the shallowest one is weakly better on the one thing every criterion
+    here shares. The *width* of the indifference is reported separately, by
+    :func:`plateau_span`.
+    """
+    import numpy as np
+
+    v = np.asarray(values, dtype=float)
+    if not np.any(np.isfinite(v)):
+        raise ValueError("no finite values to maximise")
+    peak = float(np.nanmax(v))
+    scale = max(abs(peak), 1e-30)
+    near = np.isfinite(v) & (v >= peak - tol * scale)
+    return int(np.argmax(near))
+
+
 def plateau_span(values, z, i: int, tol: float = PLATEAU_TOL):
     """The depth span over which ``values`` stays within ``tol`` of its maximum.
 
@@ -241,7 +278,7 @@ def candidate_depths(vsweep, *, min_support: int = 30,
 
     pw = thin(vsweep.p_well, n, min_support)
     if np.any(np.isfinite(pw)):
-        i = int(np.nanargmax(pw))
+        i = shallowest_argmax(pw)
         out.append(Candidate(
             key="chance", label="Best chance of finding hydrocarbons",
             depth=float(z[i]), value=f"P_well {pw[i]:.1%}", figure="a3",
@@ -254,7 +291,7 @@ def candidate_depths(vsweep, *, min_support: int = 30,
     if vsweep.discovery_mean is not None:
         weighted = pw * thin(vsweep.discovery_mean, n, min_support)
         if np.any(np.isfinite(weighted)):
-            i = int(np.nanargmax(weighted))
+            i = shallowest_argmax(weighted)
             out.append(Candidate(
                 key="expected", label="Most chance-weighted volume",
                 depth=float(z[i]), value=f"{weighted[i]:,.1f} MMboe expected",
@@ -267,7 +304,7 @@ def candidate_depths(vsweep, *, min_support: int = 30,
     if vsweep.p_discovery_exceeds_mefs is not None:
         pc = pw * thin(vsweep.p_discovery_exceeds_mefs, n, min_support)
         if np.any(np.isfinite(pc)):
-            i = int(np.nanargmax(pc))
+            i = shallowest_argmax(pc)
             out.append(Candidate(
                 key="commercial", label="Best commercial chance",
                 depth=float(z[i]), value=f"Pc {pc[i]:.1%}", figure="b8",

@@ -47,6 +47,7 @@ from ..core.classes import (
 from ..core.bands import BAND_MODE_LABELS, BandedPercentiles
 from ..core.groups import Groups
 from ..core.reservoir import thickness_from_pay
+from ..core.summary import shallowest_argmax
 from ..core.stats import MIN_SUPPORT, thin
 from ..core.structure import AreaDepth
 from ..core.sweep import (
@@ -1520,7 +1521,11 @@ def fig_b8_commercial_chance(
             label="Pc(well) — commercial chance, unconditional")
 
     if np.any(np.isfinite(pc)):
-        best = int(np.nanargmax(pc))
+        # The written-down tie-break, not argmax's: on a curve that is flat
+        # to floating point above the shallowest sampled contact, `nanargmax`
+        # was starring whichever grid point won by 5e-17. See
+        # `core.summary.shallowest_argmax`.
+        best = shallowest_argmax(pc)
         # The plateau band -- see the plotly twin. Named, because a shaded region with
         # no legend entry is a reader guessing, and the wrong guess on a trade-off
         # figure is that it means uncertainty.
@@ -1643,7 +1648,11 @@ def fig_b9_chance_weighted(
         weighted = pw * mean
         ax.plot(weighted, z, color=colour(role, dark), lw=2.2, label=name)
         if np.any(np.isfinite(weighted)):
-            i = int(np.nanargmax(weighted))
+            # The written-down tie-break, not argmax's: on a curve that is flat
+            # to floating point above the shallowest sampled contact, `nanargmax`
+            # was starring whichever grid point won by 5e-17. See
+            # `core.summary.shallowest_argmax`.
+            i = shallowest_argmax(weighted)
             _sp = plateau_span(weighted, z, i)
             if _sp is not None and _sp[1] - _sp[0] > 1.0:
                 ax.plot([float(np.nanmax(weighted))] * 2, list(_sp),

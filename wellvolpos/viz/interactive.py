@@ -50,6 +50,7 @@ from ..core.classes import (
 from ..core.bands import BAND_MODE_LABELS, BandedPercentiles
 from ..core.groups import Groups
 from ..core.reservoir import thickness_from_pay
+from ..core.summary import shallowest_argmax
 from ..core.stats import MIN_SUPPORT, thin
 from ..core.structure import AreaDepth
 from ..core.sweep import (
@@ -2383,7 +2384,11 @@ def pfig_b9_chance_weighted(
                            + DEPTH_HOVER + "<extra></extra>"),
         )
         if np.any(np.isfinite(weighted)):
-            i = int(np.nanargmax(weighted))
+            # The written-down tie-break, not argmax's: on a curve that is flat
+            # to floating point above the shallowest sampled contact, `nanargmax`
+            # was starring whichever grid point won by 5e-17. See
+            # `core.summary.shallowest_argmax`.
+            i = shallowest_argmax(weighted)
             # Same tie as B8's: flat above the shallowest contact, so the peak is a
             # band. Drawn per series, because each has its own plateau.
             _sp = plateau_span(weighted, z, i)
@@ -2991,7 +2996,11 @@ def pfig_b8_commercial_chance(
     # with the grid, and it is the more useful answer besides: it says how far the well
     # can move without paying for it.
     if np.any(np.isfinite(pc)):
-        best = int(np.nanargmax(pc))
+        # The written-down tie-break, not argmax's: on a curve that is flat
+        # to floating point above the shallowest sampled contact, `nanargmax`
+        # was starring whichever grid point won by 5e-17. See
+        # `core.summary.shallowest_argmax`.
+        best = shallowest_argmax(pc)
         _span = plateau_span(pc, z, best)
         if _span is not None and _span[1] - _span[0] > 1.0:
             # A shape cannot enter the legend, so it is labelled where it sits. The

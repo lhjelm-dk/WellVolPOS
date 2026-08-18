@@ -121,7 +121,11 @@ def ce_curve(ts, vsweep, *, rho: float, min_support: int = 30) -> RiskAdjusted:
             continue
         ce[i] = certainty_equivalent(res[disc], float(pw[i]), rho)
 
-    best = int(np.nanargmax(ce)) if np.any(np.isfinite(ce)) else None
+    # The same tie-break the other optima use: shallowest among indistinguishable
+    # depths, because P_well falls monotonically so shallower never costs chance.
+    from .summary import shallowest_argmax
+
+    best = shallowest_argmax(ce) if np.any(np.isfinite(ce)) else None
     return RiskAdjusted(z=z, ce=ce, rho=float(rho), best=best)
 
 

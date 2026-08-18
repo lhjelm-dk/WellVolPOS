@@ -635,6 +635,28 @@ def _location_sweep_tab(ctx: Ctx):
                         "reason " + fig_ref("{b7}") + " is."
                     ),
                 )
+        # **When several rows land on one depth, say why** (Lars, 2026-08-18: *"the
+        # entry depths are all the same — is this correct? I think not"*). They are,
+        # and it is: above the shallowest sampled contact every success trial is a
+        # discovery, so r_location is exactly 1 and every criterion that does not
+        # involve MEFS is indifferent across that whole band. Without the sentence the
+        # table looks like four rows computing one number, which is what it looked
+        # like.
+        _shared = [c for c in _cands if abs(c.depth - _cands[0].depth) < 1e-6]
+        if len(_shared) > 2:
+            _shallowest = min(float(np.min(vsweep.z)), _cands[0].depth)
+            st.info(
+                f"**{len(_shared)} of these land on the same depth, and that is a "
+                f"property of the prospect rather than a bug.** Above the shallowest "
+                f"sampled contact every success trial is a discovery, so `r_location` "
+                f"is exactly 1, `P_well` is flat at POS_prospect, and the volume given "
+                f"a discovery is the whole prospect distribution. Every criterion that "
+                f"does not involve MEFS is therefore **indifferent** over that band — "
+                f"the *Equally good over* column shows how wide it is. Where a "
+                f"criterion cannot tell two depths apart the shallower one is reported, "
+                f"because a shallower well never costs chance."
+            )
+
         _flat = [c for c in _cands if c.is_flat]
         _widest = max(_cands, key=lambda c: (c.plateau[1] - c.plateau[0])
                       if c.plateau else 0.0)

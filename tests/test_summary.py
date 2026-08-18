@@ -104,6 +104,7 @@ def test_the_candidate_depths_agree_with_the_stars_the_figures_draw(reduced):
     """
     from wellvolpos.core import candidate_depths, run_volume_sweep
     from wellvolpos.core.stats import thin
+    from wellvolpos.core.summary import shallowest_argmax
 
     ad = AreaDepth.from_trials(reduced.col("contact"), reduced.col("area"))
     sw = run_volume_sweep(reduced, ad, POS, z_gap=50.0, mefs=14.0, n=40)
@@ -112,15 +113,49 @@ def test_the_candidate_depths_agree_with_the_stars_the_figures_draw(reduced):
 
     pw = thin(sw.p_well, sw.n_discovery, 30)
 
-    # B9 stars nanargmax(P_well x well-associated mean).
+    # B9 stars the maximum of P_well x well-associated mean...
     weighted = pw * thin(sw.discovery_mean, sw.n_discovery, 30)
     assert cands["expected"].depth == pytest.approx(
-        float(sw.z[int(np.nanargmax(weighted))]), abs=0)
+        float(sw.z[shallowest_argmax(weighted)]), abs=0)
 
-    # B8 stars nanargmax(P_well x P(discovery > MEFS)).
+    # ...and B8 the maximum of P_well x P(discovery > MEFS).
     pc = pw * thin(sw.p_discovery_exceeds_mefs, sw.n_discovery, 30)
     assert cands["commercial"].depth == pytest.approx(
-        float(sw.z[int(np.nanargmax(pc))]), abs=0)
+        float(sw.z[shallowest_argmax(pc)]), abs=0)
+
+
+def test_the_tie_break_is_a_rule_and_not_argmaxs_accident(reduced):
+    """The two disagree on this data, which is the whole reason the rule exists.
+
+    Above the shallowest sampled contact every success trial is a discovery, so
+    ``r_location`` is exactly 1 and the commercial chance is flat to floating point —
+    5.5e-17 between neighbouring grid points on prospect A. ``nanargmax`` was starring
+    whichever of them won by that margin, which is not a depth anyone chose.
+
+    Shallowest, because ``P_well`` falls monotonically down-dip: among depths a
+    criterion cannot tell apart, the shallowest is weakly better on the one thing
+    every criterion here shares.
+    """
+    from wellvolpos.core import run_volume_sweep
+    from wellvolpos.core.stats import thin
+    from wellvolpos.core.summary import shallowest_argmax
+
+    ad = AreaDepth.from_trials(reduced.col("contact"), reduced.col("area"))
+    sw = run_volume_sweep(reduced, ad, POS, z_gap=50.0, mefs=14.0, n=40)
+    pw = thin(sw.p_well, sw.n_discovery, 30)
+    pc = pw * thin(sw.p_discovery_exceeds_mefs, sw.n_discovery, 30)
+
+    naive = int(np.nanargmax(pc))
+    ruled = shallowest_argmax(pc)
+    assert ruled < naive, "the rule should have moved the answer on this data"
+    # And the two depths are genuinely indistinguishable, which is what makes
+    # choosing between them a convention rather than a measurement.
+    assert abs(pc[naive] - pc[ruled]) < 1e-12
+    assert sw.z[ruled] < sw.z[naive]
+
+    # A curve with a real peak is untouched.
+    sharp = np.array([1.0, 2.0, 5.0, 2.0, 1.0])
+    assert shallowest_argmax(sharp) == 2
 
 
 def test_best_chance_is_the_shallow_end_and_says_so(reduced):
