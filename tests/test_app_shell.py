@@ -282,3 +282,22 @@ def test_the_guide_opens_with_what_this_tool_assumes(fresh):
                    "modelled, not logged", "exactly two volume classes",
                    "never applied to the distributions", "uniform inside the charged"):
         assert phrase in body, phrase
+
+
+def test_tab_five_states_the_chance_chain_once(fresh):
+    """One multiplication strip, not a strip and a table saying the same thing.
+
+    Tab ⑤ carried a metric strip *and* a four-row results table whose last two rows —
+    final prospect POS and well location POS — were the strip again in another format.
+    The strip won: the whole argument of this tool is a product read across, and a
+    table of the same numbers underneath invites reading them as separate findings.
+    """
+    assert not fresh.exception
+    labels = [m.label for m in fresh.metric]
+    chain = ["Play chance", "× Prospect | play", "= Prospect POS",
+             "× r_location", "= P_well"]
+    for name in chain:
+        assert labels.count(name) == 1, f"{name} appears {labels.count(name)} times"
+    # In order, and consecutive: the strip reads left to right as the multiplication.
+    at = [labels.index(name) for name in chain]
+    assert at == sorted(at) and at[-1] - at[0] == len(chain) - 1, at

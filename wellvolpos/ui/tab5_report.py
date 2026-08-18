@@ -237,31 +237,35 @@ def render(ctx: Ctx) -> None:
             )
         },
     )
-    # **Both POS values, side by side and never multiplied into one** (Lars,
-    # 2026-08-18). They were in the table and in the prose but not where the eye
-    # lands, and these two numbers are the tool's whole argument: one is a property
-    # of the prospect, the other of this well in it.
-    _m1, _m2, _m3 = st.columns(3)
-    _m1.metric("Prospect POS", f"{_summary.prospect_pos:.1%}",
-               help=f"Play x the four elements. What the prospect is worth before "
-                    f"anyone picks a location. The POS in force is {pos:.4f}, "
-                    f"from {pos_source}.")
-    _m2.metric("r_location", f"{chance.r_location:.1%}",
-               help="P(contact deeper than the well | hydrocarbons present). The "
-                    "only quantity the well's position controls.")
-    _m3.metric("P_well", f"{_summary.well_pos:.1%}",
-               delta=f"{_summary.well_pos - _summary.prospect_pos:+.1%} vs prospect",
-               delta_color="off",
-               help="POS_prospect x r_location. The chance THIS well finds "
-                    "hydrocarbons, which is what a drilling decision uses.")
+    # **One multiplication strip, read left to right** (Lars, 2026-08-18: the tab
+    # repeated numbers across its three blocks). It carried a metric strip *and* a
+    # four-row results table, and two of those rows -- final prospect POS and well
+    # location POS -- were the strip again in a different format. The strip won,
+    # because the whole argument of this tool is a product read across, and a table
+    # of the same numbers underneath it invites the reading that they are separate
+    # findings.
+    _m = st.columns(5)
+    _m[0].metric("Play chance", f"{_summary.play_chance:.1%}",
+                 help="Is there a working petroleum system here at all? Entered on "
+                      "tab ②, element by element.")
+    _m[1].metric("× Prospect | play", f"{_summary.conditional_prospect_chance:.1%}",
+                 help="Charge, closure, reservoir and retention, conditional on the "
+                      "play working.")
+    _m[2].metric("= Prospect POS", f"{_summary.prospect_pos:.1%}",
+                 help=f"What the prospect is worth before anyone picks a location. "
+                      f"The POS in force is {pos:.4f}, from {pos_source}.")
+    _m[3].metric("× r_location", f"{chance.r_location:.1%}",
+                 help="P(contact deeper than the well | hydrocarbons present). The "
+                      "only quantity the well's position controls.")
+    _m[4].metric("= P_well", f"{_summary.well_pos:.1%}",
+                 delta=f"{_summary.well_pos - _summary.prospect_pos:+.1%} vs prospect",
+                 delta_color="off",
+                 help="The chance THIS well finds hydrocarbons, which is what a "
+                      "drilling decision uses. Never multiplied into one number with "
+                      "POS_prospect.")
 
     rc1, rc2 = st.columns([2, 3])
     with rc1:
-        st.dataframe(
-            pd.DataFrame(_summary.result_records()),
-            hide_index=True, width="stretch",
-            column_config={"value": st.column_config.NumberColumn(format="percent")},
-        )
         st.metric("HC probability correction factor", f"{_summary.correction_factor:.3f}",
                   help="What the location costs each element that carries it. Under the "
                        "equal-cube-root scheme this is r^(1/3), because three of the four "
@@ -270,8 +274,8 @@ def render(ctx: Ctx) -> None:
     with rc2:
         st.markdown(
             f"**Read it across.** Each element starts at its entered chance "
-            f"(*{SUMMARY_COLUMNS[1]}*) and is reduced by the correction factor "
-            f"**{_summary.correction_factor:.3f}** where it carries the location penalty. "
+            f"(*{SUMMARY_COLUMNS[1]}*) and is reduced by the correction factor beside "
+            f"this text where it carries the location penalty. "
             f"Multiply the third column and you get the **P_well** in the strip above — "
             f"the same number as `POS_prospect × r_location`, by construction rather "
             f"than by coincidence.\n\n"
@@ -304,7 +308,7 @@ def render(ctx: Ctx) -> None:
     _chart(pfig_b5_allocation_dumbbell(elements, chance.r_location, pos_prospect=pos), key="b5")
     st.caption(
         f"{fig_ref('{b4}')} decomposes the POS in use through the location factor at the current entry, under "
-        "the sidebar's allocation scheme; hatched steps are location, solid are geological "
+        "the allocation scheme set in tab ①; hatched steps are location, solid are geological "
         f"chance, and the total is P_well by construction. {fig_ref('{b5}')} shows all three "
         f"shipped schemes "
         "side by side — every scheme gives the same P_well (the dotted rule); only the "
