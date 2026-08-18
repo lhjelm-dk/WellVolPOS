@@ -184,6 +184,14 @@ pip install -r requirements.txt
 Takes a couple of minutes. Some scrolling output is normal. A note about a newer
 pip being available is not an error.
 
+The last entry, `kaleido`, is the largest and the only optional one. It exists so
+tab ⑥ can build the report using the *plotly* figures — the ones you see on
+screen — instead of the matplotlib set. It works by driving a headless browser, so
+it is a big download. If it fails to install, or you would rather not have it,
+delete that line and everything still works: the matplotlib report is the default
+and the app will simply grey out the other option and tell you which package is
+missing.
+
 ---
 
 ## Step 6 — Run the tests

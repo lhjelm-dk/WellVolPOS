@@ -13,6 +13,8 @@ trajectory — a reservoir entry depth and a reservoir exit depth — and answer
 4. Given a volume that must be proven, **where does the well have to go**, and
    what does that cost in chance?
 5. Which **risk elements** carry the location penalty?
+6. Between which two depths is the well defensible at all — shallow enough not to
+   strand a commercial volume up-dip, deep enough to prove one?
 
 It does not replace GeoX — it re-cuts GeoX's output against a well. It does not
 build the contact distribution; that is a separate project's job. It does not do economics.
@@ -140,7 +142,7 @@ wellvolpos/
   core/structure.py          A(z), recovered from the trials themselves
   core/groups.py             reference engine: whole-trial grouping (Schneider et al. 2023)
   core/classes.py            extension: proven / unproven-below-LKH / attic per trial
-  core/summary.py            the headline, and the depths the sweep says are optimal
+  core/summary.py            the headline, the drilling window, and the optima
   core/mefs.py               every volume read against the MEFS / MCFS line
   core/dependence.py         what the exit moves, and whether the spacing is a vertical well
   core/bands.py              the prospect cut by contact-depth band
@@ -202,6 +204,49 @@ Every artefact carries the same stamp: the POS in force **and where it came
 from**, `r_location`, `P_well`, the well, the reference contour, the allocation
 scheme and the threshold volume. A caption can be cropped out of a screenshot; a
 cover page cannot be cropped out of a file.
+
+**Two ways to draw the figures, and the numbers are identical either way.**
+matplotlib is the default and needs nothing beyond the base requirements. Choosing
+*plotly* renders the figures the app itself draws, through
+[kaleido](https://pypi.org/project/kaleido/) — so a figure in the document is the
+figure that was on screen. kaleido drives a headless browser and is a large
+download, so it is optional: without it the app disables the option and says which
+package is missing. Both backends format the same assembled bundle, and a test
+asserts they emit the same set of figures — a second builder's real risk is not
+that it fails but that it quietly drifts.
+
+---
+
+## Where to drill, not just what is optimal
+
+Five criteria can all be maximised at the shallowest depth in the sweep, and on
+ordinary data they are: above the shallowest sampled contact every success trial is
+a discovery, so `r_location` is exactly 1 and every criterion that does not involve
+a threshold is *indifferent* across that whole band. A list of optima is then five
+copies of one number, and it tells you nothing.
+
+So tab ③ leads with a **window** rather than an optimum. Two quantities bound it,
+and both are read as guarantees — the value stays on the right side of the
+threshold from that depth all the way down, never a first crossing:
+
+| | |
+|---|---|
+| **floor** | the shallowest depth from which the **proven mean** stays at or above MEFS. Shallower, and the well does not demonstrate a commercial volume even when it works. A second, conservative floor asks the same of the proven **P90**, so a poor discovery clears it too. |
+| **ceiling** | the depth past which the **attic mean** reaches MEFS. Deeper, and a dry hole would have left a commercial volume untested up-dip. |
+
+Either end can be absent, and that is reported rather than papered over: on the
+demo prospect the attic mean never reaches MEFS at any depth, so nothing bounds the
+well from below. A window with the floor deeper than the ceiling is also possible,
+and it is a finding about the prospect — at that threshold no location both proves
+a commercial volume and avoids stranding one.
+
+The optima are still listed, under the window: best chance, most chance-weighted
+volume, most chance-weighted **proven** volume, best commercial chance `Pc`, best
+risk-adjusted volume under exponential utility, best odds subject to a commercial
+confidence, and Haskett's uncertainty-reduction peak. Each carries the span of
+depths within 2 % of its own best, because on a nearly flat curve a single depth is
+false precision — and where a criterion cannot tell two depths apart, the shallower
+is reported, since a shallower well never costs chance.
 
 ---
 
