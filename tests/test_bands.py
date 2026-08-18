@@ -200,7 +200,13 @@ def test_pb12_is_log_probit_with_a_labelled_scale(bp):
         assert getattr(fig.layout[name], "overlaying", None) is None
 
 
-def test_pb12_draws_one_solid_and_one_dotted_family_per_band(bp):
+def test_pb12_draws_the_proven_family_solid_and_the_total_dotted(bp):
+    """**Solid is what the well proves** (Lars, 2026-08-18).
+
+    It was the other way round. The band's whole resource is context and the proven
+    part is the subject, so the emphasis was inverted -- and on a figure carrying two
+    families per band in two colour ramps, weight is what the eye sorts by first.
+    """
     fig = pfig_b12_banded_percentiles(bp, show_mean=False)
     width = len(bp.percentiles)
     solid = [t for t in fig.data
@@ -208,8 +214,12 @@ def test_pb12_draws_one_solid_and_one_dotted_family_per_band(bp):
              and t.line.dash in (None, "solid")]
     dotted = [t for t in fig.data
               if t.x is not None and len(t.x) == width and t.line.dash == "dot"]
-    assert len(solid) == len(bp.bands)
-    assert len(dotted) == sum(1 for b in bp.bands if b.proven is not None)
+    # One dotted total per band; one solid proven per band that has one.
+    assert len(dotted) == len(bp.bands)
+    assert len(solid) == sum(1 for b in bp.bands if b.proven is not None)
+    # And the solid family is the heavier of the two, so weight and meaning agree.
+    assert min(t.line.width for t in solid) > max(t.line.width for t in dotted)
+    assert "solid = the part this well would prove" in fig.layout.title.text
 
 
 def test_pb12_names_every_band_in_the_legend_exactly_once(bp):

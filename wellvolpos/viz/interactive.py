@@ -1905,8 +1905,13 @@ def pfig_b6_inverse(
             # 9 px; inferno is still perceptually uniform and still not a rainbow,
             # so it keeps the spirit of the rule while being legible. It is the same
             # scale A4's trial-count grid uses, on Lars's earlier instruction.
+            # **0 to POS_prospect, not 0 to 100** (Lars, 2026-08-18). P_well cannot
+            # exceed the prospect's own chance -- r_location caps at 1 -- so a scale
+            # running to 100 % spends most of its range on values this figure can
+            # never show, and every marker lands in the same dark third of it.
             size=10, color=p_at[ok] * 100.0, colorscale=VALUE_CMAP,
-            cmin=0, cmax=100, line=dict(width=0.6, color=p["surface"]),
+            cmin=0, cmax=float(vsweep.pos_prospect) * 100.0,
+            line=dict(width=0.6, color=p["surface"]),
             # **Inside the axes.** The depth-row rule pins margin.r at 25 with
             # autoexpand off, so a colourbar in plotly's default position -- outside
             # the plot area on the right -- is simply clipped away, which is what had
@@ -2567,7 +2572,10 @@ def pfig_b12_banded_percentiles(
             x=band.total, y=y, mode="lines+markers",
             name=f"{band.label}  (n {band.n})",
             legendgroup=group,
-            line=dict(color=shade, width=2.4),
+            # **Dotted, and the thinner of the two** (Lars, 2026-08-18). The band's
+            # whole resource is context; what the *well* would prove is the subject,
+            # so the emphasis was the wrong way round.
+            line=dict(color=shade, width=1.6, dash="dot"),
             marker=dict(color=shade, size=6),
             customdata=pct_txt,
             hovertemplate=(f"contact {band.label} - n {band.n}"
@@ -2588,7 +2596,7 @@ def pfig_b12_banded_percentiles(
             fig.add_scatter(
                 x=band.proven, y=y, mode="lines+markers",
                 showlegend=False, legendgroup=group,
-                line=dict(color=pshade, width=1.8, dash="dot"),
+                line=dict(color=pshade, width=2.6),
                 marker=dict(color=p["surface"], size=5,
                             line=dict(color=pshade, width=1.5)),
                 customdata=pct_txt,
@@ -2620,7 +2628,7 @@ def pfig_b12_banded_percentiles(
                f"({BAND_MODE_LABELS[bp.mode]}, "
                + (f"Well {well_label}: " if well_label else "well ")
                + f"{bp.z_entry:.0f}-{bp.z_exit:.0f} m)"
-               + "<br><sub>solid = the whole resource in the band · dotted = the part this well would prove · colour = depth, light to dark</sub>"),
+               + "<br><sub>solid = the part this well would prove · dotted = the whole resource in the band · colour = depth, light to dark</sub>"),
         xaxis_title=("Resource (MMboe) · log scale" if log
                      else "Resource (MMboe) · linear scale"),
     )

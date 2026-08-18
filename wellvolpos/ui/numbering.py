@@ -49,12 +49,16 @@ FIGURE_NUMBERS = {
     # question -- "and how much is under the well I have just described".
     "b2": "3.6",
     "b13": "3.7",
-    "b7": "3.8",
-    "b8": "3.9",
-    "b9": "3.10",
-    "b6": "3.11",
-    "b12": "3.12",
-    "b14": "3.13",
+    # **B14 renders here**, inside the "where the optimum sits" block and above the
+    # frontier, so it takes 3.8 and the four below it shift by one (Lars, 2026-08-18:
+    # the numbers must be chronological). Nothing moved on screen -- this is one line,
+    # and every prose reference resolves through ref() and follows by itself.
+    "b14": "3.8",
+    "b7": "3.9",
+    "b8": "3.10",
+    "b9": "3.11",
+    "b6": "3.12",
+    "b12": "3.13",
     # ④ At this well
     "c6": "4.1",
     "c5": "4.2",

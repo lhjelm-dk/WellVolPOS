@@ -1294,14 +1294,16 @@ def fig_b12_banded_percentiles(
     y = probability_coords(np.asarray(bp.percentiles, dtype=float), probability_scale)
 
     for band, shade, pshade in zip(bp.bands, total_shades, proven_shades):
-        ax.plot(band.total, y, color=shade, lw=1.8, marker="o", ms=4,
+        # Dotted and thinner: the band total is context, the proven part is the
+        # subject -- see the plotly twin.
+        ax.plot(band.total, y, color=shade, lw=1.4, ls=":", marker="o", ms=3.5,
                 label=f"{band.label}  (n {band.n})")
         if show_mean and np.isfinite(band.total_mean_p):
             ax.plot([band.total_mean],
                     [float(probability_coords(band.total_mean_p, probability_scale))],
                     color=shade, marker="D", mfc="none", ms=7, mew=1.4, ls="none")
         if show_proven and band.proven is not None:
-            ax.plot(band.proven, y, color=pshade, lw=1.5, ls=":", marker="o", ms=3.5,
+            ax.plot(band.proven, y, color=pshade, lw=2.4, marker="o", ms=3.5,
                     mfc=p["surface"])
             if show_mean and np.isfinite(band.proven_mean_p):
                 ax.plot([band.proven_mean],

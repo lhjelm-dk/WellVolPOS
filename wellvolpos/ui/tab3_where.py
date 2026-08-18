@@ -86,16 +86,13 @@ def _inverse_section(vsweep, ts, mefs):
     # a poor discovery and therefore demands a deeper location, P10 only asks that a
     # good one would -- so this is an explicit setting, never a default buried in
     # code (non-negotiable 5), and the figure titles and axis labels carry it.
-    stat = st.radio(
-        "Target refers to", list(TARGET_STATISTICS), horizontal=True, key="w_b6_stat",
-        format_func=lambda k: TARGET_STATISTIC_LABELS[k],
-        help=(
-            "Which statistic of the proven-volume distribution the target is measured "
-            "against. mean is additive across prospects, which is why portfolios use it, "
-            "but on a skewed distribution it sits above the median. P90 is the low case "
-            "and demands the deepest well; P10 is the high case and the shallowest."
-        ),
-    )
+    # **The mean only** (Lars, 2026-08-18). The four statistics answer materially
+    # different questions and the figure said which -- but in practice the mean is
+    # the one that gets used: it is what the source workbook computes and the only
+    # one additive across prospects, which is what a portfolio needs. The other
+    # three remain in core.sweep for anyone who wants them, and the guide still
+    # explains the difference.
+    stat = "mean"
     targets, _, _ = volume_target_curve(vsweep, n=2, statistic=stat)
     if targets.size == 0:
         st.warning("No proven-volume curve to invert on this sweep.")
@@ -620,44 +617,71 @@ def _location_sweep_tab(ctx: Ctx):
         )
         _f_b7 = pfig_b7_frontier(vsweep, current_z=entry, chance_scale=b7_scale)
         _chart(_f_b7, key="b7")
-    # 3.9 is full width (Lars, 2026-08-14). It carries three curves and a starred
+    figure_note(
+        "The trade-off frontier: moving down-dip buys volume with chance. Up and to "
+        "the right is better, and unavailable.",
+        detail=f"**{fig_ref('{b7}')}** is the most direct statement of what this tool "
+        "is about: moving the well down-dip **buys volume with chance**. Read it as an "
+        "efficient frontier — up and to the right is better and unavailable — with the "
+        "depth labels giving the rate of exchange in metres.\n\n"
+        "The bold curve is the well-associated mean with its P90 / P50 / P10 thin "
+        "beside it, so the frontier reads as a range rather than a line: a frontier "
+        "through means alone says what an *average* discovery buys and nothing about "
+        "whether a poor one clears the bar.\n\n"
+        "Neither axis is a depth, so this figure is exempt from the depth rule.",
+    )
+
+    # 3.10 is full width (Lars, 2026-08-14). It carries three curves and a starred
     # interior maximum, and half a row was not enough to see where that peak sits.
-    _f_b8 = pfig_b8_commercial_chance(vsweep, current_z=entry, current_exit=exit_, zlim=zrow_sweep,
-                                      height=TALL_PANEL_HEIGHT)
+    _f_b8 = pfig_b8_commercial_chance(vsweep, current_z=entry, current_exit=exit_,
+                                      zlim=zrow_sweep, height=TALL_PANEL_HEIGHT)
     _chart(_f_b8, key="b8")
+    figure_note(
+        "A rising conditional times a falling chance, so the commercial optimum sits "
+        "somewhere in between — and the band marks how far it can move for nothing.",
+        detail=f"**{fig_ref('{b8}')}** puts the conditional and the unconditional MEFS "
+        "probability on one pair of axes, because the difference between them *is* the "
+        "content. `Pmcfs(well)` **rises** down-dip — a deeper well finds a bigger "
+        "accumulation — and is **conditional** on a discovery. `P_well` **falls** "
+        "down-dip. Their product `Pc(well) = P_well × Pmcfs(well)` is "
+        "**unconditional**: the chance of a commercial discovery, full stop, and the "
+        "number Rose says to carry into an EMV.\n\n"
+        "**Why the shallow end is flat.** Above the shallowest sampled contact every "
+        "success trial is a discovery, so `r_location` is 1 and `P_well` cannot fall; "
+        "the trials that drop out as the well deepens are the shallow-contact ones, "
+        "which are also the small accumulations. Removing a trial that was never going "
+        "to be commercial takes it out of `P_well` and out of `Pmcfs`'s denominator "
+        "together, so their product does not move. `Pc` is exactly the share of trials "
+        "that are **both** a discovery here **and** above MEFS — it only changes once "
+        "the well starts excluding trials that *were* commercial.\n\n"
+        "The light band is every depth within 2 % of the best `Pc`. It is a **plateau**, "
+        "not an uncertainty: the curve genuinely barely moves across it, so a single "
+        "starred depth would be false precision.",
+    )
+
     # A quarter taller (Lars, 2026-08-14): two starred peaks and a grey percentile
     # family share one pair of axes, and at row height the peaks are hard to place.
-    _f_b9 = pfig_b9_chance_weighted(vsweep, current_z=entry, current_exit=exit_, ce=_ce, zlim=zrow_sweep,
-                                    height=TALL_PANEL_HEIGHT)
+    _f_b9 = pfig_b9_chance_weighted(vsweep, current_z=entry, current_exit=exit_,
+                                    ce=_ce, zlim=zrow_sweep, height=TALL_PANEL_HEIGHT)
     _chart(_f_b9, key="b9")
     figure_note(
-        f"P_well times mean volume, and beside it the same distribution "
-        f"risk-adjusted. Where the two part company is what risk aversion costs a "
-        f"deep location.",
-        detail=f"**{fig_ref('{b9}')} — the targeting tool.** `P_well × mean volume`, swept: a falling curve times a "
-        "rising one, so it peaks somewhere in between and that depth maximises the expectation. "
-        "It is drawn for the proven volume and for the whole well-associated volume, which peak "
-        "in different places — the gap between those two stars is the exit depth's doing.\n\n"
-        "**An expected value describes no outcome that can happen.** The well finds something "
-        "near the success-case mean or it finds nothing; it never finds the chance-weighted "
-        f"number. Use {fig_ref('{b9}')} to *rank* locations and {fig_ref('{b1}')} or "
-        f"{fig_ref('{b7}')} to say how big the prize is.",
-    )
-    figure_note(
-        "The trade-off frontier: moving down-dip buys volume with chance. Up and to the right is better, and unavailable.",
-        detail=f"**{fig_ref('{b7}')}** is the "
-        "most direct statement of what this tool is about: moving the well down-dip **buys volume "
-        "with chance**. Read it as an efficient frontier — up and to the right is better and "
-        "unavailable — with the depth labels giving the rate of exchange in metres. Neither axis is "
-        "a depth, so this figure is exempt from the depth rule.\n\n"
-        f"**{fig_ref('{b8}')}** puts the conditional and the unconditional MEFS probability on one "
-        f"pair of axes, because the difference "
-        "between them *is* the content. `Pmcfs(well)` **rises** down-dip — a deeper well finds a "
-        "bigger accumulation — and is **conditional** on a discovery. `P_well` **falls** down-dip. "
-        "Their product `Pc(well) = P_well × Pmcfs(well)` is **unconditional**: the chance of a "
-        "commercial discovery, full stop. A rising curve times a falling one usually peaks in "
-        "between, and that starred peak is where the well goes on commercial grounds — `Pc(well)` "
-        "being the number Rose says to carry into an EMV.",
+        "P_well times mean volume, and beside it the same distribution risk-adjusted. "
+        "Where the two part company is what risk aversion costs a deep location.",
+        detail=f"**{fig_ref('{b9}')} — the targeting tool.** `P_well × mean volume`, "
+        "swept: a falling curve times a rising one, so it peaks somewhere in between "
+        "and that depth maximises the expectation. It is drawn for the proven volume "
+        "and for the whole well-associated volume, which peak in different places — "
+        "the gap between those two stars is the exit depth's doing.\n\n"
+        "**An expected value describes no outcome that can happen.** The well finds "
+        "something near the success-case mean or it finds nothing; it never finds the "
+        f"chance-weighted number. Use {fig_ref('{b9}')} to *rank* locations and "
+        f"{fig_ref('{b1}')} or {fig_ref('{b7}')} to say how big the prize is.\n\n"
+        "**The dashed green curve is the certainty equivalent** — the same distribution "
+        "under exponential utility at the risk tolerance set above. An expectation is "
+        "risk-neutral: it values a 10 % chance of 500 MMboe exactly like a 50 % chance "
+        "of 100. A risk-averse party does not, and the gap between the two curves is "
+        "that difference, widening down-dip because that is where the low-chance, "
+        "high-volume tail lives.",
     )
 
     _inverse_section(vsweep, ts, mefs)
@@ -757,7 +781,7 @@ def _band_section(ctx: Ctx):
     peel = _peel_note(bp) if show_proven else ""
     ladder = ", ".join("P" + str(q) for q in bp.percentiles)
     figure_note(
-        "The prospect split by contact-depth band, on log-probit axes — a lognormal is a straight line here. Dotted is the part this well would prove.",
+        "The prospect split by contact-depth band, on log-probit axes — a lognormal is a straight line here. Solid is what this well would prove; dotted is the whole band.",
         detail=f"**{fig_ref('{b12}')} — the prospect cut by where the contact lands.** Schneider's "
         "Figure 9 with the parameterisation changed: he draws one distribution per "
         "*productive-area increment*, this draws one per **contact-depth interval**. Area is a "
