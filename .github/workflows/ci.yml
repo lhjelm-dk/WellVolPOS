@@ -1,6 +1,6 @@
-# The suite is the specification, so it runs on every push. A clone has prospect A
-# and prospect C only -- prospect B is not published -- and the suite is green on
-# exactly that set, which is the thing this workflow exists to prove.
+# The test suite runs on every push. A clone ships prospect A and prospect C only --
+# prospect B is not published -- and the suite is green on exactly that set, which is
+# what this workflow exists to prove.
 name: tests
 
 on:
@@ -13,6 +13,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # The floors in requirements.txt need 3.11 or newer; see the note there.
         python-version: ["3.11", "3.12"]
     steps:
       - uses: actions/checkout@v4
@@ -21,13 +22,12 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
       - name: Install
-        # kaleido is deliberately excluded here. It only renders the *optional*
-        # plotly report, it pulls a headless browser, and the tests that need it
-        # skip themselves when it is absent -- so installing it would add minutes
-        # to every run to exercise one code path.
+        # requirements-dev pulls requirements.txt and adds pytest. kaleido comes with
+        # it but has no browser to drive here, so the handful of tests that need one
+        # skip themselves -- `export.kaleido_available()` renders a probe rather than
+        # trusting the import, which is the difference that keeps this green.
         run: |
-          grep -v '^kaleido' requirements.txt > ci-requirements.txt
           python -m pip install --upgrade pip
-          pip install -r ci-requirements.txt
-      - name: Run the specification
+          pip install -r requirements-dev.txt
+      - name: Run the tests
         run: pytest -q

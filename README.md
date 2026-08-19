@@ -111,10 +111,15 @@ That is the whole trade. Everything else in the tool is a way of pricing it.
 
 ```bash
 python -m venv .venv && .venv/Scripts/Activate.ps1   # Windows
-pip install -r requirements.txt
+pip install -r requirements.txt      # to run the app
+pip install -r requirements-dev.txt  # to run the tests as well
 pytest
 streamlit run app.py
 ```
+
+Needs **Python 3.11 or newer**. Deploying to Streamlit Community Cloud? Set the
+Python version under *Advanced settings* when you create the app — it cannot be
+changed afterwards, and the default is older than these dependencies support.
 
 The app opens on bundled demo data, so there is nothing to prepare. Step-by-step
 instructions, with the Windows specifics, are in
@@ -273,7 +278,10 @@ threshold volume.
 
 Figures can be drawn with matplotlib (the default, no extra install) or with plotly
 via [kaleido](https://pypi.org/project/kaleido/), which reproduces what the app shows
-on screen. The numbers are identical either way.
+on screen. The numbers are identical either way. kaleido is in
+`requirements-dev.txt` rather than `requirements.txt`, because it drives a headless
+browser: install it if you want that second rendering, and the app disables the
+option cleanly if you do not.
 
 ---
 

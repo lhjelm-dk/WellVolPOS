@@ -1,7 +1,14 @@
-# Floors, not pins. The parity suite in tests/ is what guards against drift; if a
-# newer package ever changed a result, those tests would fail loudly. Pinning
-# exact versions here would instead break installation on any Python version
-# that lacks a matching prebuilt wheel.
+# What the app needs to run. Nothing here is optional.
+#
+# **Floors, not pins.** The test suite is what guards against drift; pinning exact
+# versions would instead break installation on any Python that lacks a matching
+# prebuilt wheel. These floors match `pyproject.toml` exactly -- they were two lists
+# that disagreed with each other until 2026-08-19, which is one list too many.
+#
+# **These floors imply Python 3.11 or newer.** numpy 2.1 and scipy 1.14 publish no
+# wheels for 3.9, so an older interpreter tries to build them from source and the
+# install fails. If you deploy to Streamlit Community Cloud, set the Python version
+# under *Advanced settings* when you create the app -- it cannot be changed afterwards.
 numpy>=2.1
 pandas>=2.2
 scipy>=1.14
@@ -10,13 +17,4 @@ matplotlib>=3.9
 plotly>=5.24
 streamlit>=1.40
 openpyxl>=3.1
-pytest>=8.0
 pypdf>=5.0
-
-# Optional. Only the *plotly* report needs it: it renders the interactive figures to
-# static images by driving a headless browser, which is a large download. The
-# matplotlib report -- the default, and what every artefact carried before
-# 2026-08-18 -- needs nothing beyond matplotlib. `export.kaleido_available()` checks
-# for it and the app disables the option with a message rather than failing inside
-# plotly's writer.
-kaleido>=0.2.1

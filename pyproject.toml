@@ -7,19 +7,26 @@ name = "wellvolpos"
 version = "0.1.0"
 description = "Well probability of success and volume, from a stochastic prospect model"
 requires-python = ">=3.11"
+# Raised to match requirements.txt on 2026-08-19. The two lists disagreed on every
+# entry -- this one was lower throughout -- and a floor that has never been tested is
+# a claim, not a constraint. Aligned *upward*, to the versions the suite actually runs
+# against, rather than downward to make an install succeed on an untested combination.
 dependencies = [
-    "numpy>=1.26",
-    "pandas>=2.1",
-    "scipy>=1.11",
-    "scikit-learn>=1.4",
-    "matplotlib>=3.8",
-    "plotly>=5.20",
-    "streamlit>=1.33",
+    "numpy>=2.1",
+    "pandas>=2.2",
+    "scipy>=1.14",
+    "scikit-learn>=1.5",
+    "matplotlib>=3.9",
+    "plotly>=5.24",
+    "streamlit>=1.40",
     "openpyxl>=3.1",
+    "pypdf>=5.0",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+# The plotly report's renderer. Optional; the app disables that option without it.
+report = ["kaleido>=0.2.1"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

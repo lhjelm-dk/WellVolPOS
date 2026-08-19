@@ -1,0 +1,15 @@
+# Everything above what the app needs to run: the test suite, and the optional
+# renderer for the plotly report.
+-r requirements.txt
+
+pytest>=8.0
+
+# **Optional even here.** kaleido turns the interactive figures into static images for
+# the plotly version of the report, by driving a headless browser. Without it the app
+# disables that one option and names the missing package; everything else, including
+# the default matplotlib report, is unaffected.
+#
+# It is deliberately *not* in requirements.txt. On a hosted deployment it pulls a
+# browser stack that is slow to install and easy to break, to enable one alternative
+# rendering of a document the app already produces.
+kaleido>=0.2.1
