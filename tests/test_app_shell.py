@@ -396,3 +396,32 @@ def test_every_readme_screenshot_exists_and_every_screenshot_is_used():
 
     assert not (linked - present), f"README links missing files: {sorted(linked - present)}"
     assert not (present - linked), f"screenshots nothing links to: {sorted(present - linked)}"
+
+
+def test_the_guide_says_what_the_tool_is_not():
+    """Scope, not just assumptions.
+
+    The app used the word "commercial" thirty-one times in front of a reader without
+    once saying what it does and does not mean here. Two disclaimers matter most and
+    both are now stated: the tool does not risk the prospect, and it does not model
+    economics — MEFS is a volume the user typed, so "commercial" means "clears that
+    number" and nothing else.
+
+    Placed after the assumptions, which keep first position: an assumption changes how
+    a number reads, scope changes whether the number is yours to quote at all.
+    """
+    import pathlib
+    import re
+
+    from wellvolpos.report import guide
+
+    src = pathlib.Path(guide.__file__).read_text(encoding="utf-8")
+    headings = re.findall(r'st\.markdown\((?:ref\()?"### ([^"]+)"', src)
+    assert "What this tool is not" in headings
+    assert headings.index("What this tool assumes") < headings.index("What this tool is not")
+
+    body = src[src.index('st.markdown("### What this tool is not")'):]
+    body = body[:body.index("st.divider()")]
+    for claim in ("not a prospect risking tool", "does not model economics",
+                  "threshold-based", "does not build the contact distribution"):
+        assert claim in body.lower(), claim

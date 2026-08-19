@@ -196,18 +196,25 @@ def render(ctx: Ctx) -> None:
                                "unconditional chance of a commercial discovery. This "
                                "is the number an EMV calculation takes.")
         cc_cols[2].caption(f"90 % CI {_pc_lo:.1%} – {_pc_hi:.1%}")
+        # **"Commercial" here means "clears the number you typed"** (review,
+        # 2026-08-19). The app says commercial thirty-one times in front of a reader
+        # and this is where the word is first attached to a result, so it is where the
+        # limit belongs. No cost, no schedule and no NPV enters anywhere in this tool.
         cc_cols[3].metric("MEFS / MCFS", f"{mefs:,.1f} MMboe",
                           help="Minimum economic (this app) or commercial (Rose) "
                                "field size — the same threshold under two names. Set "
                                "in tab ①, drawn as a line, never applied to the "
                                "distributions.")
         figure_note(
-            f"P_well is the chance of *seeing* hydrocarbons; Pc the chance of seeing a "
-        f"**developable** accumulation. A location can score well on one and poorly on the other.",
+            f"P_well is the chance of *seeing* hydrocarbons; Pc the chance of clearing "
+        f"the {mefs:,.0f} MMboe threshold. A location can score well on one and poorly on the other.",
             detail=f"`Pc(well) = P_well × Pmcfs(well)` — **{chance.p_well:.4f} × "
             f"{_cc.p_mcfs_downdip:.4f} = {_cc.pc_well:.4f}**. Read the two apart: "
             f"**P_well {chance.p_well:.1%}** is the chance of *seeing hydrocarbons*, "
-            f"**Pc {_cc.pc_well:.1%}** the chance of seeing a *developable* accumulation. "
+            f"**Pc {_cc.pc_well:.1%}** the chance of a discovery that clears MEFS. "
+            f"**This is threshold-based commerciality, not an economic evaluation** — "
+            f"MEFS is a volume you entered, and no cost, schedule or price appears "
+            f"anywhere in this tool. "
             f"A location can score well on the first and poorly on the second.\n\n"
             f"**Rose conditions on the whole well-associated volume; "
             f"{fig_ref('{b2}')} conditions on the proven split.** On the proven volume "

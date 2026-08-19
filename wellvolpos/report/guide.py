@@ -35,6 +35,7 @@ from wellvolpos.viz import pfig_colour_key
 #: believed.
 GUIDE_SECTIONS = (
     ("What this tool assumes", "the six choices that change how a number reads"),
+    ("What this tool is not", "scope — what it does not do, and what \"commercial\" means here"),
     ("Guidelines — six things to get right", "the working order, start to finish"),
     ("Scope, assumptions and disclaimer", "what this does not do, and why"),
     ("The one idea everything rests on", "P_well = POS_prospect × r_location"),
@@ -128,6 +129,31 @@ def render(*, ts, ad, groups, vc, chance, mefs, entry, exit_, pos_source):
     with st.expander(f"What is on this tab — {len(GUIDE_SECTIONS)} sections",
                      expanded=False):
         st.markdown(_contents())
+
+
+    st.markdown("### What this tool is not")
+    st.markdown(
+        """
+**It is not a prospect risking tool.** It does not independently determine whether the
+prospect is charged, whether the seal works, or whether the stochastic model is
+geologically appropriate. Those assumptions have to be represented in the model you
+import. This tool takes that model as given and works out what it implies for one
+specific well location.
+
+A prospect model describes uncertainty in the prospect. This asks what that same
+uncertainty means for the particular well you are about to drill.
+
+**It does not model economics.** MEFS and MCFS are one number you supply, and
+`Pc(well)` is the chance of a discovery that exceeds it. That is *threshold-based
+commerciality* — not an economic evaluation, and not a statement about NPV, cost or
+schedule. The word "commercial" everywhere in this app means "clears the volume
+threshold you entered", nothing more.
+
+**It does not build the contact distribution.** That distribution is the key input,
+and any dependency between column height, closure, charge and retention has to be in
+it already. Nothing here re-risks it.
+"""
+    )
 
     st.divider()
 

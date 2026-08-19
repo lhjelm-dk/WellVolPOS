@@ -637,6 +637,7 @@ def _location_sweep_tab(ctx: Ctx):
             pd.DataFrame([{
                 "": _KIND.get(c.kind, c.kind),
                 "Criterion": c.label,
+                "What it maximises": c.maximises,
                 "Entry (m TVDSS)": f"{c.depth:,.0f} m",
                 "Value there": c.value,
                 # Within 2 % of the best, so the value in the column before it is not
@@ -647,6 +648,13 @@ def _location_sweep_tab(ctx: Ctx):
                                                      c.depth))]),
             hide_index=True, width="stretch",
         )
+        # The longer reasoning, one click away -- it is what distinguishes a criterion
+        # from the others rather than what it computes, so it does not belong in a
+        # column a reader scans.
+        with st.expander("Why each criterion is here, and what it is not"):
+            for c in _cands:
+                if c.note:
+                    st.markdown(f"**{c.label}** — {c.note}")
         # **A range, where the maximum is weak.** Reporting one depth was false
         # precision: prospect B's commercial optimum moved 2064 -> 2115 m between two
         # grid resolutions at an identical Pc of 21.9 %, because the curve is exactly

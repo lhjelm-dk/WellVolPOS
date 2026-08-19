@@ -135,6 +135,10 @@ class Candidate:
     #: Which figure shows it, as a numbering key, so the panel can point at it.
     figure: str
     note: str = ""
+    #: One clause naming the quantity this row maximises, for the table itself. The
+    #: longer ``note`` explains *why* it matters and is a click away; this is what the
+    #: reader needs in order to tell two rows apart at a glance.
+    maximises: str = ""
     #: What kind of advice this row is. **Three different things were being listed
     #: under one heading** (Lars, 2026-08-18: *"the entry depth on this table does not
     #: give any guidance to an ideal depth to go for"*) -- and he was right, because
@@ -322,7 +326,7 @@ def candidate_depths(vsweep, *, min_support: int = 30,
     if np.any(np.isfinite(pw)):
         i = shallowest_argmax(pw)
         out.append(Candidate(
-            key="chance", label="Best chance of finding hydrocarbons",
+            key="chance", label="Best chance of finding hydrocarbons", maximises="well POS",
             depth=float(z[i]), value=f"P_well {pw[i]:.1%}", figure="a3",
             plateau=plateau_span(pw, z, i),
             note="The shallowest supported depth, by construction — P_well only "
@@ -335,7 +339,7 @@ def candidate_depths(vsweep, *, min_support: int = 30,
         if np.any(np.isfinite(weighted)):
             i = shallowest_argmax(weighted)
             out.append(Candidate(
-                key="expected", label="Most chance-weighted volume",
+                key="expected", label="Most chance-weighted volume", maximises="well POS × the accumulation it would find",
                 depth=float(z[i]), value=f"{weighted[i]:,.1f} MMboe expected",
                 figure="b9", plateau=plateau_span(weighted, z, i),
                 note="P_well x the well-associated mean. The one a portfolio adds up, "
@@ -348,7 +352,7 @@ def candidate_depths(vsweep, *, min_support: int = 30,
         if np.any(np.isfinite(pc)):
             i = shallowest_argmax(pc)
             out.append(Candidate(
-                key="commercial", label="Best commercial chance",
+                key="commercial", label="Best commercial chance", maximises="Pc — well POS × the chance the discovery clears the threshold",
                 depth=float(z[i]), value=f"Pc {pc[i]:.1%}", figure="b8",
                 plateau=plateau_span(pc, z, i),
                 note="A rising conditional times a falling P_well, so this one has an "
@@ -362,6 +366,8 @@ def candidate_depths(vsweep, *, min_support: int = 30,
         out.append(Candidate(
             key="constrained",
             label=f"Best odds at {constrained.confidence:.0%} commercial confidence",
+            maximises="well POS, subject to the discovery clearing the threshold "
+                      "at least that often",
             depth=constrained.depth,
             value=f"P_well {constrained.p_well_at:.1%}", figure="b8",
             note="The shallowest depth from which a discovery stays that likely to "
@@ -371,6 +377,8 @@ def candidate_depths(vsweep, *, min_support: int = 30,
     if risk_adjusted is not None and risk_adjusted.best is not None:
         out.append(Candidate(
             key="risk_adjusted", label="Best risk-adjusted volume",
+            maximises="the same expectation under exponential utility, at the risk "
+                      "tolerance set above",
             depth=risk_adjusted.best_depth,
             value=f"{risk_adjusted.ce[risk_adjusted.best]:,.1f} MMboe certain-equivalent",
             figure="b9", plateau=plateau_span(risk_adjusted.ce, risk_adjusted.z,
@@ -393,7 +401,7 @@ def candidate_depths(vsweep, *, min_support: int = 30,
         if np.any(np.isfinite(weighted_proven)):
             i = shallowest_argmax(weighted_proven)
             out.append(Candidate(
-                key="expected_proven", label="Most chance-weighted proven volume",
+                key="expected_proven", label="Most chance-weighted proven volume", maximises="well POS × the volume it would demonstrate",
                 depth=float(z[i]),
                 value=f"{weighted_proven[i]:,.1f} MMboe expected",
                 figure="b9", plateau=plateau_span(weighted_proven, z, i),
@@ -410,7 +418,7 @@ def candidate_depths(vsweep, *, min_support: int = 30,
         if np.any(np.isfinite(red)):
             i = shallowest_argmax(red)
             out.append(Candidate(
-                key="learning", label="Most uncertainty resolved",
+                key="learning", label="Most uncertainty resolved", maximises="the expected narrowing of the prospect's volume range",
                 depth=float(np.asarray(sweep.z, dtype=float)[i]),
                 # ``uncertainty_reduction`` is **already per cent** -- 39.4, not
                 # 0.394 -- so ``:.0%`` multiplied it again and the panel read
@@ -434,7 +442,7 @@ def candidate_depths(vsweep, *, min_support: int = 30,
             zc = _guaranteed_crossing(vsweep.proven_mean, z, vsweep.mefs, n, min_support)
             if zc is not None:
                 out.append(Candidate(
-                    key="proven_mefs", kind="floor",
+                    key="proven_mefs", kind="floor", maximises="a bound, not an optimum",
                     label="Shallowest that proves MEFS on average",
                     depth=zc, value=f"proven mean ≥ {vsweep.mefs:,.1f} MMboe",
                     figure="b1",
@@ -445,7 +453,7 @@ def candidate_depths(vsweep, *, min_support: int = 30,
             zc = _guaranteed_crossing(vsweep.proven_p90, z, vsweep.mefs, n, min_support)
             if zc is not None:
                 out.append(Candidate(
-                    key="proven_p90_mefs", kind="floor",
+                    key="proven_p90_mefs", kind="floor", maximises="a bound, not an optimum",
                     label="Shallowest that proves MEFS even in a poor discovery",
                     depth=zc, value=f"proven P90 ≥ {vsweep.mefs:,.1f} MMboe",
                     figure="b1",
@@ -456,7 +464,7 @@ def candidate_depths(vsweep, *, min_support: int = 30,
             zc = _guaranteed_crossing(vsweep.attic_mean, z, vsweep.mefs, n, min_support)
             if zc is not None:
                 out.append(Candidate(
-                    key="attic_mefs", kind="ceiling",
+                    key="attic_mefs", kind="ceiling", maximises="a bound, not an optimum",
                     label="Deeper than this, a dry hole leaves MEFS up-dip",
                     depth=zc, value=f"attic mean ≥ {vsweep.mefs:,.1f} MMboe",
                     figure="b1",
@@ -469,6 +477,7 @@ def candidate_depths(vsweep, *, min_support: int = 30,
     if required_depth is not None and np.isfinite(required_depth):
         out.append(Candidate(
             key="required", label="Shallowest depth that proves the target",
+            maximises="nothing — it inverts the target volume to a depth",
             depth=float(required_depth),
             value=(f"{required_target:,.1f} MMboe {required_statistic}"
                    if required_target is not None else "the current target"),
