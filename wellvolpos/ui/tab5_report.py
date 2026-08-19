@@ -109,13 +109,16 @@ def _export_section(ctx: Ctx):
     _backend = st.radio(
         "Draw the figures with", export_mod.FIGURE_BACKENDS, horizontal=True,
         key="export_backend",
-        format_func=lambda k: ("matplotlib — the export set, no extra install"
-                               if k == "matplotlib" else
-                               "plotly — the figures as the app draws them"),
+        format_func=lambda k: (
+            "matplotlib — the export set, no extra install" if k == "matplotlib"
+            else ("plotly — the figures as the app draws them" if _has_kaleido
+                  else "plotly — unavailable here (needs kaleido)")),
         help="The numbers are identical either way. Only the drawing differs.",
     )
     if _backend == "plotly" and not _has_kaleido:
-        st.warning(export_mod.KALEIDO_HINT)
+        # `info`, not `warning`: nothing has gone wrong. One of two renderings of the
+        # same document is not installed, and the other is the default.
+        st.info(export_mod.KALEIDO_HINT)
 
     _blocked = _backend == "plotly" and not _has_kaleido
     if st.button("Build the report", key="build_export", type="primary",

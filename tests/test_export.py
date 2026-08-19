@@ -429,3 +429,20 @@ def test_the_plotly_backend_refuses_clearly_when_kaleido_is_missing(bundle, monk
     monkeypatch.setattr(E, "kaleido_available", lambda: False)
     with pytest.raises(RuntimeError, match="kaleido"):
         E.figures_zip(bundle, "png", backend="plotly")
+
+
+def test_the_kaleido_message_covers_the_case_that_will_actually_read_it():
+    """The advice has to be followable where it is met.
+
+    It said ``pip install kaleido`` — correct on a laptop and impossible on a hosted
+    deployment, where there is no shell and a package is added by committing it to
+    requirements.txt. The hosted case is the *likely* one: a developer install already
+    has kaleido, so the only people who ever see this message are the ones who could
+    not act on the version it used to give them.
+    """
+    hint = E.KALEIDO_HINT.lower()
+    assert "requirements.txt" in hint, "no route for a hosted deployment"
+    assert "pip install" in hint, "no route for a local install"
+    assert "packages.txt" in hint and "chromium" in hint, "browser step missing"
+    # And it says the loss is bounded, since nothing has actually broken.
+    assert "matplotlib" in hint

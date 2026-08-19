@@ -473,9 +473,17 @@ FIGURE_BACKENDS = ("matplotlib", "plotly")
 #: refuses with a message naming the package rather than failing somewhere inside
 #: plotly's writer.
 KALEIDO_HINT = (
-    "The plotly report needs the `kaleido` package to turn interactive figures into "
-    "static images. Install it with `pip install kaleido`, or use the matplotlib "
-    "report, which needs nothing extra."
+    "**The plotly report is unavailable here.** It renders the interactive figures to "
+    "static images with `kaleido`, which drives a headless browser, and neither is "
+    "present.\n\n"
+    "- **Running locally?** `pip install -r requirements-dev.txt`, or just "
+    "`pip install kaleido`.\n"
+    "- **On a hosted deployment?** There is no shell to install into. Add `kaleido` "
+    "to `requirements.txt` and a file `packages.txt` containing `chromium`, then "
+    "reboot the app. Both are deliberately left out of the default deployment "
+    "because the browser install is large and easy to break.\n\n"
+    "**Nothing else is affected.** The matplotlib report is the default, produces the "
+    "same numbers, and needs no extra install."
 )
 
 
