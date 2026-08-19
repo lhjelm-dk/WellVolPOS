@@ -40,6 +40,7 @@ from __future__ import annotations
 import numpy as np
 
 import io
+from functools import lru_cache
 import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -478,10 +479,23 @@ KALEIDO_HINT = (
 )
 
 
+@lru_cache(maxsize=1)
 def kaleido_available() -> bool:
-    """Can plotly write a static image here?"""
+    """Can plotly write a static image here?
+
+    **It renders one, rather than checking that the package imports.** The two are
+    different questions and the difference is not academic: kaleido drives a headless
+    browser, so on a machine with the package installed and no browser -- a CI runner,
+    a slim container -- the import succeeds and every render fails. The docstring
+    always asked the right question; the body answered an easier one.
+
+    Cached for the process. The probe costs a second or so on first call and the answer
+    cannot change while the app is running, so a Streamlit rerun pays nothing.
+    """
     try:
-        import kaleido  # noqa: F401
+        import plotly.graph_objects as _go
+
+        _go.Figure().to_image(format="png", width=8, height=8)
     except Exception:
         return False
     return True
