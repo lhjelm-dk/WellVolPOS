@@ -425,3 +425,36 @@ def test_the_guide_says_what_the_tool_is_not():
     for claim in ("not a prospect risking tool", "does not model economics",
                   "threshold-based", "does not build the contact distribution"):
         assert claim in body.lower(), claim
+
+
+def test_tab_three_states_the_trade_before_it_prices_it(fresh):
+    """Thirteen figures all price one trade, which was never stated.
+
+    The tab grouped them under three questions and left the trade itself to be
+    inferred from any two figures. It is now at the top, together with the reason
+    location matters at all: a well can only encounter hydrocarbons in the subset of
+    realisations whose contact lies below it.
+    """
+    assert not fresh.exception
+    body = " ".join(str(el.value) for el in fresh.markdown)
+    assert "sub-population, not the prospect" in body
+    for half in ("Move it shallower", "Move it deeper"):
+        assert half in body, half
+    # Both directions of the trade, so neither reads as a free lunch.
+    assert "higher well POS" in body and "lower well POS" in body
+    assert body.count("left untested if it is dry") == 2
+
+
+def test_loading_a_case_comes_after_the_file_is_known_to_be_sound(fresh):
+    """A returning-user action was third in a first-time user's path.
+
+    The order was file -> case -> import -> preview -> QC, so someone opening the app
+    for the first time met "load a saved case" before seeing whether their file had
+    read correctly. Loading a case is what you do when you already have one.
+    """
+    subs = [s.value for s in fresh.subheader]
+    for name in ("Trial data", "Import", "Quality control",
+                 "Case — the settings, not the data", "Conventions"):
+        assert name in subs, name
+    assert subs.index("Quality control") < subs.index("Case — the settings, not the data")
+    assert subs.index("Case — the settings, not the data") < subs.index("Conventions")

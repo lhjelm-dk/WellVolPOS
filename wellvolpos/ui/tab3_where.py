@@ -206,6 +206,28 @@ def _location_sweep_tab(ctx: Ctx):
     st.divider()
     well_readout(entry, exit_,
                  note="every curve below is swept at this spacing")
+    st.markdown(
+        "**A well tests a sub-population, not the prospect.** Every trial in the "
+        "model is one possible version of it, and this well can only encounter "
+        "hydrocarbons in the versions whose contact lies below the entry depth. "
+        "Moving the well changes which versions those are — and nothing else on "
+        "this tab."
+    )
+    _mv1, _mv2 = st.columns(2)
+    _mv1.markdown(
+        "**Move it shallower**\n\n"
+        "- higher well POS\n"
+        "- less volume demonstrated if it works\n"
+        "- less volume left untested if it is dry"
+    )
+    _mv2.markdown(
+        "**Move it deeper**\n\n"
+        "- lower well POS\n"
+        "- more volume demonstrated if it works\n"
+        "- more volume left untested if it is dry"
+    )
+    st.caption("That is the whole trade. Every figure below is a way of pricing it.")
+
     st.info(
         "**If you only read three:** "
         + fig_ref("{a3}") + " for what the location costs in chance, "

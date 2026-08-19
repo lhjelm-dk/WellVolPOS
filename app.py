@@ -325,61 +325,6 @@ with tabs[0]:
 # controls; setting them afterwards silently does nothing.
 with tabs[0]:
     st.divider()
-    st.subheader("Case — the settings, not the data")
-    st.caption(
-        "A **case** is every choice that turns this trial file into an answer: the well, the "
-        "threshold volume, the four conventions and the chance table. It carries **no results** — "
-        "every number is recomputed on load, so a reopened case cannot show you figures this "
-        "build would not produce. It is not another way to load trials."
-    )
-    cc1, cc2 = st.columns(2)
-    with cc1:
-        up = st.file_uploader("Load a case (.json)", type=["json"], key="_case_upload")
-        if up is not None and st.button("Apply this case", key="_case_apply"):
-            try:
-                loaded = Case.from_json(up.getvalue())
-            except ValueError as e:
-                st.error(str(e))
-            else:
-                st.session_state.update({
-                    "w_entry": float(np.clip(loaded.entry, zmin, zmax)),
-                    "w_exit": float(np.clip(loaded.exit, zmin, zmax)),
-                    "w_mefs": loaded.mefs,
-                    "w_ref": ReferenceContour(loaded.reference),
-                    "w_scheme": loaded.scheme,
-                    "w_area_scale": loaded.area_scale,
-                    "w_map_interval": loaded.map_interval,
-                    "w_map_azimuth": int(round(loaded.map_azimuth_deg)),
-                    **{f"w_play_{el}": v for el, v in loaded.play_elements.items()},
-                    "risking_convention": loaded.risking_convention,
-                    "_case_warnings": loaded.check_against(ts),
-                    "_case_loaded": loaded.dataset or "a case file",
-                })
-                for el, v in loaded.chance_table.items():
-                    st.session_state[f"w_chance_{el}"] = v
-                st.rerun()
-        if st.session_state.get("_case_loaded"):
-            st.success(f"Settings restored from **{st.session_state['_case_loaded']}**.")
-            for w in st.session_state.get("_case_warnings", []):
-                st.warning(w)
-    _case_save_slot = cc2
-
-# **The well geometry sits in tab (1) with the other settings**, and is read here.
-# The same arrangement the chance table uses, and it works for the same reason:
-# `entry` and `exit_` are needed before any tab renders, a widget owns its key, and
-# the next rerun sees the change with no second copy of the state.
-#
-# It was four candidate locations on tab (3) for one day (2026-08-13/14) and Lars
-# removed it -- see CLAUDE.md. With one well the sliders are a *setting*, so they
-# belong beside MEFS and the conventions rather than on the tab that sweeps depth.
-well = read_well(ts, zmin, zmax)
-entry, exit_ = well.entry, well.exit
-# The at-the-well window, read here for the same reason the chance table is: it feeds
-# a *swept curve* on tab ③ as well as the metric on tab ④, and the sweep runs before
-# either tab renders. Seeded with setdefault so the widget on tab ④ still owns the key.
-at_well_window = float(st.session_state.setdefault("w_atw_window", AT_WELL_WINDOW_M))
-with tabs[0]:
-    st.divider()
     st.subheader("Import")
     c1, c2, c3 = st.columns(3)
     c1.metric("Trials", f"{ts.n_trials:,}")
@@ -470,6 +415,61 @@ with tabs[2]:
     _well_slot = st.empty()
     _mefs_slot = st.empty()
 
+with tabs[0]:
+    st.divider()
+    st.subheader("Case — the settings, not the data")
+    st.caption(
+        "A **case** is every choice that turns this trial file into an answer: the well, the "
+        "threshold volume, the four conventions and the chance table. It carries **no results** — "
+        "every number is recomputed on load, so a reopened case cannot show you figures this "
+        "build would not produce. It is not another way to load trials."
+    )
+    cc1, cc2 = st.columns(2)
+    with cc1:
+        up = st.file_uploader("Load a case (.json)", type=["json"], key="_case_upload")
+        if up is not None and st.button("Apply this case", key="_case_apply"):
+            try:
+                loaded = Case.from_json(up.getvalue())
+            except ValueError as e:
+                st.error(str(e))
+            else:
+                st.session_state.update({
+                    "w_entry": float(np.clip(loaded.entry, zmin, zmax)),
+                    "w_exit": float(np.clip(loaded.exit, zmin, zmax)),
+                    "w_mefs": loaded.mefs,
+                    "w_ref": ReferenceContour(loaded.reference),
+                    "w_scheme": loaded.scheme,
+                    "w_area_scale": loaded.area_scale,
+                    "w_map_interval": loaded.map_interval,
+                    "w_map_azimuth": int(round(loaded.map_azimuth_deg)),
+                    **{f"w_play_{el}": v for el, v in loaded.play_elements.items()},
+                    "risking_convention": loaded.risking_convention,
+                    "_case_warnings": loaded.check_against(ts),
+                    "_case_loaded": loaded.dataset or "a case file",
+                })
+                for el, v in loaded.chance_table.items():
+                    st.session_state[f"w_chance_{el}"] = v
+                st.rerun()
+        if st.session_state.get("_case_loaded"):
+            st.success(f"Settings restored from **{st.session_state['_case_loaded']}**.")
+            for w in st.session_state.get("_case_warnings", []):
+                st.warning(w)
+    _case_save_slot = cc2
+
+# **The well geometry sits in tab (1) with the other settings**, and is read here.
+# The same arrangement the chance table uses, and it works for the same reason:
+# `entry` and `exit_` are needed before any tab renders, a widget owns its key, and
+# the next rerun sees the change with no second copy of the state.
+#
+# It was four candidate locations on tab (3) for one day (2026-08-13/14) and Lars
+# removed it -- see CLAUDE.md. With one well the sliders are a *setting*, so they
+# belong beside MEFS and the conventions rather than on the tab that sweeps depth.
+well = read_well(ts, zmin, zmax)
+entry, exit_ = well.entry, well.exit
+# The at-the-well window, read here for the same reason the chance table is: it feeds
+# a *swept curve* on tab ③ as well as the metric on tab ④, and the sweep runs before
+# either tab renders. Seeded with setdefault so the widget on tab ④ still owns the key.
+at_well_window = float(st.session_state.setdefault("w_atw_window", AT_WELL_WINDOW_M))
 with tabs[0]:
     # Declared at the foot of tab (1) and filled a few lines below. `st.empty()`
     # reserves its position where it is *declared*, so this is what puts the settings
