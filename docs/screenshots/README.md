@@ -2,9 +2,10 @@
 
 Images used by the project `README.md` and by any write-up about the tool.
 
-**Drop PNGs straight into this folder.** Nothing reads it automatically — the
-README links whatever is here by name, so a file that is not linked is simply
-unused rather than broken.
+**Drop PNGs straight into this folder**, then tell whoever is editing the README to
+link them. `tests/test_app_shell.py` checks both directions — a link with no file
+and a file with no link — because a broken image link on GitHub renders as nothing
+at all, and an unused screenshot is either a forgotten link or dead weight.
 
 ## Naming
 

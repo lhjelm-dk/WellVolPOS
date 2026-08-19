@@ -412,7 +412,12 @@ def candidate_depths(vsweep, *, min_support: int = 30,
             out.append(Candidate(
                 key="learning", label="Most uncertainty resolved",
                 depth=float(np.asarray(sweep.z, dtype=float)[i]),
-                value=f"{red[i]:.0%} of the P90–P10 range",
+                # ``uncertainty_reduction`` is **already per cent** -- 39.4, not
+                # 0.394 -- so ``:.0%`` multiplied it again and the panel read
+                # "3938% of the P90-P10 range". 3.3 draws the same array against
+                # an axis labelled "(%)", which is what made the units visible
+                # there and invisible here.
+                value=f"{red[i]:.0f}% of the P90–P10 range",
                 figure="b3", plateau=plateau_span(red, np.asarray(sweep.z, float), i),
                 note="Haskett's appraisal criterion: what the well is worth is what "
                      "it *resolves*, not what it finds. Independent of MEFS.",

@@ -377,3 +377,22 @@ def test_no_figure_number_is_typed_into_reader_facing_copy():
                     offenders.append(f"{f.name}:{i}: {body[:100]}")
     assert not offenders, ("figure numbers typed instead of ref()'d:\n  "
                            + "\n  ".join(offenders[:10]))
+
+
+def test_every_readme_screenshot_exists_and_every_screenshot_is_used():
+    """A README image link is invisible when it breaks — GitHub just shows nothing.
+
+    Both directions: a missing file is a broken page, and an unused file is either a
+    forgotten link or dead weight in the repository. Neither is visible by reading the
+    markdown.
+    """
+    import pathlib
+    import re
+
+    root = pathlib.Path(__file__).resolve().parents[1]
+    readme = (root / "README.md").read_text(encoding="utf-8")
+    linked = set(re.findall(r"docs/screenshots/([^)\s]+)", readme))
+    present = {p.name for p in (root / "docs" / "screenshots").glob("*.png")}
+
+    assert not (linked - present), f"README links missing files: {sorted(linked - present)}"
+    assert not (present - linked), f"screenshots nothing links to: {sorted(present - linked)}"

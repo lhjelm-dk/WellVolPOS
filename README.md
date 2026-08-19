@@ -27,22 +27,23 @@ number.**
 
 ## What that looks like on real data
 
-The bundled prospect C, at five locations on one structure. The chance table is
-unchanged throughout — this is the same prospect, assessed identically, drilled in
-different places:
+The bundled prospect C, at six locations on one structure, each with a 50 m
+penetrated interval. The chance table is unchanged throughout — this is the same
+prospect, assessed identically, drilled in different places:
 
 | entry (m TVDSS) | `r_location` | **`P_well`** | `Pc` commercial | proven if it works | left up-dip if dry |
 |---|---|---|---|---|---|
-| 1500 — crest | 100 % | **45.4 %** | 22.9 % | 33 MMboe | 3 MMboe |
-| 1600 | 82.7 % | **37.5 %** | 22.9 % | 109 | 42 |
-| 1650 | 33.0 % | **15.0 %** | 14.5 % | 170 | 83 |
-| 1700 | 21.6 % | **9.8 %** | 9.7 % | 211 | 93 |
-| 1750 | 9.4 % | **4.3 %** | 4.3 % | 251 | 107 |
+| 1500 — crest | 100 % | **45.4 %** | 22.9 % | 49 MMboe | 3 MMboe |
+| 1550 | 94.3 % | **42.8 %** | 22.9 % | 88 | 19 |
+| 1600 | 82.7 % | **37.5 %** | 22.9 % | 117 | 42 |
+| 1630 | 49.9 % | **22.6 %** | 18.7 % | 149 | 75 |
+| 1700 | 21.6 % | **9.8 %** | 9.7 % | 217 | 93 |
+| 1750 | 9.4 % | **4.3 %** | 4.3 % | 254 | 107 |
 
 `POS_prospect` is **45.4 % in every row**. The well's chance runs from 45 % to 4 %
 across 250 m of the same closure.
 
-And the sting: the tool's own commercial floor on this prospect is **1638 m** —
+And the sting: on this prospect the tool's own commercial floor is **1638 m** —
 shallower than that, the well does not demonstrate a commercial volume even when it
 works. **The well you must drill to prove commerciality is the one least likely to
 find anything.**
@@ -91,13 +92,69 @@ the contact distribution. It does not do economics.
 
 ---
 
-## Screenshots
+## The app
 
-<!-- Images live in docs/screenshots/. Name each one after the figure number the
-     app shows, and say in the caption which prospect and which well it was taken
-     at — a chance without its location is the thing this tool argues against. -->
+Every image below is **prospect C, well 1,630–1,680 m TVDSS**, at the shipped
+defaults. A chance without its location is the thing this tool argues against, so
+each one says where it was taken.
 
-*To be added.*
+### The answer, before the working
+
+![Tab ④ headline and the outcome tree](docs/screenshots/4.1_outcome-tree-and-headline.png)
+
+One sentence, then the four things that can happen. `POS_prospect` is 45.4 % — the
+bottom bar. This well is **22.6 %**, and only **18.7 %** clears the 103 MMboe
+threshold. The 22.7 % blue slice is the case that gets scored as a failure and is
+not one: hydrocarbons present, sitting entirely up-dip of where we drilled.
+
+### What the location costs, and what it buys
+
+![3.5 · volume split vs location](docs/screenshots/3.5_volume-split.png)
+
+Proven rises down-dip, the attic rises with it. Both are conditional on their own
+outcome — proven on a discovery, attic on a charged dry hole — so neither can be
+read against the other without saying which event you are in.
+
+![3.6 · chance vs regret](docs/screenshots/3.6_chance-vs-regret.png)
+
+Where the falling `P_well` crosses the rising chance that a dry hole strands more
+than MEFS: **1,633 m** on this prospect. Deeper than that, being wrong costs more
+than being right is likely.
+
+### Where to drill
+
+![Candidate depths, with the floor and the ceiling](docs/screenshots/3_candidate-depths.png)
+
+Two rows bound the answer and the rest only optimise something. Note that five
+optima land on the same depth: above the shallowest sampled contact every success
+trial is a discovery, so every criterion that ignores the threshold is *indifferent*
+there. A list of optima is not advice; a floor and a ceiling are.
+
+![3.11 · chance-weighted resource](docs/screenshots/3.11_chance-weighted.png)
+
+`P_well ×` volume peaks somewhere in between, and the two stars are different
+questions — what the accumulation holds against what this well would *establish*.
+The dashed green curve is the same distribution under risk aversion.
+
+![3.3 · uncertainty reduction](docs/screenshots/3.3_uncertainty-reduction.png)
+
+Haskett's appraisal criterion: not what the well finds but what it *resolves*. It
+peaks at 1,676 m, deeper than every chance-based optimum, and it never mentions
+MEFS.
+
+### The volumes, five ways
+
+![Tab ④ volume classes, the section and the exceedance curves](docs/screenshots/4_volume-classes.png)
+
+The classes nest — up-dip ⊂ tested ⊂ well associated ⊂ prospect — and the section
+shows why. The exceedance curves are the same volumes with the two POS values drawn
+where the risked curves *start*, not as labels beside them: the gap between 45 % and
+23 % is the location penalty.
+
+![4.8 · conceptual map view](docs/screenshots/4.8_map-view.png)
+
+The same split in plan: 13.6 km² up-dip of the entry, 5.8 km² between entry and
+exit, 13.2 km² below. The shape is illustrative; the areas and the depths are not.
 
 ---
 

@@ -418,3 +418,22 @@ def test_the_chance_weighted_proven_peak_differs_from_the_well_associated_one(me
     by_key = {c.key: c for c in candidate_depths(mefs_sweep)}
     assert {"expected", "expected_proven"} <= set(by_key)
     assert by_key["expected_proven"].depth > by_key["expected"].depth
+
+
+def test_the_uncertainty_row_reports_per_cent_and_not_per_cent_squared(reduced):
+    """``uncertainty_reduction`` is already per cent, so ``:.0%`` doubles it.
+
+    The panel read "3938 % of the P90–P10 range" against 3.3's own "max 39 %" for the
+    same array. 3.3's axis is labelled "(%)", which is what made the units obvious
+    there and invisible in a formatted string.
+    """
+    from wellvolpos.core import candidate_depths, run_sweep, run_volume_sweep
+
+    ad = AreaDepth.from_trials(reduced.col("contact"), reduced.col("area"))
+    vs = run_volume_sweep(reduced, ad, POS, z_gap=50.0, mefs=14.0, n=40)
+    sw = run_sweep(reduced, POS, z_gap=50.0)
+
+    row = next(c for c in candidate_depths(vs, sweep=sw) if c.key == "learning")
+    pct = float(row.value.split("%")[0])
+    assert 0.0 < pct <= 100.0, row.value
+    assert pct == pytest.approx(float(np.nanmax(sw.uncertainty_reduction)), abs=0.5)
