@@ -1,268 +1,246 @@
 # WellVolPOS
 
 **A prospect has a chance of holding hydrocarbons. A well has a chance of finding
-them. They are not the same number, and only one of them is usually written down.**
+them. They are not the same number.** WellVolPOS takes a stochastic prospect model —
+a GeoX run, or any comparable simulation, exported as its trials — and works out what
+that model implies for one specific well location: the chance that *this well*
+succeeds, what it would prove if it did, and what it would leave behind if it did not.
 
 ---
 
-## In plain terms
+## The problem
 
-Before anything is drilled, a prospect is assessed. How likely is it that oil or gas
-is there at all, and if it is, how much? That work produces a probability of success
-and a range of volumes, and those numbers travel — into the portfolio, the partner
+A prospect is assessed before anything is drilled: how likely is it that hydrocarbons
+are there, and if they are, how much? That produces a probability of success and a
+volume distribution, and those numbers travel — into the portfolio, the partner
 meeting, the investment case.
 
-Then a well is planned, and someone has to choose exactly where it goes.
+Then a well is planned, and someone chooses exactly where it goes. That decision is
+often settled later, and often for good reasons unrelated to the subsurface case: rig
+schedule, a shallow hazard, standing off a boundary fault, a partner's preference.
 
-A well is a single point. The prospect is a whole structure. A well placed high on
-that structure will find hydrocarbons in almost every case where they are present,
-but it may only touch the top of the accumulation. A well placed lower down proves
-much more if it works — and misses entirely in every case where the hydrocarbons did
-not fill that deep. Same prospect, same assessment, different question being asked.
+So the chance that this well succeeds is not necessarily the same as the chance that
+the prospect works. Once the well is positioned below the shallowest possible contact,
+the well POS becomes lower — sometimes substantially so — and the difference depends
+on where the well is put.
 
-So the chance that *this well* succeeds is not the chance that *the prospect* works.
-It is lower, always, and by an amount that depends entirely on where the well is put.
-
-WellVolPOS computes that second number and reports it beside the first, without
-mixing them together.
-
----
-
-## The issue this is meant to help with
-
-This is offered as something worth checking, not as a diagnosis. It may not apply
-where you work.
-
-A prospect can be assessed carefully and well. The chance factors can be defensible,
-the volume distribution can be honest about its uncertainty, and the spatial
-description can be sound. None of what follows is a criticism of that work.
-
-The difficulty is one of sequence. The prospect probability is produced early,
-because that is when it is needed. The well location is settled later, and often for
-good reasons that have nothing to do with the subsurface case — rig schedule, a
-shallow hazard, standing off a boundary fault, a partner's preference, a permit
-boundary. By the time the location exists, the number that everyone has been quoting
-was calculated without it.
-
-**The well then tests a sub-population, not the prospect.** Every trial in the model
-is a possible version of the prospect. A well at a given depth can only succeed on
-the subset of those versions where the contact happens to lie below it. The rest are
-not failures of the prospect — they are outcomes this particular well was never able
-to see. What the tool computes is a conditional probability: the chance of success
+**The well tests a sub-population, not the prospect.** Every trial in the stochastic
+model is one possible version of the prospect. A well at a given depth can only
+succeed on the subset of versions whose contact lies below it. The remainder are not
+failures of the prospect; they are outcomes this particular well could never have
+observed. What the tool reports is a conditional probability — the chance of success
 *given that you drilled here*.
 
-And there is a human consequence that is worth saying out loud. Deciding to drill
-down-dip to prove commercial volumes lowers the chance of finding anything. If that
-lower chance was never stated, the dry hole is measured against the prospect number,
-and the person who assessed the prospect is the one who looks wrong. The geology may
-have been right and the location may have been reasonable; what was missing was the
-number that connects them.
+There is a practical consequence. Drilling down-dip to prove a larger volume lowers
+the chance of finding anything. If that lower chance was never written down, a dry
+hole gets measured against the prospect number, and the person who assessed the
+prospect is the one who appears to have been wrong. The geology may have been sound
+and the location may have been sensible; what was missing was the number connecting
+them.
 
 ---
 
-## How it works
-
-Start from a stochastic model of the prospect — a GeoX run, or any comparable
-simulation — exported as its trials. Ten thousand of them, typically. Each trial is
-one internally consistent version of the prospect: a hydrocarbon–water contact, a
-productive area, a recoverable volume.
-
-The **contact distribution across those trials is the important part.** It describes
-how deep the hydrocarbons might reach, and so, indirectly, how much of the structure
-is filled. If it was built properly it already carries the reasons a deep fill is
-less likely than a shallow one — a larger closure is harder to charge, a longer
-column tests the seal harder, and further down-dip there are more faults, more leak
-points and more doubtful pinch-outs, with reservoir presence and quality varying
-across the structure. All of that belongs in the contact distribution. This tool
-reads that distribution; it does not add to it, and it does not re-risk it.
-
-The rest is a count. Your well enters the reservoir at a chosen depth. A trial is a
-success for your well when its contact lies deeper than that entry. The fraction of
-success trials that qualify is the location factor:
+## The key idea
 
 ```
-r_location = P(contact deeper than the well | hydrocarbons present)
-P_well     = POS_prospect × r_location
+              Prospect stochastic model  (10 000 trials)
+                              │
+             ┌────────────────┴────────────────┐
+             │                                 │
+      Prospect POS                   Contact distribution
+             │                                 │
+             │                          + Well location
+             │                                 │
+             │                          Location factor
+             └────────────────┬────────────────┘
+                              │
+                          Well POS
 ```
 
-`r_location` is the only quantity the well's position controls. `POS_prospect` is the
-only quantity it does not. **They are never multiplied into a single reported
-number**, because a decision needs to know which part it can still change.
+| | asks |
+|---|---|
+| **Prospect POS** | Does the prospect contain hydrocarbons? |
+| **Location factor** | Given hydrocarbons are present, can this well encounter them? |
+| **Well POS** | What is the chance that this particular well succeeds? |
+
+```
+Well POS = Prospect POS × Location factor
+```
+
+The location factor is the only term the well's position controls; the prospect POS is
+the only term it does not. They are reported separately, because a decision needs to
+know which part it can still change.
 
 ---
 
-## What the tool answers
+## What it calculates
 
-**How likely is this well to work?** Prospect chance and well chance side by side,
-with the location factor between them, swept across every entry depth so the cost of
-moving is visible rather than inferred.
-
-**If it works, what will it have proven?** A discovery does not demonstrate the whole
-accumulation — only what the well penetrated. The tool splits every trial into what
-the well proves, what stays unproven below it, and what sits up-dip and untouched.
-
-**If it is dry, what did we leave behind?** A dry hole in a charged prospect leaves an
-attic. The tool reports how large that is likely to be, and how likely it is to be
-material rather than a curiosity.
-
-**How likely is a commercial result, not just a discovery?** Finding hydrocarbons and
-finding a developable accumulation are different questions with different answers, and
-they favour different locations. Both are computed.
-
-**Where does the well have to go to prove a given volume?** Name the volume; the tool
-returns the shallowest depth that demonstrates it, and what that costs in chance.
-
-**Between which depths is the well defensible at all?** Deep enough to prove something
-commercial, shallow enough not to strand something commercial up-dip. Those two bounds
-are usually more useful than any single optimum.
-
-**Which risk elements carry the penalty?** The location factor can be attributed back
-to charge, closure, reservoir or retention under several conventions, all of which
-give the same well chance and differ only in the attribution.
-
-It does not replace the stochastic model; it re-cuts that model's output against a
-well. It does not build the contact distribution. It does not do economics.
-
----
-
-## Your own data
-
-The app opens on bundled demo data, so there is nothing to prepare to try it. To use
-your own, choose **Upload your own…** in tab ①. A GeoX export is recognised
-automatically; anything else goes through a generic reader that proposes a column
-mapping and asks you to confirm it, rather than guessing.
-
-**Uploaded files are never written to disk.** The file is read into memory, passed
-straight to the reader, and exists only for that browser session. There is no upload
-folder, no cache, no temporary file — a check in the test suite keeps it that way.
-
-Two things to be aware of, so the claim is not stronger than it is:
-
-- **Run it locally and your data never leaves your machine.** That is the mode to use
-  for anything confidential.
-- **On a hosted deployment**, the bytes are held in the memory of whatever server the
-  app runs on for the duration of the session. Nothing is stored, but it is somebody
-  else's machine. Host it yourself if that matters.
-
----
-
-## The app
-
-Every image below is the bundled prospect C, at one well, at the shipped defaults.
-
-### The answer, before the working
-
-![Tab ④ headline and the outcome tree](docs/screenshots/4.1_outcome-tree-and-headline.png)
-
-One sentence, then the four things that can actually happen. The blue slice is the
-case worth dwelling on: hydrocarbons present, but sitting entirely up-dip of where we
-drilled. It is recorded as a dry hole. It is not a failure of the prospect.
-
-### What the location costs, and what it buys
-
-![3.5 · volume split vs location](docs/screenshots/3.5_volume-split.png)
-
-What a discovery would prove rises as the well goes deeper — and so does what a dry
-hole would leave behind. Each is conditional on its own outcome, so neither can be
-read against the other without saying which case you are in.
-
-![3.6 · chance vs regret](docs/screenshots/3.6_chance-vs-regret.png)
-
-The falling chance of success against the rising chance that a dry hole strands
-something material. Where they cross is where being wrong starts to cost more than
-being right is likely.
-
-### Where to drill
-
-![Candidate depths, with the floor and the ceiling](docs/screenshots/3_candidate-depths.png)
-
-Two rows bound the answer; the others only optimise something. Several optima land on
-the same depth, and that is real rather than a bug — high on the structure, every
-charged version of the prospect is a success, so any criterion that ignores the
-volume threshold cannot tell those depths apart.
-
-![3.11 · chance-weighted resource](docs/screenshots/3.11_chance-weighted.png)
-
-Chance times volume peaks somewhere in the middle. The two markers are different
-questions — what the accumulation holds, against what this well would actually
-establish.
-
-![3.3 · uncertainty reduction](docs/screenshots/3.3_uncertainty-reduction.png)
-
-An appraisal view: not what the well finds, but what it settles. It peaks deeper than
-the chance-based optima and never refers to a threshold volume at all.
-
-### The volumes, five ways
-
-![Tab ④ volume classes, the section and the exceedance curves](docs/screenshots/4_volume-classes.png)
-
-The volume classes nest inside one another, and the section shows why. On the
-exceedance curves the two probabilities are drawn where the risked curves *begin*,
-rather than as labels beside them — so the gap between them is the location penalty,
-measured.
-
-![4.8 · conceptual map view](docs/screenshots/4.8_map-view.png)
-
-The same split in plan: what lies up-dip of the well, what lies between entry and
-exit, and what lies below. The shape is illustrative; the areas and depths are not.
+- **Well POS** against the prospect POS, swept across every entry depth, so the cost
+  of moving the well is visible rather than inferred.
+- **What a discovery would prove** — a well demonstrates the interval it penetrated,
+  not the whole accumulation. Each trial is split into proven, unproven below the
+  well, and untested up-dip.
+- **What a dry hole may have left.** A dry hole does not necessarily mean an uncharged
+  prospect. If hydrocarbons were present in a given realisation but the well was
+  drilled below their contact, the well may leave an untested volume behind.
+- **Chance of exceeding a volume threshold** you supply, as distinct from the chance
+  of a discovery of any size. The two favour different locations.
+- **The inverse**: name a volume that must be demonstrated, and get the shallowest
+  depth that does so, with the chance it costs.
+- **A defensible depth window** rather than a single optimum — see below.
+- **Attribution** of the location penalty back to charge, closure, reservoir or
+  retention, under several conventions that all give the same well POS.
 
 ---
 
 ## Quick start
 
-**New here? Follow [`GETTING_STARTED.md`](GETTING_STARTED.md)** — step by step, with
-the Windows specifics.
-
 ```bash
 python -m venv .venv && .venv/Scripts/Activate.ps1   # Windows
 pip install -r requirements.txt
-pytest                 # the specification; it prints its own count
-streamlit run app.py   # opens on the bundled demo data
+pytest
+streamlit run app.py
 ```
 
----
+The app opens on bundled demo data, so there is nothing to prepare. Step-by-step
+instructions, with the Windows specifics, are in
+[`GETTING_STARTED.md`](GETTING_STARTED.md).
 
-## The six tabs
+**To use your own trials**, choose *Upload your own…* in tab ①. A GeoX export is
+recognised automatically; other formats go through a generic reader that proposes a
+column mapping for you to confirm.
 
-| | tab | the question |
-|---|---|---|
-| ① | Setup and input | what am I working with, is it sound, and what conventions am I using? |
-| ② | Prospect | what is this prospect, before any well? |
-| ③ | Where to drill | where should the well go? — every figure that sweeps depth |
-| ④ | At this well | what do I get at the depth I chose? |
-| ⑤ | Risk & report | attribution, the summary table, the export |
-| ⑥ | Theory & guide | what any of it means |
-
-Tab ② is deliberately **well-free**: if a well marker ever appears there, the tab has
-lost its subject.
+**Uploaded files are never written to disk** — the file is read into memory, passed to
+the reader, and exists only for that session. Run the app locally and your data never
+leaves your machine. On a hosted deployment the bytes sit in that server's memory for
+the duration of the session; nothing is stored, but it is somebody else's machine, so
+host it yourself if that matters.
 
 ---
 
-## A window, not an optimum
+## What this is not
 
-Several criteria can all be maximised at the shallowest depth in the sweep, and often
-are. High on the structure every charged version of the prospect is a success, so any
-criterion that does not involve a volume threshold is *indifferent* across that whole
-band — and a list of optima becomes several copies of one depth.
+**WellVolPOS is not a prospect risking tool.** It does not determine whether the
+prospect is charged, whether the seal works, or whether the stochastic model is
+geologically appropriate. It takes the model as given and evaluates what that model
+implies for a specific well location.
 
-So the tool leads with a **window**. Two quantities bound it, and both are read as
-guarantees rather than as first crossings:
+A prospect model describes uncertainty in the prospect. WellVolPOS asks what that same
+uncertainty means for the particular well you are about to drill.
+
+It also does not model economics. Where a volume threshold appears — MEFS or MCFS —
+it is a number you supply, and the resulting `Pc` is the chance of a discovery
+exceeding that threshold. It is threshold-based commerciality, not an economic
+evaluation, and the threshold is drawn as a reference line rather than applied to the
+distributions.
+
+---
+
+## How it works
+
+Each trial in the export is one internally consistent version of the prospect: a
+hydrocarbon–water contact, a productive area, a recoverable volume.
+
+**The contact distribution is therefore a key input.** It represents the uncertainty
+in how deeply hydrocarbons may extend across the structure. Any geological
+dependencies between column height, closure, charge, retention and the other risk
+elements must already be represented in the stochastic model. WellVolPOS does not
+introduce or re-risk those dependencies; it uses the resulting trial distribution.
+
+At its core, the location calculation is simple: classify the stochastic trials
+according to whether the contact lies below the well entry depth.
+
+```
+Location factor = P(contact deeper than the well entry | hydrocarbons present)
+```
+
+Above the shallowest sampled contact that fraction is one, and the well POS equals the
+prospect POS. Below it the fraction falls, and so does the well POS.
+
+The volume side uses the same classification. The area–depth relationship is recovered
+from the trials themselves, which is what allows a single trial to be divided at the
+well into the part the well would demonstrate and the part it would not.
+
+---
+
+## A defensible drilling window, not a single optimum
+
+Several criteria can all be maximised at the shallowest depth in a sweep, and often
+are: high on the structure every charged version of the prospect is a success, so any
+criterion that ignores the volume threshold cannot distinguish those depths. A list of
+optima then becomes several copies of one number.
+
+The tool therefore leads with a window, bounded by two questions:
 
 | | |
 |---|---|
-| **floor** | the shallowest depth from which a discovery still demonstrates a commercial volume. A second, more conservative floor asks the same of a *poor* discovery. |
-| **ceiling** | the depth past which a dry hole would have left a commercial volume untested up-dip. |
+| **Floor** | How deep must the well go to demonstrate the required volume? |
+| **Ceiling** | How deep can it go before the chance of leaving a material volume untested becomes unacceptable? |
 
-Either end can be absent, and that is reported rather than papered over. The floor can
-also come out deeper than the ceiling, which is a finding about the prospect rather
-than an error: at that threshold, no location both proves a commercial volume and
-avoids stranding one.
+Both are read as guarantees rather than first crossings. Either bound can be absent,
+and that is reported as such. The floor can also come out deeper than the ceiling,
+which is a finding about the prospect rather than an error: at that threshold, no
+location both demonstrates the required volume and avoids stranding one.
 
-The optima are listed underneath — best chance, best chance-weighted volume, best
-chance-weighted *proven* volume, best commercial chance, best risk-adjusted volume,
-best odds subject to a commercial confidence, and the appraisal optimum. Each carries
+Individual optima are listed underneath — best chance, best chance-weighted volume,
+best chance-weighted proven volume, best threshold chance, best risk-adjusted volume,
+best odds subject to a confidence constraint, and the appraisal optimum. Each carries
 the span of depths within a couple of per cent of its own best, because on a nearly
 flat curve a single depth is false precision.
+
+---
+
+## The app
+
+Bundled prospect C, one well, shipped defaults.
+
+| | |
+|---|---|
+| ![Tab ④ headline and outcome tree](docs/screenshots/4.1_outcome-tree-and-headline.png) | **The answer first.** The four things that can happen. The blue slice is hydrocarbons present but entirely up-dip of the well — recorded as a dry hole, and not a failure of the prospect. |
+| ![3.5 · volume split](docs/screenshots/3.5_volume-split.png) | **What a discovery would prove** rises with depth — and so does what a dry hole would leave behind. |
+| ![3.6 · chance vs regret](docs/screenshots/3.6_chance-vs-regret.png) | **Falling chance against rising regret.** Where they cross, being wrong starts to cost more than being right is likely. |
+| ![Candidate depths](docs/screenshots/3_candidate-depths.png) | **The window, then the optima.** Several optima share a depth, which is real: high on the structure they cannot be told apart. |
+| ![3.11 · chance-weighted resource](docs/screenshots/3.11_chance-weighted.png) | **Chance × volume** peaks in between. The two markers ask different questions — what the accumulation holds, against what the well would establish. |
+| ![3.3 · uncertainty reduction](docs/screenshots/3.3_uncertainty-reduction.png) | **An appraisal view**: not what the well finds, but what it settles. It peaks deeper, and refers to no threshold. |
+| ![Volume classes](docs/screenshots/4_volume-classes.png) | **The volume classes nest**, and the section shows why. On the exceedance curves the two probabilities are where the risked curves begin, so the gap between them is measured rather than asserted. |
+| ![4.8 · map view](docs/screenshots/4.8_map-view.png) | **The same split in plan.** The shape is illustrative; the areas and depths are not. |
+
+---
+
+## Conventions you set
+
+Each of these changes the numbers, so each is an explicit setting:
+
+- **Risking convention** — are the trials already risked, or success-case only? Asked
+  at import, with the supporting evidence shown.
+- **Reference contour** for the location factor — crest/apex, or P90 area.
+- **Risk-element allocation** — none, equal cube root, or all to closure. All three
+  give the same well POS and differ only in attribution.
+- **Assessment minimum** — a minimum column height below the apex.
+- **Engine** — whole-trial grouping (after Schneider et al. 2023) or the per-trial
+  volume split. Both are shown, and they answer slightly different questions.
+
+---
+
+## Outputs
+
+Tab ⑤ builds four artefacts from one assembled result, so they cannot disagree with
+each other or with the screen:
+
+| Format | For |
+|---|---|
+| **XLSX** | Checking the arithmetic. Values only. |
+| **PDF** | The well proposal — a stamped cover page, then every figure in the order the app shows them. |
+| **PNG / SVG zip** | Slides. The provenance travels inside the archive. |
+| **JSON case** | Reopening a session. Settings only, never results, so a reloaded case cannot show numbers this version would not produce. |
+
+Every artefact carries the same stamp: the prospect POS and its source, the location
+factor, the well POS, the well, the reference contour, the allocation scheme and the
+threshold volume.
+
+Figures can be drawn with matplotlib (the default, no extra install) or with plotly
+via [kaleido](https://pypi.org/project/kaleido/), which reproduces what the app shows
+on screen. The numbers are identical either way.
 
 ---
 
@@ -270,98 +248,51 @@ flat curve a single depth is false precision.
 
 `data/` ships two prospects, both safe to publish.
 
-**Prospect C** is the default. It is a real export with every depth shifted by one
-constant, so the file names no location. That is a rigid translation and changes
-nothing the tool says: column heights are differences, the area–depth curve is the
-same curve moved, and the location factor counts contacts either side of a depth that
-moved with them. A test asserts that invariance rather than assuming it. It
-anonymises *where*, not *how much*.
+**Prospect C** is the default: a real export with every depth shifted by one constant,
+so the file names no location. A rigid translation changes nothing the tool reports —
+column heights are differences, the area–depth curve is the same curve moved — and a
+test confirms the invariance. It anonymises *where*, not *how much*.
 
-**Prospect A** is fictional, and ships both as a seven-column paste and as a full
-export — so the everyday case and the duplicate-header trap both stay exercised. It is
-what the parity suite is locked to. One trap worth knowing: the two forms carry the
-same trial identifiers attached to *different rows*, so joining two exports on trial
-number silently scrambles them. Nothing here does, and a test says so.
+**Prospect A** is fictional and ships in two export forms, so both the everyday case
+and the duplicate-header case stay exercised. One trap worth knowing: the two forms
+carry the same trial identifiers attached to different rows, so joining exports on
+trial number scrambles them.
 
-`io/synthetic.py` generates further files for branches one real prospect cannot
-exercise. Their closure is a cone, so the area–depth relationship is known exactly —
-the one thing real data cannot offer, and what let a sensitivity in the
-reservoir-thickness inversion be found.
+`io/synthetic.py` generates further files whose closure is a cone, so the area–depth
+relationship is known exactly — useful for checking the reservoir-thickness inversion.
 
 ---
 
-## Conventions that are never implicit
-
-Each of these changes the numbers, so each is an explicit setting rather than a
-default buried in the code:
-
-- **Risking convention** — are the trials already risked, or success-case only? Asked
-  at import, with the evidence shown.
-- **Reference contour** for the location factor — crest/apex, or P90 area.
-- **Risk-element allocation** — none, equal cube root, or all to closure. All three
-  give the *same* well chance; only the attribution differs.
-- **Assessment minimum** — a minimum column height below the apex.
-- **Engine** — whole-trial grouping, or the per-trial volume split. Both are shown;
-  neither is labelled "correct".
-
----
-
-## What comes out
-
-Tab ⑤ builds four artefacts from **one** assembled result, so the workbook, the PDF
-and the figures cannot disagree with each other or with the screen:
-
-| Format | For |
-|---|---|
-| **XLSX** | The reviewer who wants to check the arithmetic. Values only — a formula in an exported workbook is a second implementation of the same calculation. |
-| **PDF** | The well proposal. A stamped cover page, then every figure, one per page, in the order the app shows them. |
-| **PNG / SVG zip** | Slides. The provenance travels inside the archive, because a figure dropped into a deck is separated from its caption immediately. |
-| **JSON case** | Reopening the session. Settings only, never results — so a reloaded case cannot show numbers this build would not produce. |
-
-Every artefact carries the same stamp: the prospect chance **and where it came from**,
-the location factor, the well chance, the well, the reference contour, the allocation
-scheme and the threshold volume.
-
-Figures can be drawn two ways, and the numbers are identical either way. matplotlib is
-the default and needs nothing extra; choosing plotly renders the figures the app
-itself draws, via [kaleido](https://pypi.org/project/kaleido/), so a figure in the
-document is the figure that was on screen. kaleido drives a headless browser and is a
-large download, so it is optional — without it, that option disables itself and says
-which package is missing.
-
----
-
-## Layout
+## Architecture
 
 ```
 app.py                       Streamlit entry point — six tabs
 wellvolpos/
   io/adapters/               trial-file readers; add a simulator by adding a file
-  io/adapters/generic.py     the fallback reader; proposes a mapping, never assumes one
-  io/units.py                unit validation: reject, never convert
-  io/failure.py              chance-failure detector
-  io/qc.py                   the report that gates the analysis tabs
-  io/anonymise.py            shift a real export's depths so it can be published
-  core/structure.py          the area–depth curve, recovered from the trials themselves
+  io/units.py                unit validation
+  io/failure.py              chance-failure detection
+  io/qc.py                   import quality control
+  io/anonymise.py            depth-shift an export so it can be published
+  core/structure.py          area–depth curve, recovered from the trials
   core/groups.py             whole-trial grouping (Schneider et al. 2023)
-  core/classes.py            the per-trial volume split
-  core/summary.py            the headline, the drilling window, and the optima
-  core/mefs.py               every volume read against the threshold
-  core/dependence.py         what the exit moves, and whether the geometry is a vertical well
-  core/utility.py            certainty equivalent, and the commerciality hurdle
-  core/chance.py             the location factor, reference contours, risk allocation
+  core/classes.py            per-trial volume split
+  core/summary.py            headline, drilling window, optima
+  core/mefs.py               volumes read against the threshold
+  core/dependence.py         what the exit depth moves; well-geometry check
+  core/utility.py            certainty equivalent, confidence constraint
+  core/chance.py             location factor, reference contours, risk allocation
   core/reservoir.py          reservoir thickness, back-calculated from pay
   core/rose.py               No Regrets, Pmcfs(well), Pc(well)
-  core/sweep.py              both sweeps, and the inverse
-  core/stats.py              bootstrap and Wilson intervals, sample-size diagnostics
-  viz/theme.py               one palette, one styling entry point, the depth-axis rule
-  viz/interactive.py         the plotly figures — what the app draws
-  viz/figures.py             the matplotlib twins — what the export draws
-  report/export.py           one result, four formats, two renderers
-  report/guide.py            the theory & guide tab
-data/                        the demo trial files
+  core/sweep.py              depth sweeps and the inverse
+  core/stats.py              bootstrap and Wilson intervals
+  viz/theme.py               palette, styling, the depth-axis rule
+  viz/interactive.py         plotly figures — what the app draws
+  viz/figures.py             matplotlib twins — what the export draws
+  report/export.py           one result, four formats
+  report/guide.py            theory & guide tab
+data/                        demo trial files
 docs/screenshots/            images used by this README
-tests/                       the specification
+tests/                       test suite, including parity against the source workbook
 ```
 
 ---
@@ -376,8 +307,8 @@ tests/                       the specification
 - Haskett, W.J. (2003) *Optimal appraisal well location…* SPE 84241.
 - Hood, K.C. (2024) *Hydrocarbon column heights, Parts 1–2.* Rose & Associates.
 
-Every source is listed in tab ⑥ with whether it was read directly or cited through
-another work.
+Tab ⑥ lists every source, with whether it was read directly or cited through another
+work.
 
 ## Licence
 
